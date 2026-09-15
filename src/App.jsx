@@ -1,11 +1,10 @@
 import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
 
-import Login from './pages/Login';
+import Login from './pages/login';
 
 export default function App() {
   return (
     <main>
-      <h1>STI Facility Reservation</h1>
       <Login /> 
     </main>
   );

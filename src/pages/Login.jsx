@@ -22,11 +22,15 @@ export default function Login() {
   };
 
   return (
-    <div style={{ textAlign: 'center', marginTop: '50px' }}>
-      <h2>Sign In to Continue</h2>
+    <div className="login-container">
+      <div className="login-card">
+        {/*header-section*/}
+        <div className="header-container">
+
+        </div>
+      </div>
       <button 
         onClick={handleMicrosoftLogin}
-        style={{ padding: '10px 20px', fontSize: '16px', cursor: 'pointer' }}
       >
         Sign in with Microsoft
       </button>
