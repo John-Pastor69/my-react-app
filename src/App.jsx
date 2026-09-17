@@ -1,11 +1,30 @@
-import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { useState } from 'react'; 
+import { Routes, Route } from 'react-router-dom';
+import SideBar from './pages/SideBar';
+import TopBar from './pages/TopBar'; 
+import './App.css'; 
 
-import Login from './pages/login';
+import DashboardRouter from './pages/routers/DashboardRouter';
 
 export default function App() {
+
+  const fakeUserRole = "building_admin";
+
   return (
-    <main>
-      <Login /> 
-    </main>
+    <div className="app-container">
+      <SideBar />
+      <div className="main-content">
+        <TopBar />
+        <div className="page-content">
+          <Routes>
+            {/* The single route handles all 7 dashboards automatically */}
+            <Route 
+              path="/dashboard" 
+              element={<DashboardRouter currentUserRole={fakeUserRole} />} 
+            />
+          </Routes>
+        </div>
+      </div>
+    </div>
   );
 }
