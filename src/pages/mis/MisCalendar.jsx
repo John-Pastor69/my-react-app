@@ -1,5 +1,5 @@
 import React from 'react';
-import '../../styles/mis/calendar.scss'; // Make sure this path points correctly to your styles folder
+import '../../styles/mis/calendar.scss';
 
 const MisCalendar = () => {
   return (
@@ -11,7 +11,7 @@ const MisCalendar = () => {
         <div className="calendar-header">
           <div className="month-nav">
             <button className="icon-btn"><i className="ph ph-caret-left"></i></button>
-            <h2>November 2023</h2>
+            <h2>September 2026</h2>
             <button className="icon-btn"><i className="ph ph-caret-right"></i></button>
             <button className="today-btn">Today</button>
           </div>
@@ -38,91 +38,49 @@ const MisCalendar = () => {
           <div className="weekday">SAT</div>
 
           {/* Row 1 */}
-          <div className="day-cell prev-month"><span className="date">29</span></div>
           <div className="day-cell prev-month"><span className="date">30</span></div>
           <div className="day-cell prev-month"><span className="date">31</span></div>
           <div className="day-cell"><span className="date">1</span></div>
-          <div className="day-cell">
-            <span className="date">2</span>
-            <div className="event-pill pill-red">Q3 Marketing Review</div>
-          </div>
+          <div className="day-cell"><span className="date">2</span></div>
           <div className="day-cell"><span className="date">3</span></div>
           <div className="day-cell"><span className="date">4</span></div>
+          <div className="day-cell"><span className="date">5</span></div>
 
           {/* Row 2 */}
-          <div className="day-cell">
-            <span className="date">5</span>
-            <div className="event-pill pill-green">Client Pitch Pres...</div>
-          </div>
           <div className="day-cell"><span className="date">6</span></div>
-          <div className="day-cell">
-            <span className="date">7</span>
-            <div className="event-pill pill-yellow">Design Sprint</div>
-          </div>
+          <div className="day-cell"><span className="date">7</span></div>
           <div className="day-cell"><span className="date">8</span></div>
-          <div className="day-cell">
-            <span className="date">9</span>
-            <div className="event-pill pill-green">Leadership Talk</div>
-          </div>
-          <div className="day-cell">
-            <span className="date">10</span>
-            <div className="event-pill pill-yellow">Dept. All-Hands</div>
-          </div>
+          <div className="day-cell"><span className="date">9</span></div>
+          <div className="day-cell"><span className="date">10</span></div>
           <div className="day-cell"><span className="date">11</span></div>
+          <div className="day-cell"><span className="date">12</span></div>
 
           {/* Row 3 */}
-          <div className="day-cell"><span className="date">12</span></div>
-          <div className="day-cell">
-            <span className="date">13</span>
-            <div className="event-pill pill-green">Investor Briefing</div>
-          </div>
-          <div className="day-cell">
-            <span className="date">14</span>
-            <div className="event-pill pill-red">Product Roadmap</div>
-            <div className="event-pill pill-yellow">UX Review</div>
-          </div>
+          <div className="day-cell"><span className="date">13</span></div>
+          <div className="day-cell"><span className="date">14</span></div>
           <div className="day-cell"><span className="date">15</span></div>
-          <div className="day-cell">
-            <span className="date">16</span>
-            <div className="event-pill pill-green">Annual Gala Planning</div>
-          </div>
+          <div className="day-cell"><span className="date">16</span></div>
           <div className="day-cell"><span className="date">17</span></div>
           <div className="day-cell"><span className="date">18</span></div>
-
-          {/* Row 4 (Selected Date) */}
           <div className="day-cell"><span className="date">19</span></div>
-          <div className="day-cell">
-            <span className="date">20</span>
-            <div className="event-pill pill-yellow">Training Session</div>
-          </div>
+
+          {/* Row 4 */}
+          <div className="day-cell"><span className="date">20</span></div>
           <div className="day-cell"><span className="date">21</span></div>
-          <div className="day-cell selected-day">
-            <span className="date active">22</span>
-            <div className="event-pill pill-green">HR Town Hall</div>
-            <div className="event-pill pill-yellow">Budget Meeting</div>
-            <div className="event-more">+1 more</div>
-          </div>
+          <div className="day-cell"><span className="date">22</span></div>
           <div className="day-cell"><span className="date">23</span></div>
-          <div className="day-cell">
-            <span className="date">24</span>
-            <div className="event-pill pill-red">Staff Workshop</div>
-          </div>
+          <div className="day-cell"><span className="date">24</span></div>
           <div className="day-cell"><span className="date">25</span></div>
+          <div className="day-cell"><span className="date">26</span></div>
 
           {/* Row 5 */}
-          <div className="day-cell"><span className="date">26</span></div>
-          <div className="day-cell">
-            <span className="date">27</span>
-            <div className="event-pill pill-green">Graduation Ceremony</div>
-          </div>
+          <div className="day-cell"><span className="date">27</span></div>
           <div className="day-cell"><span className="date">28</span></div>
-          <div className="day-cell">
-            <span className="date">29</span>
-            <div className="event-pill pill-yellow">Year-End Review</div>
-          </div>
+          <div className="day-cell"><span className="date">29</span></div>
           <div className="day-cell"><span className="date">30</span></div>
           <div className="day-cell prev-month"><span className="date">1</span></div>
           <div className="day-cell prev-month"><span className="date">2</span></div>
+          <div className="day-cell prev-month"><span className="date">3</span></div>
         </div>
       </div>
 
@@ -131,51 +89,16 @@ const MisCalendar = () => {
         
         <div className="sidebar-header">
           <div>
-            <h3>Wednesday, Nov 22</h3>
+            <h3>Tuesday, Sep 1</h3>
             <p>Reservations for selected date</p>
           </div>
-          <span className="event-count">3 events</span>
+          <span className="event-count" style={{ background: '#F1F5F9', color: '#64748B' }}>0 events</span>
         </div>
 
-        <div className="event-cards">
-          <div className="event-card">
-            <div className="card-top">
-              <h4>HR Town Hall Meeting</h4>
-              <span className="status-badge bg-green">Approved</span>
-            </div>
-            <div className="card-details">
-              <p><i className="ph ph-clock"></i> 09:00 AM – 11:00 AM</p>
-              <p><i className="ph ph-map-pin"></i> Main Auditorium</p>
-              <p><i className="ph ph-user"></i> Alex Johnson</p>
-            </div>
-            <button className="view-btn">View Details</button>
-          </div>
-
-          <div className="event-card">
-            <div className="card-top">
-              <h4>Q4 Budget Meeting</h4>
-              <span className="status-badge bg-yellow">Pending</span>
-            </div>
-            <div className="card-details">
-              <p><i className="ph ph-clock"></i> 01:00 PM – 03:00 PM</p>
-              <p><i className="ph ph-map-pin"></i> Executive Boardroom</p>
-              <p><i className="ph ph-user"></i> Alex Johnson</p>
-            </div>
-            <button className="view-btn">View Details</button>
-          </div>
-
-          <div className="event-card">
-            <div className="card-top">
-              <h4>Product Launch Event</h4>
-              <span className="status-badge bg-red">Rejected</span>
-            </div>
-            <div className="card-details">
-              <p><i className="ph ph-clock"></i> 04:00 PM – 06:00 PM</p>
-              <p><i className="ph ph-map-pin"></i> Conference Room A</p>
-              <p><i className="ph ph-user"></i> Alex Johnson</p>
-            </div>
-            <button className="view-btn">View Details</button>
-          </div>
+        <div className="event-cards" style={{ justifyContent: 'center', alignItems: 'center' }}>
+          <p style={{ color: '#94A3B8', fontSize: '14px', textAlign: 'center', marginTop: '40px' }}>
+            No reservations scheduled for this date.
+          </p>
         </div>
 
         <button className="reserve-date-btn">
@@ -187,5 +110,4 @@ const MisCalendar = () => {
   );
 };
 
-// This exact line is required for React.lazy() to work
 export default MisCalendar;

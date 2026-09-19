@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import '../styles/mis/MisEquipmentManagement.scss';
+import "../../styles/mis/MisEquipmentManagement.scss";
 
 const EquipmentManagement = () => {
   // Initial local state for equipment inventory
