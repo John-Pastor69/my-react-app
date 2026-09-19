@@ -8,7 +8,7 @@ import DashboardRouter from './pages/routers/DashboardRouter';
 
 export default function App() {
 
-  const fakeUserRole = "building_admin";
+  const fakeUserRole = "mis_calendar"; // Change this to test different dashboards
 
   return (
     <div className="app-container">

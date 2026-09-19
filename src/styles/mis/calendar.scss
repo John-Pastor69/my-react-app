@@ -1,0 +1,286 @@
+// Variables
+$bg-main: #F4F7FE;
+$bg-panel: #FFFFFF;
+$border-color: #E2E8F0;
+$text-dark: #1E293B;
+$text-light: #64748B;
+
+$blue-main: #3B82F6;
+$blue-light: #EFF6FF;
+$yellow-main: #F59E0B;
+$yellow-light: #FEF3C7;
+$green-main: #10B981;
+$green-light: #D1FAE5;
+$red-main: #EF4444;
+$red-light: #FEE2E2;
+
+.calendar-page-container {
+  display: flex;
+  gap: 24px;
+  padding: 24px 40px;
+  height: calc(100vh - 80px); // Adjust based on your TopBar height
+  background: $bg-main;
+  font-family: 'Inter', sans-serif;
+  overflow: hidden;
+}
+
+// --- LEFT: MAIN CALENDAR ---
+.calendar-main {
+  flex: 1;
+  background: $bg-panel;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid $border-color;
+  display: flex;
+  flex-direction: column;
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 24px;
+
+    .month-nav {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+
+      h2 { font-size: 20px; font-weight: 700; color: $text-dark; margin: 0; }
+      
+      .icon-btn {
+        background: transparent;
+        border: 1px solid $border-color;
+        border-radius: 6px;
+        width: 32px;
+        height: 32px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        color: $text-dark;
+        &:hover { background: #f8fafc; }
+      }
+      
+      .today-btn {
+        background: white;
+        border: 1px solid $border-color;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-weight: 500;
+        cursor: pointer;
+        color: $text-dark;
+      }
+    }
+
+    .calendar-legend {
+      display: flex;
+      gap: 16px;
+      .legend-item {
+        font-size: 13px;
+        color: $text-light;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        .dot { width: 8px; height: 8px; border-radius: 50%; }
+        .dot-yellow { background: $yellow-main; }
+        .dot-green { background: $green-main; }
+        .dot-red { background: $red-main; }
+      }
+    }
+
+    .new-res-btn {
+      background: $blue-main;
+      color: white;
+      border: none;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+    }
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    flex: 1;
+    border-top: 1px solid $border-color;
+    border-left: 1px solid $border-color;
+    border-radius: 8px 8px 0 0;
+    overflow: hidden;
+
+    .weekday {
+      padding: 12px;
+      text-align: center;
+      font-size: 12px;
+      font-weight: 600;
+      color: #94A3B8;
+      border-right: 1px solid $border-color;
+      border-bottom: 1px solid $border-color;
+      background: #FAFAFA;
+    }
+
+    .day-cell {
+      min-height: 100px;
+      padding: 8px;
+      border-right: 1px solid $border-color;
+      border-bottom: 1px solid $border-color;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+
+      .date {
+        font-size: 14px;
+        font-weight: 500;
+        color: $text-dark;
+        margin-bottom: 4px;
+        width: 24px;
+        height: 24px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 50%;
+      }
+
+      &.prev-month .date { color: #CBD5E1; }
+
+      &.selected-day {
+        background: $blue-light;
+        .date.active {
+          background: $blue-main;
+          color: white;
+        }
+      }
+
+      .event-pill {
+        font-size: 11px;
+        padding: 4px 6px;
+        border-radius: 4px;
+        font-weight: 600;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        
+        &.pill-yellow { background: $yellow-light; color: #D97706; }
+        &.pill-green { background: $green-light; color: #059669; }
+        &.pill-red { background: $red-light; color: #DC2626; }
+      }
+
+      .event-more {
+        font-size: 11px;
+        color: $blue-main;
+        font-weight: 600;
+        padding-left: 4px;
+      }
+    }
+  }
+}
+
+// --- RIGHT: DAILY DETAILS ---
+.calendar-sidebar {
+  width: 320px;
+  background: $bg-panel;
+  border-radius: 12px;
+  padding: 24px;
+  border: 1px solid $border-color;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+
+  .sidebar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 24px;
+
+    h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    p { font-size: 12px; color: $text-light; margin: 0; }
+    
+    .event-count {
+      background: $blue-light;
+      color: $blue-main;
+      padding: 4px 8px;
+      border-radius: 12px;
+      font-size: 12px;
+      font-weight: 600;
+    }
+  }
+
+  .event-cards {
+    flex: 1;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+
+    .event-card {
+      border: 1px solid $border-color;
+      border-radius: 8px;
+      padding: 16px;
+      
+      .card-top {
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-start;
+        margin-bottom: 12px;
+        
+        h4 { font-size: 14px; font-weight: 600; margin: 0; }
+        .status-badge {
+          font-size: 11px;
+          padding: 2px 8px;
+          border-radius: 12px;
+          font-weight: 600;
+          &.bg-green { background: $green-light; color: #059669; }
+          &.bg-yellow { background: $yellow-light; color: #D97706; }
+          &.bg-red { background: $red-light; color: #DC2626; }
+        }
+      }
+
+      .card-details {
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        margin-bottom: 16px;
+        p {
+          font-size: 12px;
+          color: $text-light;
+          display: flex;
+          align-items: center;
+          gap: 8px;
+          margin: 0;
+          i { font-size: 14px; }
+        }
+      }
+
+      .view-btn {
+        width: 100%;
+        background: #F8FAFC;
+        border: 1px solid $border-color;
+        padding: 8px;
+        border-radius: 6px;
+        color: $blue-main;
+        font-weight: 600;
+        cursor: pointer;
+        &:hover { background: $blue-light; }
+      }
+    }
+  }
+
+  .reserve-date-btn {
+    margin-top: 16px;
+    width: 100%;
+    background: $blue-main;
+    color: white;
+    border: none;
+    padding: 12px;
+    border-radius: 6px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    cursor: pointer;
+  }
+}
