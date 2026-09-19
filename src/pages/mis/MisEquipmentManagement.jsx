@@ -3,15 +3,7 @@ import '../styles/mis/MisEquipmentManagement.scss';
 
 const EquipmentManagement = () => {
   // Initial local state for equipment inventory
-  const [equipmentData, setEquipmentData] = useState([
-    { id: 1, name: 'Projector (4K)', sku: 'SKU: AV-001', icon: '🖥️', category: 'AV Equipment', quantity: 12, availableCount: 8, totalCount: 12, status: 'Available', statusClass: 'status-available', lastUpdated: 'Nov 12, 2023' },
-    { id: 2, name: 'Laptop (Dell XPS)', sku: 'SKU: CP-014', icon: '💻', category: 'Computing', quantity: 30, availableCount: 0, totalCount: 30, status: 'In Use', statusClass: 'status-in-use', lastUpdated: 'Nov 10, 2023' },
-    { id: 3, name: 'PA Sound System', sku: 'SKU: AU-007', icon: '🔊', category: 'Audio', quantity: 6, availableCount: 0, totalCount: 6, status: 'Maintenance', statusClass: 'status-maintenance', lastUpdated: 'Nov 8, 2023' },
-    { id: 4, name: 'DSLR Camera Kit', sku: 'SKU: IM-003', icon: '📷', category: 'Imaging', quantity: 8, availableCount: 5, totalCount: 8, status: 'Available', statusClass: 'status-available', lastUpdated: 'Nov 11, 2023' },
-    { id: 5, name: 'Whiteboard (Mobile)', sku: 'SKU: FU-019', icon: '📋', category: 'Furniture', quantity: 15, availableCount: 3, totalCount: 15, status: 'In Use', statusClass: 'status-in-use', lastUpdated: 'Nov 13, 2023' },
-    { id: 6, name: 'Laser Printer (A3)', sku: 'SKU: OF-022', icon: '🖨️', category: 'Office', quantity: 4, availableCount: 0, totalCount: 4, status: 'Maintenance', statusClass: 'status-maintenance', lastUpdated: 'Nov 7, 2023' },
-    { id: 7, name: 'Video Conference Kit', sku: 'SKU: VC-009', icon: '📹', category: 'AV Equipment', quantity: 10, availableCount: 6, totalCount: 10, status: 'Available', statusClass: 'status-available', lastUpdated: 'Nov 14, 2023' }
-  ]);
+  const [equipmentData, setEquipmentData] = useState([]);
 
   // Modal State for Editing
   const [editingItem, setEditingItem] = useState(null);
@@ -121,6 +113,7 @@ const EquipmentManagement = () => {
   // Dynamic summary metrics calculation
   const totalAvailableUnits = equipmentData.reduce((acc, curr) => acc + curr.availableCount, 0);
   const totalInUseUnits = equipmentData.reduce((acc, curr) => acc + (curr.totalCount - curr.availableCount), 0);
+  const totalMaintenanceItems = equipmentData.filter((item) => item.status === 'Maintenance').length;
 
   return (
     <div className="equipment-management-content">
@@ -143,7 +136,7 @@ const EquipmentManagement = () => {
         <div className="metric-card">
           <div className="metric-info">
             <span className="label">Maintenance</span>
-            <span className="count">10</span>
+            <span className="count">{totalMaintenanceItems}</span>
           </div>
         </div>
       </div>
@@ -182,7 +175,18 @@ const EquipmentManagement = () => {
             </tr>
           </thead>
           <tbody>
-            {equipmentData.map((item) => (
+            {equipmentData.length === 0 ? (
+              <tr>
+                <td colSpan={8} className="empty-state-cell">
+                  <div className="empty-state">
+                    <span className="empty-state-icon">📭</span>
+                    <p className="empty-state-title">No equipment yet</p>
+                    <p className="empty-state-subtitle">Add your first item to start tracking inventory.</p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              equipmentData.map((item) => (
               <tr key={item.id}>
                 <td className="checkbox-col"><input type="checkbox" /></td>
                 <td>
@@ -215,13 +219,18 @@ const EquipmentManagement = () => {
                   </div>
                 </td>
               </tr>
-            ))}
+            ))
+            )}
           </tbody>
         </table>
 
         {/* Table Footer */}
         <div className="table-pagination">
-          <span className="pagination-text">Showing 1 to {equipmentData.length} of 160 equipment items</span>
+          <span className="pagination-text">
+            {equipmentData.length === 0
+              ? 'No equipment items to show'
+              : `Showing 1 to ${equipmentData.length} of ${equipmentData.length} equipment items`}
+          </span>
           <div className="pagination-buttons">
             <button className="page-btn" disabled>Prev</button>
             <button className="page-btn active">1</button>

@@ -257,6 +257,39 @@ $primary-color: #2563eb;
           }
         }
       }
+
+      .empty-state-cell {
+        padding: 0;
+        border-bottom: none;
+      }
+
+      .empty-state {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        padding: 64px 24px;
+        text-align: center;
+
+        .empty-state-icon {
+          font-size: 2rem;
+          margin-bottom: 12px;
+          opacity: 0.6;
+        }
+
+        .empty-state-title {
+          margin: 0 0 4px 0;
+          font-size: 1rem;
+          font-weight: 600;
+          color: $text-main;
+        }
+
+        .empty-state-subtitle {
+          margin: 0;
+          font-size: 0.875rem;
+          color: $text-muted;
+        }
+      }
     }
 
     /* Pagination */
