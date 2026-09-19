@@ -88,17 +88,30 @@ $red-light: #FEE2E2;
       }
     }
 
-    .new-res-btn {
-      background: $blue-main;
-      color: white;
-      border: none;
-      padding: 10px 16px;
-      border-radius: 6px;
-      font-weight: 600;
+    .filter-facility-btn {
+      background: #FFFFFF;
+      color: #475569;
+      border: 1px solid $border-color;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 14px;
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 12px;
       cursor: pointer;
+      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+      transition: all 0.2s ease;
+
+      i {
+        font-size: 16px;
+        color: #94A3B8; 
+      }
+      
+      &:hover { 
+        background: #F8FAFC; 
+        border-color: #CBD5E1;
+      }
     }
   }
 
@@ -193,9 +206,9 @@ $red-light: #FEE2E2;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 24px;
+    margin-bottom: 16px;
 
-    h3 { font-size: 18px; font-weight: 700; margin-bottom: 4px; }
+    h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
     p { font-size: 12px; color: $text-light; margin: 0; }
     
     .event-count {
@@ -208,12 +221,37 @@ $red-light: #FEE2E2;
     }
   }
 
+  .sidebar-stats {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 16px;
+    margin-bottom: 16px;
+    border-bottom: 1px solid $border-color;
+
+    .stat-box {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      flex: 1;
+
+      .stat-num { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+      .stat-label { font-size: 11px; color: $text-light; }
+    }
+
+    .stat-divider {
+      width: 1px;
+      height: 24px;
+      background: $border-color;
+    }
+  }
+
   .event-cards {
     flex: 1;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
-    gap: 16px;
+    gap: 12px;
 
     .event-card {
       border: 1px solid $border-color;
@@ -241,8 +279,8 @@ $red-light: #FEE2E2;
       .card-details {
         display: flex;
         flex-direction: column;
-        gap: 8px;
-        margin-bottom: 16px;
+        gap: 6px;
+        margin-bottom: 12px;
         p {
           font-size: 12px;
           color: $text-light;
@@ -254,33 +292,75 @@ $red-light: #FEE2E2;
         }
       }
 
-      .view-btn {
-        width: 100%;
-        background: #F8FAFC;
-        border: 1px solid $border-color;
-        padding: 8px;
-        border-radius: 6px;
-        color: $blue-main;
-        font-weight: 600;
-        cursor: pointer;
-        &:hover { background: $blue-light; }
+      .card-actions {
+        display: flex;
+        gap: 8px;
+
+        button {
+          flex: 1;
+          padding: 6px;
+          border-radius: 4px;
+          font-size: 12px;
+          font-weight: 500;
+          cursor: pointer;
+          background: white;
+          
+          &.btn-view {
+            border: 1px solid #BFDBFE;
+            color: $blue-main;
+            background: #EFF6FF;
+            &:hover { background: #DBEAFE; }
+          }
+          &.btn-approve {
+            border: 1px solid #A7F3D0;
+            color: #059669;
+            background: #ECFDF5;
+            &:hover { background: #D1FAE5; }
+          }
+          &.btn-reject {
+            border: 1px solid #FECACA;
+            color: #DC2626;
+            background: #FEF2F2;
+            &:hover { background: #FEE2E2; }
+          }
+        }
       }
     }
   }
 
-  .reserve-date-btn {
+  .sidebar-bottom-actions {
     margin-top: 16px;
-    width: 100%;
-    background: $blue-main;
-    color: white;
-    border: none;
-    padding: 12px;
-    border-radius: 6px;
-    font-weight: 600;
     display: flex;
-    align-items: center;
-    justify-content: center;
+    flex-direction: column;
     gap: 8px;
-    cursor: pointer;
+    padding-top: 16px;
+    border-top: 1px solid $border-color;
+
+    button {
+      width: 100%;
+      padding: 10px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 13px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+
+      &.btn-review {
+        background: $blue-main;
+        color: white;
+        border: none;
+        &:hover { background: #2563EB; }
+      }
+      
+      &.btn-export {
+        background: white;
+        color: $text-light;
+        border: 1px solid $border-color;
+        &:hover { background: #F8FAFC; }
+      }
+    }
   }
 }

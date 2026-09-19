@@ -1,7 +1,10 @@
 import React from 'react';
-import '../../styles/mis/calendar.scss';
+import { useNavigate } from 'react-router-dom';
+import "../../styles/mis/MisCalendar.scss";
 
 const MisCalendar = () => {
+  const navigate = useNavigate();
+
   return (
     <div className="calendar-page-container">
       
@@ -22,8 +25,10 @@ const MisCalendar = () => {
             <span className="legend-item"><span className="dot dot-red"></span> Rejected</span>
           </div>
 
-          <button className="new-res-btn">
-            <i className="ph ph-plus"></i> New Reservation
+          <button className="filter-facility-btn">
+            <i className="ph-fill ph-funnel"></i>
+            <span>All Facilities</span>
+            <i className="ph ph-caret-down"></i>
           </button>
         </div>
 
@@ -90,9 +95,27 @@ const MisCalendar = () => {
         <div className="sidebar-header">
           <div>
             <h3>Tuesday, Sep 1</h3>
-            <p>Reservations for selected date</p>
+            <p>All reservations for selected date</p>
           </div>
           <span className="event-count" style={{ background: '#F1F5F9', color: '#64748B' }}>0 events</span>
+        </div>
+
+        {/* Stats Row */}
+        <div className="sidebar-stats">
+          <div className="stat-box">
+            <span className="stat-num text-green">0</span>
+            <span className="stat-label">Approved</span>
+          </div>
+          <div className="stat-divider"></div>
+          <div className="stat-box">
+            <span className="stat-num text-yellow">0</span>
+            <span className="stat-label">Pending</span>
+          </div>
+          <div className="stat-divider"></div>
+          <div className="stat-box">
+            <span className="stat-num text-red">0</span>
+            <span className="stat-label">Rejected</span>
+          </div>
         </div>
 
         <div className="event-cards" style={{ justifyContent: 'center', alignItems: 'center' }}>
@@ -101,11 +124,17 @@ const MisCalendar = () => {
           </p>
         </div>
 
-        <button className="reserve-date-btn">
-          <i className="ph ph-plus"></i> Reserve This Date
-        </button>
+        {/* Bottom Action Buttons */}
+        <div className="sidebar-bottom-actions">
+          <button className="btn-review">
+            <i className="ph ph-check-double"></i> Review All Requests
+          </button>
+          <button className="btn-export">
+            <i className="ph ph-file-arrow-down"></i> Export Schedule
+          </button>
+        </div>
       </div>
-
+      
     </div>
   );
 };
