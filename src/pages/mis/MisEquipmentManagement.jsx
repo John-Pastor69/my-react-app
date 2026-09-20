@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import "../../styles/mis/MisEquipmentManagement.scss";
 
-const EquipmentManagement = () => {
+const MisEquipmentManagement = () => {
   // Initial local state for equipment inventory
   const [equipmentData, setEquipmentData] = useState([]);
 
@@ -364,4 +364,4 @@ const EquipmentManagement = () => {
 };
 
 // This exact line is required for React.lazy() to work
-export default EquipmentManagement;
+export default MisEquipmentManagement;

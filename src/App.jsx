@@ -8,15 +8,17 @@ import DashboardRouter from './pages/routers/DashboardRouter';
 
 export default function App() {
 
-  const fakeUserRole = "mis_calendar"; // Change this to test different dashboards
+  const fakeUserRole = "mis_equipment"; 
+
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (
     <div className="app-container">
-      <SideBar />
+      <SideBar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} />
       <div className="main-content">
-        <TopBar />
+        <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
         <div className="page-content">
-          <Routes>
+          <Routes> 
             {/* The single route handles all 7 dashboards automatically */}
             <Route 
               path="/dashboard" 

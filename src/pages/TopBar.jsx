@@ -1,15 +1,17 @@
-import { Search, Bell } from 'lucide-react';
+import { Search, Bell, Menu } from 'lucide-react';
 import '../styles/TopBar.scss';
 
-const TopBar = () => {
+const TopBar = ({toggleSidebar}) => {
   return (
     <header className="topbar">
-      {/* Left side: Titles */}
       <div className="header-titles">
+        <button className="mobile-menu-btn" onClick={toggleSidebar}>
+          <Menu size={24} />
+        </button>
+
         <h1>Dashboard</h1>
       </div>
 
-      {/* Right side: Actions and Profile */}
       <div className="header-actions">
         <div className="search-container">
           <Search className="search-icon" size={18} />

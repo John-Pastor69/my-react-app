@@ -275,4 +275,4 @@ const MisUserManagement = () => {
 };
 
 // This exact line is required for React.lazy() to work
-export default UserManagement;
+export default MisUserManagement;

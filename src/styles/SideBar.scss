@@ -1,3 +1,7 @@
+.mobile-sidebar-header {
+  display: none; 
+}
+
 .sidebar {
   width: 200px;
   height: 100vh;
@@ -9,32 +13,50 @@
   transition: width 0.3s ease;
 
   @media (max-width: 1024px) {
-    width: 80px;
-
-    /* Hide all text and badges */
-    .brand-name,
-    .nav-label,
-    .badge {
-      display: none; 
+    display: flex;
+    flex-direction: column;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 100;
+    width: 100vw; 
+    height: 100vh; 
+    background-color: #ffffff; 
+    
+    transform: translateX(-100%); 
+    
+    &.open {
+      transform: translateX(0);
     }
 
-    /* Re-center the remaining icons */
-    .sidebar-header {
-      justify-content: center;
-      padding: 24px 0;
+    .mobile-sidebar-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 16px 24px;
+      border-bottom: 1px solid #eaeaea;
+
+      .mobile-menu-text {
+        font-size: 18px;
+        font-weight: 600;
+        color: #111827;
+      }
+
+      .close-btn {
+        background: none;
+        border: none;
+        cursor: pointer;
+        color: #111827;
+        padding: 4px;
+        display: flex;
+        align-items: center;
+      }
     }
 
-    .nav-link, 
-    .sign-out-btn {
-      justify-content: center;
-      padding: 12px;
-      gap: 0;
+    .nav-link {
+      padding: 16px 24px;
+      font-size: 16px;
     }
-  }
-
-  /* PHONE (768px and below): Hide completely */
-  @media (max-width: 768px) {
-    display: none; 
   }
 
   .sidebar-header {
@@ -146,5 +168,20 @@
         color: #374151;
       }
     }
+  }
+}
+
+.sidebar-overlay {
+  display: none;
+
+  @media (max-width: 1024px) {
+    display: block;
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.4); 
+    z-index: 40; 
   }
 }

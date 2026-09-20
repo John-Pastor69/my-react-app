@@ -6,14 +6,21 @@ import {
   Briefcase, 
   Users, 
   User, 
-  LogOut 
+  LogOut,
+  X
 } from 'lucide-react';
 import '../styles/Sidebar.scss'; 
 
-const Sidebar = () => {
+const Sidebar = ({isOpen, setIsOpen}) => {
   return (
-    <aside className="sidebar">
-      {/* Brand Header */}
+    <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
+      <div className="mobile-sidebar-header">
+        <span className="mobile-menu-text">Menu</span>
+        <button className="close-btn" onClick={() => setIsOpen(false)}>
+          <X size={28} />
+        </button>
+      </div>
+      {/* Brand Header */}        
       <div className="sidebar-header">
         <div className="brand-icon">F</div>
         <h2 className="brand-name">FacilityRes</h2>
@@ -24,6 +31,7 @@ const Sidebar = () => {
         <NavLink 
           to="/dashboard" 
           className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
+          onClick={() => setIsOpen(false)} // Adds automatic closing
         >
           <LayoutDashboard className="nav-icon" size={20} />
           <span className="nav-label">Dashboard</span>
