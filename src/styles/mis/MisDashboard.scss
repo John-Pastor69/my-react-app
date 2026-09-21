@@ -1,0 +1,411 @@
+.mis-dashboard {
+    min-height: 100vh;
+    background: #f1f5f9;
+    padding: 24px;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #1e293b;
+
+    // Header
+    .dashboard-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 22px;
+
+        h1 {
+            font-size: 16px;
+            font-weight: 600;
+            margin: 0;
+            color: #111827;
+        }
+    }
+
+    // Date
+    .date-select {
+        height: 34px;
+        display: flex;
+        align-items: center;
+        gap: 7px;
+
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 6px;
+
+        padding: 0 9px;
+
+        font-size: 11px;
+        color: #64748b;
+
+        select {
+            border: none;
+            outline: none;
+            background: transparent;
+
+            font-size: 11px;
+            color: #64748b;
+
+            cursor: pointer;
+        }
+
+        .calendar-icon {
+            color: #3b82f6;
+            font-size: 12px;
+        }
+    }
+
+
+    // Main Cards
+    .main-stat-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 14px;
+        margin-bottom: 20px;
+    }
+
+    .main-card {
+        position: relative;
+
+        min-height: 108px;
+
+        background: white;
+        border: 1px solid #e2e8f0;
+        border-radius: 9px;
+
+        padding: 14px;
+
+        display: flex;
+        gap: 13px;
+
+        overflow: hidden;
+
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+        &::after {
+            content: "";
+
+            position: absolute;
+
+            width: 100px;
+            height: 100px;
+
+            border-radius: 50%;
+
+            right: -35px;
+            top: -45px;
+
+            z-index: 0;
+        }
+
+        &.pending-card::after {
+            background: #fff9e6;
+        }
+
+        &.equipment-card::after {
+            background: #eef6ff;
+        }
+    }
+
+
+    // Main Card Icons
+    .card-icon {
+        width: 36px;
+        height: 36px;
+
+        border-radius: 8px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        flex-shrink: 0;
+
+        z-index: 1;
+
+        &.yellow {
+            background: #fff2c7;
+            color: #f59e0b;
+        }
+
+        &.blue {
+            background: #dbeafe;
+            color: #3b82f6;
+        }
+    }
+
+
+    // Card Content
+    .card-content {
+        position: relative;
+        z-index: 1;
+        flex: 1;
+    }
+
+    .card-label {
+        margin: 1px 0 2px;
+
+        font-size: 9px;
+        color: #64748b;
+    }
+
+    .card-number {
+        font-size: 25px;
+        line-height: 28px;
+
+        font-weight: 700;
+
+        color: #1e293b;
+    }
+
+    .percent-symbol {
+        font-size: 12px;
+        font-weight: 500;
+        margin-left: 2px;
+    }
+
+
+    // Request Details
+    .request-details {
+        display: flex;
+        gap: 12px;
+
+        margin-top: 4px;
+
+        font-size: 7px;
+        color: #64748b;
+
+        flex-wrap: wrap;
+
+        span {
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        b {
+            width: 5px;
+            height: 5px;
+
+            border-radius: 50%;
+
+            display: inline-block;
+        }
+
+        .orange-dot {
+            background: #f59e0b;
+        }
+
+        .gray-dot {
+            background: #94a3b8;
+        }
+
+        .green-dot {
+            background: #10b981;
+        }
+
+        .blue-dot {
+            background: #3b82f6;
+        }
+
+        .red-dot {
+            background: #ef4444;
+        }
+    }
+
+
+    // Progress
+    .progress-area {
+        display: flex;
+        align-items: center;
+
+        gap: 7px;
+
+        margin-top: 8px;
+    }
+
+    .progress-bar {
+        height: 4px;
+        width: 75%;
+
+        background: #f1f5f9;
+
+        border-radius: 10px;
+
+        overflow: hidden;
+
+        display: flex;
+    }
+
+    .progress {
+        height: 100%;
+    }
+
+    .orange-progress {
+        background: #f59e0b;
+    }
+
+    .green-progress {
+        background: #10b981;
+    }
+
+    .red-progress {
+        background: #ef4444;
+    }
+
+    .percentage {
+        white-space: nowrap;
+
+        font-size: 7px;
+        font-weight: 600;
+    }
+
+    .orange-text {
+        color: #f59e0b;
+    }
+
+    .blue-text {
+        color: #3b82f6;
+    }
+
+
+    // Badges
+    .today-badge,
+    .week-badge {
+        position: absolute;
+
+        top: 12px;
+        right: 12px;
+
+        z-index: 2;
+
+        font-size: 7px;
+
+        padding: 5px 8px;
+
+        border-radius: 12px;
+
+        font-weight: 500;
+    }
+
+    .today-badge {
+        background: #fff3c4;
+        color: #f59e0b;
+    }
+
+    .week-badge {
+        background: #e5f0ff;
+        color: #3b82f6;
+    }
+
+
+    // Small Cards
+    .small-stat-grid {
+        display: grid;
+
+        grid-template-columns: repeat(4, 1fr);
+
+        gap: 10px;
+    }
+
+    .small-card {
+        min-height: 57px;
+
+        background: white;
+
+        border: 1px solid #e2e8f0;
+
+        border-radius: 8px;
+
+        padding: 12px;
+
+        display: flex;
+        align-items: center;
+
+        gap: 10px;
+
+        box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+
+        p {
+            margin: 0 0 2px;
+
+            font-size: 8px;
+
+            color: #64748b;
+        }
+
+        h2 {
+            margin: 0;
+
+            font-size: 14px;
+
+            color: #1e293b;
+        }
+    }
+
+
+    // Small Card Icons
+    .small-icon {
+        width: 28px;
+        height: 28px;
+
+        border-radius: 7px;
+
+        display: flex;
+        align-items: center;
+        justify-content: center;
+
+        flex-shrink: 0;
+
+        &.blue-light {
+            background: #e0edff;
+            color: #3b82f6;
+        }
+
+        &.green-light {
+            background: #d8f8eb;
+            color: #10b981;
+        }
+
+        &.red-light {
+            background: #ffe2e2;
+            color: #ef4444;
+        }
+
+        &.purple-light {
+            background: #eee2ff;
+            color: #9333ea;
+        }
+    }
+
+
+    // Responsive
+    @media (max-width: 800px) {
+
+        .main-stat-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .small-stat-grid {
+            grid-template-columns: 1fr 1fr;
+        }
+    }
+
+
+    @media (max-width: 500px) {
+
+        padding: 15px;
+
+        .dashboard-header {
+            align-items: flex-start;
+            gap: 10px;
+        }
+
+        .small-stat-grid {
+            grid-template-columns: 1fr;
+        }
+
+        .request-details {
+            flex-direction: column;
+            gap: 4px;
+        }
+    }
+}

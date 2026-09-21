@@ -29,7 +29,6 @@ const DashboardRouter = ({ currentUserRole }) => {
     'mis_equipment': <MisEquipmentManagement />,
     'mis_user': <MisUserManagement/>,
     'mis_approval': <MisApproval/>
-21
   };
 
   const CurrentDashboard = dashboardComponents[currentUserRole] || (
