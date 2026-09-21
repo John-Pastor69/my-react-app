@@ -23,6 +23,34 @@ const MisEquipmentManagement = () => {
     setIsAddingNew(true);
   };
 
+  // Row selection for bulk delete
+  const [selectedIds, setSelectedIds] = useState([]);
+
+  const toggleSelectAll = (e) => {
+    setSelectedIds(e.target.checked ? equipmentData.map((item) => item.id) : []);
+  };
+
+  const toggleSelectOne = (id) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
+    );
+  };
+
+  // Confirmation modal state (instead of window.confirm, which some
+  // embedded/dev environments silently block)
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  const handleDeleteSelected = () => {
+    if (selectedIds.length === 0) return;
+    setIsConfirmingDelete(true);
+  };
+
+  const confirmDelete = () => {
+    setEquipmentData((prev) => prev.filter((item) => !selectedIds.includes(item.id)));
+    setSelectedIds([]);
+    setIsConfirmingDelete(false);
+  };
+
   // Helper to open edit modal
   const handleEditClick = (item) => {
     setEditingItem({ ...item });
@@ -155,16 +183,29 @@ const MisEquipmentManagement = () => {
               <input type="text" placeholder="Search equipment..." />
             </div>
             <button className="btn-secondary">⚙ Filter</button>
-            <button className="btn-secondary">📥 Export</button>
+            <button
+              className="btn-danger"
+              onClick={handleDeleteSelected}
+              disabled={selectedIds.length === 0}
+            >
+              🗑 Delete{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+            </button>
             <button className="btn-primary" onClick={handleAddClick}>+ Add Equipment</button>
           </div>
         </div>
 
         {/* Equipment Table */}
+        <div className="table-scroll-wrapper">
         <table className="equipment-table">
           <thead>
             <tr>
-              <th className="checkbox-col"><input type="checkbox" /></th>
+              <th className="checkbox-col">
+                <input
+                  type="checkbox"
+                  checked={equipmentData.length > 0 && selectedIds.length === equipmentData.length}
+                  onChange={toggleSelectAll}
+                />
+              </th>
               <th>EQUIPMENT NAME</th>
               <th>CATEGORY</th>
               <th>QUANTITY</th>
@@ -188,7 +229,13 @@ const MisEquipmentManagement = () => {
             ) : (
               equipmentData.map((item) => (
               <tr key={item.id}>
-                <td className="checkbox-col"><input type="checkbox" /></td>
+                <td className="checkbox-col">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(item.id)}
+                    onChange={() => toggleSelectOne(item.id)}
+                  />
+                </td>
                 <td>
                   <div className="item-name-cell">
                     <div>
@@ -223,6 +270,7 @@ const MisEquipmentManagement = () => {
             )}
           </tbody>
         </table>
+        </div>
 
         {/* Table Footer */}
         <div className="table-pagination">
@@ -356,6 +404,20 @@ const MisEquipmentManagement = () => {
                 <button type="submit" className="btn-save">Add Item</button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Delete Confirmation Modal */}
+      {isConfirmingDelete && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Delete {selectedIds.length} item{selectedIds.length > 1 ? 's' : ''}?</h3>
+            <p className="confirm-text">This can't be undone.</p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setIsConfirmingDelete(false)}>Cancel</button>
+              <button type="button" className="btn-danger-solid" onClick={confirmDelete}>Delete</button>
+            </div>
           </div>
         </div>
       )}

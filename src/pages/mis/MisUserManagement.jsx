@@ -4,6 +4,7 @@ import "../../styles/mis/MisUserManagement.scss";
 const MisUserManagement = () => {
   // Initial local state for the user directory — starts empty
   const [usersData, setUsersData] = useState([]);
+  const [selectedUserIds, setSelectedUserIds] = useState([]);
 
   // Modal state for adding a new user
   const [isAddingNew, setIsAddingNew] = useState(false);
@@ -59,7 +60,30 @@ const MisUserManagement = () => {
     );
   };
 
-  // Dynamic summary metrics — all derived from usersData, so they read 0 when empty
+  // Handle single item checkbox selection
+  const handleSelectUser = (id) => {
+    setSelectedUserIds((prev) =>
+      prev.includes(id) ? prev.filter((userId) => userId !== id) : [...prev, id]
+    );
+  };
+
+  // Handle "Select All" checkbox
+  const handleSelectAll = (e) => {
+    if (e.target.checked) {
+      setSelectedUserIds(usersData.map((u) => u.id));
+    } else {
+      setSelectedUserIds([]);
+    }
+  };
+
+  // Delete selected users
+  const handleDeleteSelected = () => {
+    if (selectedUserIds.length === 0) return;
+    setUsersData((prevData) => prevData.filter((user) => !selectedUserIds.includes(user.id)));
+    setSelectedUserIds([]);
+  };
+
+  // Dynamic summary metrics — all derived from usersData
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => u.status === 'Active').length;
   const inactiveUsers = usersData.filter((u) => u.status === 'Inactive').length;
@@ -121,69 +145,89 @@ const MisUserManagement = () => {
               <input type="text" placeholder="Search users..." />
             </div>
             <button className="btn-secondary">⚑ Filter</button>
-            <button className="btn-secondary">⭳ Export</button>
+            <button 
+              className="btn-secondary btn-danger" 
+              onClick={handleDeleteSelected}
+              disabled={selectedUserIds.length === 0}
+            >
+              🗑 Delete
+            </button>
           </div>
         </div>
 
-        {/* Users Table */}
-        <table className="user-table">
-          <thead>
-            <tr>
-              <th className="checkbox-col"><input type="checkbox" /></th>
-              <th>USER</th>
-              <th>ROLE</th>
-              <th>DEPARTMENT</th>
-              <th>STATUS</th>
-              <th>LAST ACTIVE</th>
-              <th>ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {usersData.length === 0 ? (
+        {/* Users Table Wrapper with Horizontal Scroll */}
+        <div className="table-responsive-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <table className="user-table" style={{ minWidth: '800px', width: '100%' }}>
+            <thead>
               <tr>
-                <td colSpan={7} className="empty-state-cell">
-                  <div className="empty-state">
-                    <span className="empty-state-icon">👥</span>
-                    <p className="empty-state-title">No users yet</p>
-                    <p className="empty-state-subtitle">Add your first user to start managing accounts.</p>
-                  </div>
-                </td>
+                <th className="checkbox-col">
+                  <input 
+                    type="checkbox" 
+                    onChange={handleSelectAll}
+                    checked={usersData.length > 0 && selectedUserIds.length === usersData.length}
+                  />
+                </th>
+                <th>USER</th>
+                <th>ROLE</th>
+                <th>DEPARTMENT</th>
+                <th>STATUS</th>
+                <th>LAST ACTIVE</th>
+                <th>ACTIONS</th>
               </tr>
-            ) : (
-              usersData.map((user) => (
-                <tr key={user.id}>
-                  <td className="checkbox-col"><input type="checkbox" /></td>
-                  <td>
-                    <div className="user-name-cell">
-                      <div className="avatar-placeholder">{user.name.charAt(0)}</div>
-                      <div>
-                        <div className="user-title">{user.name}</div>
-                        <div className="user-email">{user.email}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td><span className={`role-badge ${user.roleClass}`}>{user.role}</span></td>
-                  <td>{user.department}</td>
-                  <td>
-                    <span className={`status-dot ${user.status === 'Active' ? 'status-active' : 'status-inactive'}`}>
-                      {user.status}
-                    </span>
-                  </td>
-                  <td className="text-muted">{user.lastActive}</td>
-                  <td>
-                    <div className="action-buttons">
-                      <button className="action-btn">✏ Edit</button>
-                      <button className="action-btn assign-role-btn">👤 Assign Role</button>
-                      <button className="action-btn" onClick={() => handleToggleStatus(user.id)}>
-                        {user.status === 'Active' ? '⊘ Deactivate' : '● Activate'}
-                      </button>
+            </thead>
+            <tbody>
+              {usersData.length === 0 ? (
+                <tr>
+                  <td colSpan={7} className="empty-state-cell">
+                    <div className="empty-state">
+                      <span className="empty-state-icon">👥</span>
+                      <p className="empty-state-title">No users yet</p>
+                      <p className="empty-state-subtitle">Add your first user to start managing accounts.</p>
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                usersData.map((user) => (
+                  <tr key={user.id}>
+                    <td className="checkbox-col">
+                      <input 
+                        type="checkbox" 
+                        checked={selectedUserIds.includes(user.id)}
+                        onChange={() => handleSelectUser(user.id)}
+                      />
+                    </td>
+                    <td>
+                      <div className="user-name-cell">
+                        <div className="avatar-placeholder">{user.name.charAt(0)}</div>
+                        <div>
+                          <div className="user-title">{user.name}</div>
+                          <div className="user-email">{user.email}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td><span className={`role-badge ${user.roleClass}`}>{user.role}</span></td>
+                    <td>{user.department}</td>
+                    <td>
+                      <span className={`status-dot ${user.status === 'Active' ? 'status-active' : 'status-inactive'}`}>
+                        {user.status}
+                      </span>
+                    </td>
+                    <td className="text-muted">{user.lastActive}</td>
+                    <td>
+                      <div className="action-buttons">
+                        <button className="action-btn">✏ Edit</button>
+                        <button className="action-btn assign-role-btn">👤 Assign Role</button>
+                        <button className="action-btn" onClick={() => handleToggleStatus(user.id)}>
+                          {user.status === 'Active' ? '⊘ Deactivate' : '● Activate'}
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
 
         {/* Table Footer */}
         <div className="table-pagination">
@@ -274,5 +318,4 @@ const MisUserManagement = () => {
   );
 };
 
-// This exact line is required for React.lazy() to work
 export default MisUserManagement;
