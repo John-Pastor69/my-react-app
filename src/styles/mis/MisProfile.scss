@@ -1,0 +1,381 @@
+// Variables
+$bg-main: #F4F7FE;
+$bg-panel: #FFFFFF;
+$text-dark: #1E293B;
+$text-light: #64748B;
+$border-color: #E2E8F0;
+$blue-main: #3B82F6;
+$red-main: #EF4444;
+
+/* 1. BASE STYLES: Mobile View (Applies to screens under 768px) */
+.mis-profile-container {
+  padding: 16px;
+  background: $bg-main;
+  font-family: 'Inter', sans-serif;
+  
+  /* Constrain height so the scrollbar appears */
+  height: 100%;
+  max-height: calc(100vh - 70px); 
+  overflow-y: auto;
+}
+
+// --- HERO BANNER & HEADER (Mobile) ---
+.profile-hero {
+  margin-bottom: 32px;
+
+  .banner-bg {
+    height: 120px;
+    background: linear-gradient(135deg, #475569 0%, #1E293B 100%);
+    border-radius: 12px;
+  }
+
+  .profile-header-content {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: 0 16px;
+    margin-top: -60px; 
+  }
+
+  .profile-identity {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 24px;
+
+    .avatar-container {
+      position: relative;
+      img {
+        width: 100px;
+        height: 100px;
+        border-radius: 50%;
+        border: 4px solid $bg-main;
+        background: $bg-panel;
+        object-fit: cover;
+      }
+      .status-indicator {
+        position: absolute;
+        bottom: 8px;
+        right: 8px;
+        width: 16px;
+        height: 16px;
+        background: #94A3B8;
+        border: 3px solid $bg-main;
+        border-radius: 50%;
+      }
+    }
+
+    .user-titles {
+      padding-bottom: 8px;
+      .name-row {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 12px;
+        margin-bottom: 4px;
+        
+        h2 { font-size: 24px; font-weight: 700; color: $text-dark; margin: 0; }
+        .role-badge {
+          background: #E2E8F0;
+          color: $text-dark;
+          padding: 4px 10px;
+          border-radius: 12px;
+          font-size: 12px;
+          font-weight: 600;
+        }
+      }
+      p { color: $text-light; font-size: 14px; margin: 0; }
+    }
+  }
+
+  .profile-actions {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 12px;
+
+    button {
+      width: 100%;
+      justify-content: center;
+      padding: 10px 16px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 14px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+
+      &.btn-edit {
+        background: $bg-panel;
+        color: $text-dark;
+        border: 1px solid $border-color;
+        &:hover { background: #F8FAFC; }
+      }
+      
+      &.btn-save {
+        background: rgba($border-color, 0.5);
+        color: #94A3B8;
+        border: none;
+        cursor: not-allowed;
+      }
+    }
+  }
+}
+
+// --- MAIN GRID LAYOUT (Mobile Stacked) ---
+.profile-content-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
+}
+
+// --- CARD STYLING ---
+.card-style {
+  background: #FFFFFF;
+  border-radius: 12px;
+  padding: 24px;
+  margin-bottom: 24px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+  border: 1px solid #E2E8F0;
+}
+
+.section-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 20px;
+
+  .icon-wrap {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px;
+    
+    &.bg-blue-soft { background: #E0E7FF; color: #4F46E5; }
+    &.bg-indigo-soft { background: #EEF2FF; color: #4338CA; }
+    &.bg-green-soft { background: #D1FAE5; color: #059669; }
+    &.bg-yellow-soft { background: #FEF3C7; color: #D97706; }
+  }
+  h3 { font-size: 16px; font-weight: 600; color: $text-dark; margin: 0; }
+}
+
+// --- LEFT COLUMN (Forms) ---
+.form-grid {
+  display: grid;
+  grid-template-columns: 1fr; // Stacked inputs for mobile
+  gap: 20px;
+  
+  .input-group {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+
+    &.full-width { grid-column: 1 / -1; }
+
+    label {
+      font-size: 11px;
+      font-weight: 700;
+      color: $text-light;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    input {
+      background: $bg-panel;
+      border: 1px solid transparent; 
+      padding: 12px 16px;
+      border-radius: 6px;
+      color: $text-dark;
+      font-size: 14px;
+      outline: none;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+
+      &:focus { border-color: $blue-main; }
+    }
+
+    .input-with-icon {
+      position: relative;
+      display: flex;
+      align-items: center;
+      
+      i { position: absolute; color: $text-light; font-size: 16px; }
+      
+      &:not(.right-icon) {
+        i { left: 16px; }
+        input { width: 100%; padding-left: 44px; }
+      }
+
+      &.right-icon {
+        i { right: 16px; cursor: pointer; }
+        input { width: 100%; padding-right: 44px; }
+      }
+    }
+  }
+
+  .supervisor-input {
+    display: flex;
+    align-items: center;
+    background: $bg-panel;
+    padding: 8px 16px;
+    border-radius: 6px;
+    border: 1px solid transparent;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+    
+    img { border-radius: 50%; margin-right: 12px; width: 24px; height: 24px; }
+    input { padding: 0; box-shadow: none; background: transparent; width: 100%; border: none; }
+  }
+}
+
+// --- RIGHT COLUMN (Sidebar) ---
+.stats-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+
+  li {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    font-size: 14px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid #F1F5F9; 
+    
+    &:last-child {
+      border-bottom: none;
+      padding-bottom: 0;
+    }
+    
+    span {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      color: $text-light;
+      i { font-size: 18px; }
+    }
+    strong { color: $text-dark; font-weight: 600; }
+  }
+}
+
+.password-strength-container {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 4px;
+  
+  .strength-labels {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: $text-light;
+  }
+  
+  .strength-bars {
+    display: flex;
+    gap: 4px;
+    
+    .bar {
+      flex: 1;
+      height: 4px;
+      border-radius: 2px;
+      background: #E2E8F0; 
+      
+      &.bg-green { background: #10B981; }
+      &.bg-yellow { background: #F59E0B; }
+    }
+  }
+}
+
+.btn-update-primary {
+  background: #3B82F6;
+  color: white;
+  border: none;
+  padding: 10px;
+  border-radius: 6px;
+  width: 100%;
+  font-weight: 600;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 8px;
+  &:hover { background: #2563EB; }
+}
+
+.danger-zone {
+  p { font-size: 12px; color: $text-light; line-height: 1.5; margin-bottom: 20px; }
+  
+  .btn-deactivate {
+    width: 100%;
+    background: #FEF2F2;
+    color: #EF4444;
+    border: 1px solid #FECACA;
+    padding: 10px;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    &:hover { background: #FEE2E2; }
+  }
+}
+
+/* 2. TABLET STYLES (768px and up) */
+@media (min-width: 768px) {
+  .mis-profile-container { padding: 24px; }
+  
+  .profile-hero {
+    .banner-bg { height: 160px; }
+    
+    .profile-header-content {
+      flex-direction: row;
+      justify-content: space-between;
+      align-items: flex-end;
+      padding: 0 24px;
+      margin-top: -40px; 
+    }
+
+    .profile-identity {
+      flex-direction: row;
+      align-items: flex-end;
+      margin-bottom: 0;
+      
+      .user-titles .name-row { justify-content: flex-start; }
+    }
+
+    .profile-actions {
+      flex-direction: row;
+      width: auto;
+      button { width: auto; }
+    }
+  }
+
+  .form-grid {
+    grid-template-columns: 1fr 1fr; // Inputs snap side-by-side
+    &.single-col { grid-template-columns: 1fr; }
+  }
+}
+
+/* 3. PC STYLES (1024px and up) */
+@media (min-width: 1024px) {
+  .mis-profile-container {
+    padding: 24px 40px;
+  }
+
+  .profile-content-grid {
+    display: grid;
+    grid-template-columns: 2fr 1fr; // Left forms and right sidebar split
+    gap: 24px;
+  }
+}
