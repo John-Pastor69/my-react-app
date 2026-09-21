@@ -3,263 +3,159 @@ $bg-panel: #FFFFFF;
 $border-color: #E2E8F0;
 $text-dark: #1E293B;
 $text-light: #64748B;
-
 $blue-main: #3B82F6;
 $blue-light: #EFF6FF;
-$yellow-main: #F59E0B;
+$yellow-main: #D97706;
 $yellow-light: #FEF3C7;
-$green-main: #10B981;
+$green-main: #059669;
 $green-light: #D1FAE5;
-$red-main: #EF4444;
+$red-main: #DC2626;
 $red-light: #FEE2E2;
 
-.calendar-page-container {
+.calendar-page-container { // mobile layout
   display: flex;
-  flex-wrap: wrap; 
-  align-items: flex-start; 
-  width: 100%;  
-  box-sizing: border-box; 
-
+  flex-direction: column; /* Stack vertically on phones */
   gap: 24px;
-  padding: 24px 40px;
+  padding: 16px;
+  width: 100%;
+  box-sizing: border-box;
   background: $bg-main;
-  font-family: 'Inter', sans-serif;
-  height: calc(100vh - 80px); 
+  font-family: 'Inter', Arial;
+  
+  /* Scrollable setup for stacked layout */
+  height: calc(100vh - 80px);
   overflow-y: auto;
-  scroll-behavior: smooth;
-
-  @media (min-width: 1024px) {
-    flex-direction: column;
-    padding: 16px;
-  }
-
-  @media (min-width: 768px) {
-    flex: none;
-    display: flex;
-    flex-direction: row;
-    padding: 16px;
-  }
 }
 
-// --- LEFT: MAIN CALENDAR ---
-.calendar-main {
-  flex: 2 1 500px; 
-  min-width: 0;
-  
+.calendar-main, .calendar-sidebar {
+  width: 100%;
   background: $bg-panel;
   border-radius: 12px;
-  padding: 24px;
+  padding: 16px;
   border: 1px solid $border-color;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
-  
-  /* Allows horizontal scroll for the calendar grid on tiny phones */
-  overflow-x: auto; 
+}
 
-  @media (max-width: 1024px) {
-    width: 100%; /* Force full width when stacked */
-    flex: none;  /* Disable flex-grow splitting */
-  }
+/* Header Styling (Scales for both Mobile and PC) */
+.calendar-header {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  margin-bottom: 24px;
 
-  .calendar-header {
+  .month-nav {
     display: flex;
-    justify-content: space-between;
     align-items: center;
-    margin-bottom: 24px;
-
-    .month-nav {
-      display: flex;
-      flex-wrap: wrap;
-      align-items: center;
-      gap: 12px;
-
-      h2 { font-size: 20px; font-weight: 700; color: $text-dark; margin: 0; }
-      
-      .icon-btn {
-        background: transparent;
-        border: 1px solid $border-color;
-        border-radius: 6px;
-        width: 32px;
-        height: 32px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        cursor: pointer;
-        color: $text-dark;
-        &:hover { background: #f8fafc; }
-      }
-      
-      .today-btn {
-        background: white;
-        border: 1px solid $border-color;
-        padding: 6px 12px;
-        border-radius: 6px;
-        font-weight: 500;
-        cursor: pointer;
-        color: $text-dark;
-      }
-    }
-
-    .calendar-legend {
-      display: flex;
-      flex-wrap: wrap;
-      gap: 16px;
-      .legend-item {
-        font-size: 13px;
-        color: $text-light;
-        display: flex;
-        align-items: center;
-        gap: 6px;
-        .dot { width: 8px; height: 8px; border-radius: 50%; }
-        .dot-yellow { background: $yellow-main; }
-        .dot-green { background: $green-main; }
-        .dot-red { background: $red-main; }
-      }
-    }
-
-    .filter-facility-btn {
-      background: #FFFFFF;
-      color: #475569;
+    gap: 12px;
+    h2 { font-size: 20px; font-weight: 700; color: $text-dark; margin: 0; }
+    
+    .icon-btn, .today-btn {
+      background: white;
       border: 1px solid $border-color;
-      padding: 8px 16px;
-      border-radius: 8px;
-      font-weight: 500;
-      font-size: 14px;
+      border-radius: 6px;
       display: flex;
-      flex-wrap: wrap;
       align-items: center;
-      gap: 12px;
+      justify-content: center;
       cursor: pointer;
-      box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
-      transition: all 0.2s ease;
+      color: $text-dark;
+      &:hover { background: #f8fafc; }
+    }
+    .icon-btn { width: 32px; height: 32px; font-size: 16px; }
+    .today-btn { padding: 6px 12px; font-weight: 500; font-size: 14px; }
+  }
 
-      i {
-        font-size: 16px;
-        color: #94A3B8; 
-      }
-      
-      &:hover { 
-        background: #F8FAFC; 
-        border-color: #CBD5E1;
-      }
+  .calendar-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    .legend-item {
+      font-size: 13px;
+      color: $text-light;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      .dot { width: 8px; height: 8px; border-radius: 50%; }
+      .dot-yellow { background: $yellow-main; }
+      .dot-green { background: $green-main; }
+      .dot-red { background: $red-main; }
     }
   }
 
-  .calendar-grid {
-    display: grid;
-    grid-template-columns: repeat(7, 1fr);
-    flex: 1;
-    border-top: 1px solid $border-color;
-    border-left: 1px solid $border-color;
-    border-radius: 8px 8px 0 0;
-    overflow: hidden;
-
-    .weekday {
-      padding: 12px;
-      text-align: center;
-      font-size: 12px;
-      font-weight: 600;
-      color: #94A3B8;
-      border-right: 1px solid $border-color;
-      border-bottom: 1px solid $border-color;
-      background: #FAFAFA;
-    }
-
-    .day-cell {
-      min-height: 100px;
-      padding: 8px;
-      border-right: 1px solid $border-color;
-      border-bottom: 1px solid $border-color;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-
-      .date {
-        font-size: 14px;
-        font-weight: 500;
-        color: $text-dark;
-        margin-bottom: 4px;
-        width: 24px;
-        height: 24px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        border-radius: 50%;
-      }
-
-      &.prev-month .date { color: #CBD5E1; }
-
-      &.selected-day {
-        background: $blue-light;
-        .date.active {
-          background: $blue-main;
-          color: white;
-        }
-      }
-
-      .event-pill {
-        font-size: 11px;
-        padding: 4px 6px;
-        border-radius: 4px;
-        font-weight: 600;
-        white-space: nowrap;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        
-        &.pill-yellow { background: $yellow-light; color: #D97706; }
-        &.pill-green { background: $green-light; color: #059669; }
-        &.pill-red { background: $red-light; color: #DC2626; }
-      }
-
-      .event-more {
-        font-size: 11px;
-        color: $blue-main;
-        font-weight: 600;
-        padding-left: 4px;
-      }
-    }
+  .filter-facility-btn {
+    background: #FFFFFF;
+    color: #475569;
+    border: 1px solid $border-color;
+    padding: 8px 16px;
+    border-radius: 8px;
+    font-weight: 500;
+    font-size: 14px;
+    display: flex;
+    align-items: center;
+    width: max-content;
+    gap: 12px;
+    cursor: pointer;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
   }
 }
 
-// --- RIGHT: DAILY DETAILS ---
-.calendar-sidebar {
-  flex: 1 1 320px; 
-  min-width: 0;
-  
-  background: $bg-panel;
-  border-radius: 12px;
-  padding: 24px;
-  border: 1px solid $border-color;  
+/* Mobile Agenda List View */
+.calendar-grid {
   display: flex;
   flex-direction: column;
-  box-sizing: border-box;
+  gap: 16px;
   
-  height: calc(100vh - 128px);
+  .weekday { display: none; } /* Hide headers on mobile */
+  
+  .day-cell {
+    display: flex;
+    flex-direction: column;
+    
+    &.empty-day { display: none; } /* Hide days with no events on mobile */
 
-  @media (max-width: 1024px) {
-    width: 100%; /* Force full width when stacked */
-    flex: none;  /* Disable flex-grow splitting */
-    height: auto; /* Allow it to stretch downward to fit content */
+    .date {
+      display: flex;
+      gap: 8px;
+      font-size: 16px;
+      font-weight: 700;
+      color: $text-dark;
+      margin-bottom: 12px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid $border-color;
+      
+      span { display: inline; } /* Show "Mon", "Tue" text on mobile */
+    }
+
+    .event-pill {
+      padding: 12px 16px;
+      margin-bottom: 8px;
+      border-radius: 6px;
+      background: #F8FAFC; 
+      border-left: 4px solid;
+      font-size: 13px;
+      font-weight: 600;
+
+      /* Translating pill backgrounds to left-borders for mobile cards */
+      &.pill-green { border-left-color: $green-main; color: $text-dark; }
+      &.pill-yellow { border-left-color: $yellow-main; color: $text-dark; }
+      &.pill-red { border-left-color: $red-main; color: $text-dark; }
+    }
+
+    .event-more { display: none; } /* Hide "+1 more" on mobile agenda */
   }
+}
 
+/* Sidebar Details */
+.calendar-sidebar {
   .sidebar-header {
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 16px;
-
     h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
     p { font-size: 12px; color: $text-light; margin: 0; }
-    
-    .event-count {
-      background: $blue-light;
-      color: $blue-main;
-      padding: 4px 8px;
-      border-radius: 12px;
-      font-size: 12px;
-      font-weight: 600;
-    }
+    .event-count { background: $blue-light; color: $blue-main; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
   }
 
   .sidebar-stats {
@@ -269,138 +165,167 @@ $red-light: #FEE2E2;
     padding-bottom: 16px;
     margin-bottom: 16px;
     border-bottom: 1px solid $border-color;
-
     .stat-box {
       display: flex;
       flex-direction: column;
       align-items: center;
       flex: 1;
-
       .stat-num { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+      .text-green { color: $green-main; }
+      .text-yellow { color: $yellow-main; }
+      .text-red { color: $red-main; }
       .stat-label { font-size: 11px; color: $text-light; }
     }
-
-    .stat-divider {
-      width: 1px;
-      height: 24px;
-      background: $border-color;
-    }
+    .stat-divider { width: 1px; height: 24px; background: $border-color; }
   }
 
   .event-cards {
-    flex: 1;
-    overflow-y: auto;
     display: flex;
     flex-direction: column;
     gap: 12px;
-
     .event-card {
       border: 1px solid $border-color;
       border-radius: 8px;
       padding: 16px;
-      
       .card-top {
         display: flex;
         justify-content: space-between;
-        align-items: flex-start;
         margin-bottom: 12px;
-        
         h4 { font-size: 14px; font-weight: 600; margin: 0; }
         .status-badge {
-          font-size: 11px;
-          padding: 2px 8px;
-          border-radius: 12px;
-          font-weight: 600;
-          &.bg-green { background: $green-light; color: #059669; }
-          &.bg-yellow { background: $yellow-light; color: #D97706; }
-          &.bg-red { background: $red-light; color: #DC2626; }
+          font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600;
+          &.bg-green { background: $green-light; color: $green-main; }
+          &.bg-yellow { background: $yellow-light; color: $yellow-main; }
+          &.bg-red { background: $red-light; color: $red-main; }
         }
       }
-
       .card-details {
-        display: flex;
-        flex-direction: column;
-        gap: 6px;
-        margin-bottom: 12px;
-        p {
-          font-size: 12px;
-          color: $text-light;
-          display: flex;
-          align-items: center;
-          gap: 8px;
-          margin: 0;
-          i { font-size: 14px; }
-        }
+        display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;
+        p { font-size: 12px; color: $text-light; display: flex; align-items: center; gap: 8px; margin: 0; }
       }
-
       .card-actions {
-        display: flex;
-        gap: 8px;
-
+        display: flex; gap: 8px;
         button {
-          flex: 1;
-          padding: 6px;
-          border-radius: 4px;
-          font-size: 12px;
-          font-weight: 500;
-          cursor: pointer;
-          background: white;
-          
-          &.btn-view {
-            border: 1px solid #BFDBFE;
-            color: $blue-main;
-            background: #EFF6FF;
-            &:hover { background: #DBEAFE; }
-          }
-          &.btn-approve {
-            border: 1px solid #A7F3D0;
-            color: #059669;
-            background: #ECFDF5;
-            &:hover { background: #D1FAE5; }
-          }
-          &.btn-reject {
-            border: 1px solid #FECACA;
-            color: #DC2626;
-            background: #FEF2F2;
-            &:hover { background: #FEE2E2; }
-          }
+          flex: 1; padding: 6px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; background: white;
+          &.btn-view { border: 1px solid #BFDBFE; color: $blue-main; }
+          &.btn-approve { border: 1px solid #A7F3D0; color: $green-main; }
+          &.btn-reject { border: 1px solid #FECACA; color: $red-main; }
         }
       }
     }
   }
 
   .sidebar-bottom-actions {
-    margin-top: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 8px;
-    padding-top: 16px;
-    border-top: 1px solid $border-color;
-
+    display: flex; flex-direction: column; gap: 8px; margin-top: 24px;
     button {
-      width: 100%;
-      padding: 10px;
-      border-radius: 6px;
-      font-weight: 600;
-      font-size: 13px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      cursor: pointer;
+      padding: 10px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+      &.btn-review { background: $blue-main; color: white; border: none; }
+      &.btn-export { background: white; color: $text-dark; border: 1px solid $border-color; }
+    }
+  }
+}
 
-      &.btn-review {
-        background: $blue-main;
-        color: white;
-        border: none;
-        &:hover { background: #2563EB; }
+//tablet and up size
+@media (min-width: 768px) {
+  
+  .calendar-page-container {
+    flex-direction: row;
+    align-items: flex-start;
+    padding: 24px 40px;
+  }
+
+  .calendar-main {
+    /* flex: 1 allows it to fluidly stretch and absorb all remaining space */
+    flex: 1;
+    min-width: 0;
+  }
+
+  .calendar-sidebar {
+    /* flex: 0 (don't grow) 0 (don't shrink) 320px (exact width) */
+    flex: 0 0 320px; 
+    width: 320px; /* Explicitly lock the width */
+    
+    height: calc(100vh - 128px);
+    
+    .event-cards {
+      flex: 1;
+      overflow-y: auto; /* Internal scrolling for PC sidebar */
+      padding-right: 8px;
+    }
+  }
+
+  .calendar-header {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  /* Transform Agenda back into 7x5 Grid */
+  .calendar-grid {
+    display: grid;
+    
+    /* THE GRID FIX: minmax(0, 1fr) forces the columns to allow shrinking */
+    grid-template-columns: repeat(7, minmax(0, 1fr)); 
+    
+    gap: 0;
+    border-top: 1px solid $border-color;
+    border-left: 1px solid $border-color;
+    border-radius: 8px 8px 0 0;
+    
+    .weekday {
+      display: block; 
+      padding: 12px; text-align: center; font-size: 12px; font-weight: 600; color: #94A3B8;
+      border-right: 1px solid $border-color; border-bottom: 1px solid $border-color;
+    }
+    
+    .day-cell {
+      display: flex;
+      flex-direction: column; /* THE CELL FIX: Stacks the pills vertically */
+      min-width: 0;           /* THE CELL FIX: Prevents flexbox blowout */
+      overflow: hidden;       /* Keeps content cleanly inside the borders */
+      
+      min-height: 100px;
+      padding: 8px;
+      border-right: 1px solid $border-color;
+      border-bottom: 1px solid $border-color;
+      
+      &.empty-day { display: flex; } 
+      
+      .date {
+        font-size: 14px; font-weight: 500; color: $text-dark; margin-bottom: 8px;
+        width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+        border: none; padding: 0;
+        span { display: none; } 
       }
       
-      &.btn-export {
-        background: white;
-        color: $text-light;
-        border: 1px solid $border-color;
-        &:hover { background: #F8FAFC; }
+      &.prev-month .date { color: #CBD5E1; }
+      
+      &.active-day {
+        background: $blue-light;
+        .date { background: $blue-main; color: white; border-radius: 50%; }
+      }
+
+      /* Desktop Pill Styling */
+      .event-pill {
+        width: 100%; /* Ensures the pill doesn't stretch past the cell */
+        box-sizing: border-box;
+        
+        /* These 3 lines create the "..." when the cell gets squeezed */
+        white-space: nowrap; 
+        overflow: hidden; 
+        text-overflow: ellipsis;
+        
+        font-size: 11px; padding: 4px 6px; border-radius: 4px; font-weight: 600;
+        border-left: none; margin-bottom: 4px;
+        
+        &.pill-green { background: $green-light; color: $green-main; }
+        &.pill-yellow { background: $yellow-light; color: $yellow-main; }
+        &.pill-red { background: $red-light; color: $red-main; }
+      }
+
+      .event-more {
+        display: block; 
+        font-size: 11px; color: $blue-main; font-weight: 600; padding-left: 4px; margin-top: 2px;
       }
     }
   }
