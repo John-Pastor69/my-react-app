@@ -19,6 +19,29 @@
   }
 }
 
+@media (max-width: 768px) {
+  .mobile-menu-btn {
+    margin-right: 8px; 
+  }
+  
+  .header-titles h1 {
+    font-size: 16px; 
+  }
+  
+  .search-container input,
+  .search-container .search-icon {
+    display: none; 
+  }
+  
+  .user-info {
+    display: none; 
+  }
+  
+  .header-actions {
+    gap: 12px;
+  }
+}
+
 .topbar {
   width: 100%;
   display: flex;

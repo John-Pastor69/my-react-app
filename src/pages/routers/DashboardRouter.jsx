@@ -11,6 +11,8 @@ const UserDashboard = lazy(() => import('../user/UserDashboard'));
 const MisCalendar = lazy(() => import('../mis/MisCalendar'));
 const MisEquipmentManagement = lazy(() => import('../mis/MisEquipmentManagement'));
 const MisUserManagement = lazy(() => import('../mis/MisUserManagement'));
+const MisApproval = lazy(() => import('../mis/MisApproval'));
+
 
 const DashboardRouter = ({ currentUserRole }) => {
   
@@ -25,7 +27,9 @@ const DashboardRouter = ({ currentUserRole }) => {
 
     'mis_calendar': <MisCalendar />,
     'mis_equipment': <MisEquipmentManagement />,
-    'mis_user': <MisUserManagement/>
+    'mis_user': <MisUserManagement/>,
+    'mis_approval': <MisApproval/>
+21
   };
 
   const CurrentDashboard = dashboardComponents[currentUserRole] || (

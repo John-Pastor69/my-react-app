@@ -28,8 +28,15 @@ $red-light: #FEE2E2;
   overflow-y: auto;
   scroll-behavior: smooth;
 
-  @media (max-width: 1024px) {
+  @media (min-width: 1024px) {
     flex-direction: column;
+    padding: 16px;
+  }
+
+  @media (min-width: 768px) {
+    flex: none;
+    display: flex;
+    flex-direction: row;
     padding: 16px;
   }
 }

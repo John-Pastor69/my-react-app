@@ -8,7 +8,7 @@ import DashboardRouter from './pages/routers/DashboardRouter';
 
 export default function App() {
 
-  const fakeUserRole = "mis_equipment"; 
+  const fakeUserRole = "mis_calendar"; // Change this to test different dashboards
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
