@@ -1,33 +1,59 @@
 .mis-dashboard {
+    width: 100%;
     min-height: 100vh;
+
     background: #f1f5f9;
+
     padding: 24px;
+
     font-family: Arial, Helvetica, sans-serif;
     color: #1e293b;
 
-    // Header
+    box-sizing: border-box;
+
+    *,
+    *::before,
+    *::after {
+        box-sizing: border-box;
+    }
+
+
+    // =========================
+    // HEADER
+    // =========================
+
     .dashboard-header {
         display: flex;
         justify-content: space-between;
         align-items: center;
+
         margin-bottom: 22px;
 
         h1 {
             font-size: 16px;
             font-weight: 600;
+
             margin: 0;
+
             color: #111827;
         }
     }
 
-    // Date
+
+    // =========================
+    // DATE
+    // =========================
+
     .date-select {
         height: 34px;
+
         display: flex;
         align-items: center;
+
         gap: 7px;
 
         background: white;
+
         border: 1px solid #e2e8f0;
         border-radius: 6px;
 
@@ -39,12 +65,15 @@
         select {
             border: none;
             outline: none;
+
             background: transparent;
 
             font-size: 11px;
             color: #64748b;
 
             cursor: pointer;
+
+            max-width: 130px;
         }
 
         .calendar-icon {
@@ -54,26 +83,35 @@
     }
 
 
-    // Main Cards
+    // =========================
+    // MAIN CARDS
+    // =========================
+
     .main-stat-grid {
         display: grid;
-        grid-template-columns: 1fr 1fr;
+
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+
         gap: 14px;
+
         margin-bottom: 20px;
     }
 
     .main-card {
         position: relative;
 
+        min-width: 0;
         min-height: 108px;
 
         background: white;
+
         border: 1px solid #e2e8f0;
         border-radius: 9px;
 
         padding: 14px;
 
         display: flex;
+
         gap: 13px;
 
         overflow: hidden;
@@ -106,7 +144,10 @@
     }
 
 
-    // Main Card Icons
+    // =========================
+    // ICON
+    // =========================
+
     .card-icon {
         width: 36px;
         height: 36px;
@@ -133,17 +174,25 @@
     }
 
 
-    // Card Content
+    // =========================
+    // CONTENT
+    // =========================
+
     .card-content {
         position: relative;
+
         z-index: 1;
+
         flex: 1;
+
+        min-width: 0;
     }
 
     .card-label {
         margin: 1px 0 2px;
 
         font-size: 9px;
+
         color: #64748b;
     }
 
@@ -159,18 +208,24 @@
     .percent-symbol {
         font-size: 12px;
         font-weight: 500;
+
         margin-left: 2px;
     }
 
 
-    // Request Details
+    // =========================
+    // REQUEST DETAILS
+    // =========================
+
     .request-details {
         display: flex;
+
         gap: 12px;
 
         margin-top: 4px;
 
         font-size: 7px;
+
         color: #64748b;
 
         flex-wrap: wrap;
@@ -178,7 +233,10 @@
         span {
             display: flex;
             align-items: center;
+
             gap: 4px;
+
+            white-space: nowrap;
         }
 
         b {
@@ -188,6 +246,8 @@
             border-radius: 50%;
 
             display: inline-block;
+
+            flex-shrink: 0;
         }
 
         .orange-dot {
@@ -212,19 +272,28 @@
     }
 
 
-    // Progress
+    // =========================
+    // PROGRESS
+    // =========================
+
     .progress-area {
         display: flex;
+
         align-items: center;
 
         gap: 7px;
 
         margin-top: 8px;
+
+        min-width: 0;
     }
 
     .progress-bar {
         height: 4px;
+
         width: 75%;
+
+        min-width: 40px;
 
         background: #f1f5f9;
 
@@ -255,6 +324,7 @@
         white-space: nowrap;
 
         font-size: 7px;
+
         font-weight: 600;
     }
 
@@ -267,7 +337,10 @@
     }
 
 
-    // Badges
+    // =========================
+    // BADGES
+    // =========================
+
     .today-badge,
     .week-badge {
         position: absolute;
@@ -284,6 +357,8 @@
         border-radius: 12px;
 
         font-weight: 500;
+
+        white-space: nowrap;
     }
 
     .today-badge {
@@ -297,16 +372,20 @@
     }
 
 
-    // Small Cards
+    // =========================
+    // SMALL CARDS
+    // =========================
+
     .small-stat-grid {
         display: grid;
 
-        grid-template-columns: repeat(4, 1fr);
+        grid-template-columns: repeat(4, minmax(0, 1fr));
 
         gap: 10px;
     }
 
     .small-card {
+        min-width: 0;
         min-height: 57px;
 
         background: white;
@@ -318,6 +397,7 @@
         padding: 12px;
 
         display: flex;
+
         align-items: center;
 
         gap: 10px;
@@ -330,6 +410,8 @@
             font-size: 8px;
 
             color: #64748b;
+
+            white-space: nowrap;
         }
 
         h2 {
@@ -342,7 +424,10 @@
     }
 
 
-    // Small Card Icons
+    // =========================
+    // SMALL ICONS
+    // =========================
+
     .small-icon {
         width: 28px;
         height: 28px;
@@ -350,6 +435,7 @@
         border-radius: 7px;
 
         display: flex;
+
         align-items: center;
         justify-content: center;
 
@@ -377,35 +463,164 @@
     }
 
 
-    // Responsive
-    @media (max-width: 800px) {
+    // ==================================================
+    // TABLET
+    // ==================================================
+
+    @media (max-width: 900px) {
+
+        padding: 20px;
 
         .main-stat-grid {
             grid-template-columns: 1fr;
         }
 
         .small-stat-grid {
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
         }
     }
 
 
-    @media (max-width: 500px) {
+    // ==================================================
+    // MOBILE
+    // ==================================================
 
-        padding: 15px;
+    @media (max-width: 600px) {
+
+        padding: 16px;
 
         .dashboard-header {
             align-items: flex-start;
+
+            gap: 12px;
+
+            h1 {
+                font-size: 15px;
+            }
+        }
+
+        .date-select {
+            height: 32px;
+
+            select {
+                max-width: 100px;
+
+                font-size: 10px;
+            }
+        }
+
+        .main-stat-grid {
             gap: 10px;
+        }
+
+        .main-card {
+            min-height: 120px;
+
+            padding: 12px;
+
+            gap: 9px;
+        }
+
+        .card-icon {
+            width: 32px;
+            height: 32px;
+        }
+
+        .card-number {
+            font-size: 23px;
+        }
+
+        .request-details {
+            gap: 5px;
+
+            flex-direction: column;
+
+            span {
+                font-size: 7px;
+            }
+        }
+
+        .progress-area {
+            margin-top: 7px;
+        }
+
+        .progress-bar {
+            width: 65%;
+        }
+
+        .today-badge,
+        .week-badge {
+            top: 10px;
+            right: 10px;
+
+            font-size: 6px;
+
+            padding: 4px 6px;
+        }
+
+        .small-stat-grid {
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+
+            gap: 8px;
+        }
+
+        .small-card {
+            padding: 10px;
+
+            gap: 8px;
+
+            .small-icon {
+                width: 26px;
+                height: 26px;
+            }
+
+            p {
+                font-size: 7px;
+            }
+
+            h2 {
+                font-size: 13px;
+            }
+        }
+    }
+
+
+    // ==================================================
+    // SMALL PHONE
+    // ==================================================
+
+    @media (max-width: 400px) {
+
+        padding: 12px;
+
+        .dashboard-header {
+            flex-direction: column;
+        }
+
+        .date-select {
+            width: 100%;
+
+            justify-content: space-between;
+
+            select {
+                flex: 1;
+            }
+        }
+
+        .main-card {
+            padding: 10px;
+
+            .card-label {
+                font-size: 8px;
+            }
+
+            .card-number {
+                font-size: 21px;
+            }
         }
 
         .small-stat-grid {
             grid-template-columns: 1fr;
-        }
-
-        .request-details {
-            flex-direction: column;
-            gap: 4px;
         }
     }
 }
