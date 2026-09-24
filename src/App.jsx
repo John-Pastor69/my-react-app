@@ -13,14 +13,13 @@ import ProfileRouter from './pages/routers/ProfileRouter';
 
 export default function App() {
 
-  const uiDashboard = "mis";
+  const uiDashboard = "user_reservation";
   const uiApproval = "mis";
   const uiCalendar = "mis";
   const uiEquipment = "mis";
   const uiUserManage = "mis";
   const uiAccount =  "mis";
 
-  const fakeUserRole = "user_reservation"; // Change this to test different dashboards
 
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 

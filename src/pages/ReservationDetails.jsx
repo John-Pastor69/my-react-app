@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import '../../styles/mis/MisReservationDetails.scss';
+import '../styles/ReservationDetails.scss';
 
-const MisReservationDetails = () => {
+const ReservationDetails = () => {
   // Sample reservation data — replace with real data (props, route param, or fetch)
   const [reservation] = useState({
     refNo: 'RES-2023-1042',
@@ -313,4 +313,4 @@ const MisReservationDetails = () => {
 };
 
 // This exact line is required for React.lazy() to work
-export default MisReservationDetails;
+export default ReservationDetails;
