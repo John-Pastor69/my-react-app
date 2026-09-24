@@ -1,21 +1,100 @@
-import React from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect } from 'react';
 import "../../styles/mis/MisCalendar.scss";
 
 const MisCalendar = () => {
+  // 1. NEW STATE: Tracks the currently viewed month (defaults to today's date)
+  const [currentDate, setCurrentDate] = useState(new Date());
+  const [selectedDate, setSelectedDate] = useState("");
+  
+  const [events, setEvents] = useState([
+    { id: '1', date: '2026-09-15', title: 'Network Upgrade', status: 'green' },
+    { id: '2', date: '2026-09-06', title: 'Server Room Booking', status: 'yellow' },
+    { id: '3', date: '2026-10-12', title: 'Muisc Room Booking', status: 'yellow                                         ' },
+  ]);
+
+  // 2. NAVIGATION CONTROLLERS
+  const handlePrevMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
+  };
+
+  const handleNextMonth = () => {
+    setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+  };
+
+  // 3. DYNAMIC CALENDAR GENERATOR
+  const generateCalendar = () => {
+    const year = currentDate.getFullYear();
+    const month = currentDate.getMonth();
+
+    const firstDayOfMonth = new Date(year, month, 1);
+    const startingDayOfWeek = firstDayOfMonth.getDay(); // 0 (Sun) to 6 (Sat)
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+    const calendar = [];
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+    // Helper to format dates as "YYYY-MM-DD" securely across all timezones
+    const formatDate = (d) => {
+      const y = d.getFullYear();
+      const m = String(d.getMonth() + 1).padStart(2, '0');
+      const day = String(d.getDate()).padStart(2, '0');
+      return `${y}-${m}-${day}`;
+    };
+
+    // Step A: Fill empty slots from the PREVIOUS month
+    const prevMonthLastDay = new Date(year, month, 0).getDate();
+    for (let i = startingDayOfWeek - 1; i >= 0; i--) {
+      const d = new Date(year, month - 1, prevMonthLastDay - i);
+      calendar.push({
+        name: dayNames[d.getDay()],
+        num: d.getDate(),
+        date: formatDate(d),
+        isGrayedOut: true
+      });
+    }
+
+    // Step B: Fill the CURRENT month
+    for (let i = 1; i <= daysInMonth; i++) {
+      const d = new Date(year, month, i);
+      calendar.push({
+        name: dayNames[d.getDay()],
+        num: i,
+        date: formatDate(d),
+        isGrayedOut: false
+      });
+    }
+
+    // Step C: Fill empty slots for the NEXT month (Locks grid to exactly 42 cells / 6 rows)
+    let nextMonthDay = 1;
+    while (calendar.length < 42) {
+      const d = new Date(year, month + 1, nextMonthDay);
+      calendar.push({
+        name: dayNames[d.getDay()],
+        num: nextMonthDay,
+        date: formatDate(d),
+        isGrayedOut: true
+      });
+      nextMonthDay++;
+    }
+
+    return calendar;
+  };
+
+  const calendarDays = generateCalendar();
+  
+  // Formats the header title (e.g., "November 2023") based on current state
+  const currentMonthYearString = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+
   return (
     <div className="calendar-page-container">
       
       {/* --- LEFT: MAIN CALENDAR --- */}
       <div className="calendar-main">
-        
-        {/* Header Section */}
         <div className="calendar-header">
           <div className="month-nav">
-            <button className="icon-btn"><i className="ph ph-caret-left"></i></button>
-            <h2>November 2023</h2>
-            <button className="icon-btn"><i className="ph ph-caret-right"></i></button>
-            <button className="today-btn">Today</button>
+            <button className="icon-btn" onClick={handlePrevMonth}>&#10094;</button>
+            <h2>{currentMonthYearString}</h2>
+            <button className="icon-btn" onClick={handleNextMonth}>&#10095;</button>
           </div>
           
           <div className="calendar-legend">
@@ -24,174 +103,104 @@ const MisCalendar = () => {
           </div>
         </div>
 
-        {/* Calendar Grid / Mobile Agenda */}
         <div className="calendar-grid">
-          <div className="weekday">SUN</div>
-          <div className="weekday">MON</div>
-          <div className="weekday">TUE</div>
-          <div className="weekday">WED</div>
-          <div className="weekday">THU</div>
-          <div className="weekday">FRI</div>
-          <div className="weekday">SAT</div>
+          {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+            <div key={day} className="weekday">{day}</div>
+          ))}
 
-          {/* Row 1 */}
-          <div className="day-cell empty-day prev-month"><span className="date"><span>Sun</span> 29</span></div>
-          <div className="day-cell empty-day prev-month"><span className="date"><span>Mon</span> 30</span></div>
-          <div className="day-cell empty-day prev-month"><span className="date"><span>Tue</span> 31</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Wed</span> 1</span>
-            <div className="event-pill pill-green">Network Upgrade</div>
-          </div>
-          <div className="day-cell">
-            <span className="date"><span>Thu</span> 2</span>
-            <div className="event-pill pill-yellow">Server Room Booking</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Fri</span> 3</span></div>
-          <div className="day-cell empty-day"><span className="date"><span>Sat</span> 4</span></div>
+          {/* DYNAMIC RENDER LOOP */}
+          {calendarDays.map((day, index) => {
+            const daysEvents = events.filter(e => e.date === day.date);
+            const isEmpty = daysEvents.length === 0;
 
-          {/* Row 2 */}
-          <div className="day-cell">
-            <span className="date"><span>Sun</span> 5</span>
-            <div className="event-pill pill-green">IT Training Lab</div>
-          </div>
-          <div className="day-cell">
-            <span className="date"><span>Mon</span> 6</span>
-            <div className="event-pill pill-yellow">Equipment</div>
-          </div>
-          <div className="day-cell">
-            <span className="date"><span>Tue</span> 7</span>
-            <div className="event-pill pill-yellow">Software Demo</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Wed</span> 8</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Thu</span> 9</span>
-            <div className="event-pill pill-green">Data Center Tour</div>
-          </div>
-          <div className="day-cell">
-            <span className="date"><span>Fri</span> 10</span>
-            <div className="event-pill pill-yellow">System Maintenance</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Sat</span> 11</span></div>
-
-          {/* Row 3 */}
-          <div className="day-cell empty-day"><span className="date"><span>Sun</span> 12</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Mon</span> 13</span>
-            <div className="event-pill pill-green">Cybersecurity Briefing</div>
-          </div>
-          <div className="day-cell">
-            <span className="date"><span>Tue</span> 14</span>
-            <div className="event-pill pill-yellow">ERP Deployment</div>
-            <div className="event-pill pill-yellow">Cloud Migration</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Wed</span> 15</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Thu</span> 16</span>
-            <div className="event-pill pill-green">Help Desk Workshop</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Fri</span> 17</span></div>
-          <div className="day-cell empty-day"><span className="date"><span>Sat</span> 18</span></div>
-
-          {/* Row 4 */}
-          <div className="day-cell empty-day"><span className="date"><span>Sun</span> 19</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Mon</span> 20</span>
-            <div className="event-pill pill-yellow">IT Audit Prep</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Tue</span> 21</span></div>
-          
-          {/* Active Day */}
-          <div className="day-cell active-day">
-            <span className="date"><span>Wed</span> 22</span>
-            <div className="event-pill pill-green">Infra Review</div>
-            <div className="event-pill pill-yellow">Dev Environment</div>
-            <div className="event-more">+1 more</div>
-          </div>
-          
-          <div className="day-cell empty-day"><span className="date"><span>Thu</span> 23</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Fri</span> 24</span>
-            <div className="event-pill pill-yellow">Network Downtime</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Sat</span> 25</span></div>
-
-          {/* Row 5 */}
-          <div className="day-cell empty-day"><span className="date"><span>Sun</span> 26</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Mon</span> 27</span>
-            <div className="event-pill pill-green">Backup Procedures</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Tue</span> 28</span></div>
-          <div className="day-cell">
-            <span className="date"><span>Wed</span> 29</span>
-            <div className="event-pill pill-yellow">Year-End IT Review</div>
-          </div>
-          <div className="day-cell empty-day"><span className="date"><span>Thu</span> 30</span></div>
-          <div className="day-cell empty-day prev-month"><span className="date"><span>Fri</span> 1</span></div>
-          <div className="day-cell empty-day prev-month"><span className="date"><span>Sat</span> 2</span></div>
+            return (
+              <div 
+                key={index} 
+                onClick={() => setSelectedDate(day.date)} // Sets the clicked date
+                style={{ cursor: 'pointer' }} // Changes mouse to a clicking hand
+                className={`day-cell ${isEmpty ? 'empty-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
+              >
+                <span className="date"><span>{day.name}</span> {day.num}</span>
+                
+                {daysEvents.map(event => (
+                  <div key={event.id} className={`event-pill pill-${event.status}`}>
+                    {event.title}
+                  </div>
+                ))}
+              </div>
+            );
+          })}
         </div>
       </div>
 
       {/* --- RIGHT: SIDEBAR DETAILS --- */}
+      {/* --- RIGHT: SIDEBAR DETAILS --- */}
       <div className="calendar-sidebar">
         
-        <div className="sidebar-header">
-          <div>
-            <h3>Wednesday, Nov 22</h3>
-            <p>All reservations for selected date</p>
-          </div>
-          <span className="event-count">3 events</span>
-        </div>
-
-        <div className="sidebar-stats">
-          <div className="stat-box">
-            <span className="stat-num text-green">1</span>
-            <span className="stat-label">Approved</span>
-          </div>
-          <div className="stat-divider"></div>
-          <div className="stat-box">
-            <span className="stat-num text-yellow">1</span>
-            <span className="stat-label">Pending</span>
-          </div>
-        </div>
-
-        <div className="event-cards">
+        {/* Calculates sidebar data based on the clicked date */}
+        {(() => {
+          const sidebarEvents = events.filter(e => e.date === selectedDate);
+          const approvedCount = sidebarEvents.filter(e => e.status === 'green').length;
+          const pendingCount = sidebarEvents.filter(e => e.status === 'yellow').length;
           
-          {/* Card 1 */}
-          <div className="event-card">
-            <div className="card-top">
-              <h4>Infrastructure Review</h4>
-              <span className="status-badge bg-green">Approved</span>
-            </div>
-            <div className="card-details">
-              <p><i className="ph ph-clock"></i> 09:00 AM - 11:00 AM</p>
-              <p><i className="ph ph-map-pin"></i> Server Room B</p>
-              <p><i className="ph ph-user"></i> Carlos Reyes</p>
-            </div>
-            <div className="card-actions">
-              <button className="btn-view">View Details</button>
-            </div>
-          </div>
+          // Formats the selected date for the title (e.g., "Tuesday, Sep 15")
+          const displayDate = selectedDate 
+            ? new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'short', day: 'numeric' })
+            : "Select a date";
 
-          {/* Card 2 */}
-          <div className="event-card">
-            <div className="card-top">
-              <h4>Dev Environment Setup</h4>
-              <span className="status-badge bg-yellow">Pending</span>
-            </div>
-            <div className="card-details">
-              <p><i className="ph ph-clock"></i> 01:00 PM - 03:00 PM</p>
-              <p><i className="ph ph-map-pin"></i> IT Lab Room 1</p>
-              <p><i className="ph ph-user"></i> Jenna Park</p>
-            </div>
-            <div className="card-actions">
-              <button className="btn-view">View Details</button>
-            </div>
-          </div>
-        </div>
+          return (
+            <>
+              <div className="sidebar-header">
+                <div>
+                  <h3>{displayDate}</h3>
+                  <p>All reservations for selected date</p>
+                </div>
+                <span className="event-count">{sidebarEvents.length} events</span>
+              </div>
 
+              <div className="sidebar-stats">
+                <div className="stat-box">
+                  <span className="stat-num text-green">{approvedCount}</span>
+                  <span className="stat-label">Approved</span>
+                </div>
+                <div className="stat-divider"></div>
+                <div className="stat-box">
+                  <span className="stat-num text-yellow">{pendingCount}</span>
+                  <span className="stat-label">Pending</span>
+                </div>
+              </div>
+
+              <div className="event-cards">
+                {sidebarEvents.length === 0 ? (
+                  <p style={{ color: '#94A3B8', fontSize: '14px', textAlign: 'center', marginTop: '40px' }}>
+                    No reservations scheduled for this date.
+                  </p>
+                ) : (
+                  sidebarEvents.map(event => (
+                    <div key={event.id} className="event-card">
+                      <div className="card-top">
+                        <h4>{event.title}</h4>
+                        <span className={`status-badge bg-${event.status}`}>
+                          {event.status === 'green' ? 'Approved' : 'Pending'}
+                        </span>
+                      </div>
+                      <div className="card-details">
+                        {/* Placeholder details - you will map these from Firestore later */}
+                        <p><i className="ph ph-clock"></i> 09:00 AM - 11:00 AM</p>
+                        <p><i className="ph ph-map-pin"></i> Facility Name</p>
+                        <p><i className="ph ph-user"></i> Requestor Name</p>
+                      </div>
+                      <div className="card-actions">
+                        <button className="btn-view">View Details</button>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          );
+        })()}
       </div>
-      
     </div>
   );
 };
