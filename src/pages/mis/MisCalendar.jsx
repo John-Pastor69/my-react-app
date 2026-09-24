@@ -1,4 +1,6 @@
 import React, { useState, useEffect } from 'react';
+import { db } from "../../Firebase";
+import { collection, query, onSnapshot } from "firebase/firestore";
 import "../../styles/mis/MisCalendar.scss";
 
 const MisCalendar = () => {
@@ -6,11 +8,43 @@ const MisCalendar = () => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
   
-  const [events, setEvents] = useState([
-    { id: '1', date: '2026-09-15', title: 'Network Upgrade', status: 'green' },
-    { id: '2', date: '2026-09-06', title: 'Server Room Booking', status: 'yellow' },
-    { id: '3', date: '2026-10-12', title: 'Muisc Room Booking', status: 'yellow                                         ' },
-  ]);
+  const [events, setEvents] = useState([]);
+
+  // live websocket
+  useEffect(() => {
+    const q = query(collection(db, "reservations"));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const liveData = snapshot.docs.map(doc => {
+        const data = doc.data();
+        
+        // Map database text to your UI colors
+        let uiStatusColor = 'yellow'; // default
+        if (data.status === 'approved') uiStatusColor = 'green';
+        if (data.status === 'rejected') uiStatusColor = 'red';
+        if (data.status === 'pending') uiStatusColor = 'yellow';
+
+        return {
+          id: doc.id,
+          title: data.title || "Untitled Event",
+          date: data.date, // must be "YYYY-MM-DD"
+          status: uiStatusColor, 
+          
+          // Pulling extra data for the sidebar cards
+          time: data.time || "TBA",
+          facility: data.facility || "No facility assigned",
+          requestor: data.requestor || "Unknown"
+        };
+      });
+
+      setEvents(liveData);
+    }, (error) => {
+      console.error("Error fetching live calendar data:", error);
+    });
+
+    // Cleanup the listener when the user leaves the page
+    return () => unsubscribe();
+  }, []);
 
   // 2. NAVIGATION CONTROLLERS
   const handlePrevMonth = () => {
@@ -185,10 +219,9 @@ const MisCalendar = () => {
                         </span>
                       </div>
                       <div className="card-details">
-                        {/* Placeholder details - you will map these from Firestore later */}
-                        <p><i className="ph ph-clock"></i> 09:00 AM - 11:00 AM</p>
-                        <p><i className="ph ph-map-pin"></i> Facility Name</p>
-                        <p><i className="ph ph-user"></i> Requestor Name</p>
+                        <p><i className="ph ph-clock"></i> {event.time}</p>
+                        <p><i className="ph ph-map-pin"></i> {event.facility}</p>
+                        <p><i className="ph ph-user"></i> {event.requestor}</p>
                       </div>
                       <div className="card-actions">
                         <button className="btn-view">View Details</button>
