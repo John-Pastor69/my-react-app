@@ -20,7 +20,7 @@ $red-light: #FEE2E2;
   width: 100%;
   box-sizing: border-box;
   background: $bg-main;
-  font-family: 'Inter', Arial;
+  font-family: 'Inter', system-ui, sans-serif;
   
   /* Scrollable setup for stacked layout */
   height: calc(100vh - 80px);

@@ -1,4 +1,6 @@
 import { NavLink } from 'react-router-dom';
+import { signOut } from 'firebase/auth'; 
+import { auth } from '../Firebase';
 import { 
   LayoutDashboard, 
   CheckCircle2, 
@@ -11,7 +13,17 @@ import {
 } from 'lucide-react';
 import '../styles/Sidebar.scss'; 
 
-const Sidebar = ({isOpen, setIsOpen}) => {
+const Sidebar = ({isOpen, setIsOpen, onLogout}) => {
+
+  const handleSignOut = async () => {
+    try {
+      await signOut(auth); 
+      onLogout();          
+    } catch (error) {
+      console.error("Error signing out:", error);
+    }
+  };
+
   return (
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="mobile-sidebar-header">
@@ -85,9 +97,9 @@ const Sidebar = ({isOpen, setIsOpen}) => {
 
       {/* Footer Actions */}
       <div className="sidebar-footer">
-        <button className="sign-out-btn" onClick={() => {/* Handle Firebase Sign Out */}}>
+        <button className="sign-out-btn" onClick={handleSignOut}>
           <LogOut className="nav-icon" size={20} />
-          <span className="nav-label">Sign Out</span>
+          <span className="nav-lab  el">Sign Out</span>
         </button>
       </div>
     </aside>

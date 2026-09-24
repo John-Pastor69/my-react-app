@@ -1,39 +1,113 @@
-// src/pages/Login.jsx
-import { signInWithPopup } from 'firebase/auth';
-import { auth, microsoftProvider } from '../Firebase';
+import React, { useState } from 'react';
+import { signInWithPopup, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
+import { auth, db, microsoftProvider } from '../Firebase';
+import '../styles/Login.scss';
 
-export default function Login() {
-  
-  const handleMicrosoftLogin = async () => {
+export default function Login({ onLogin }) {
+  const [showForm, setShowForm] = useState(false);
+  const [error, setError] = useState('');
+
+  const openModal = () => {
+    setShowForm(true);
+    setError('');
+  };
+
+  const closeModal = () => {
+    setShowForm(false);
+    setError('');
+  };
+
+  const handleMicrosoftLogin = async (e) => {
+    e.preventDefault();
+    setError('');
     try {
-      // Triggers the Microsoft login window
+      // 1. Authenticate via Microsoft SSO
       const result = await signInWithPopup(auth, microsoftProvider);
       const user = result.user;
       
-      console.log("Successfully logged in as:", user.displayName);
-      console.log("User email:", user.email);
+      // 2. Verify if the email belongs to the STI domain (adjust domain suffix if needed)
+      const isStiEmail = user.email && (
+        user.email.endsWith('@globalcity.sti.edu.ph') || 
+        user.email.endsWith('@sti.edu.ph')
+      );
+
+      if (!isStiEmail) {
+        // Kick out non-STI accounts
+        await signOut(auth);
+        setError("Access denied. Only STI institutional accounts are allowed.");
+        return;
+      }
+
+      // 3. Check Firestore to see if this specific user has an explicit role (e.g., 'admin')
+      const userDocRef = doc(db, 'users', user.uid);
+      const userDoc = await getDoc(userDocRef);
+
+      let assignedRole = 'user'; // Default role for any valid STI login
+      if (userDoc.exists()) {
+        assignedRole = userDoc.data().role; // Pulls 'admin' or other roles from Firestore
+      }
+
+      console.log(`Successfully logged in as ${user.email} with role: ${assignedRole}`);
       
-      // Here you can redirect the user to the main reservation dashboard 
-      // or save their profile data to Firestore
+      // 4. Proceed to dashboard for all valid STI accounts
+      onLogin();
       
     } catch (error) {
       console.error("Error signing in with Microsoft:", error.message);
+      setError("Microsoft login failed. Please try again.");
     }
   };
 
   return (
-    <div className="login-container">
-      <div className="login-card">
-        {/*header-section*/}
-        <div className="header-container">
+    <div className="landing-page">
+      
+      {/* TOP NAV BAR */}
+      <div className="top-nav-bar">
+        <div className="spacer"></div>
+        <button className="top-login-btn" onClick={openModal}>
+          Log in
+        </button>
+      </div>
 
+      {/* STI BRANDING HEADER */}
+      <div className="brand-header">
+        <div className="sti-logo-container">
+          <div className="sti-yellow-box">
+            <span className="globe-icon">🌐</span>
+            <span className="sti-text">STI</span>
+          </div>
+          <h1 className="brand-title">STI Education Services Group</h1>
         </div>
       </div>
-      <button 
-        onClick={handleMicrosoftLogin}
-      >
-        Sign in with Microsoft
-      </button>
+
+      {/* MAIN CONTENT AREA */}
+      <div className="landing-content">
+        
+        {showForm && (
+          <div className="login-modal-overlay">
+            <div className="login-modal-content" onClick={(e) => e.stopPropagation()}>
+              
+              <div className="modal-header">
+                <i className="ph ph-x close-icon" onClick={closeModal}>
+                  ✕
+                </i>
+              </div>
+
+              <div className="modal-body">
+                {/* Error message banner */}
+                {error && <div style={{color: '#dc2626', fontSize: '12px', fontWeight: 'bold', marginBottom: '8px', textAlign: 'center'}}>{error}</div>}
+                
+                <button className="btn-office" onClick={handleMicrosoftLogin}>
+                  <i className="ph-fill ph-windows-logo"></i>
+                  Log in with Office 365
+                </button>
+              </div>
+
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -11,7 +11,7 @@ $red-main: #EF4444;
 .mis-profile-container {
   padding: 16px;
   background: $bg-main;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   
   /* Constrain height so the scrollbar appears */
   height: 100%;
