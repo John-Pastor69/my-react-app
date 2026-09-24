@@ -20,6 +20,8 @@ export default function App() {
   const uiUserManage = "mis";
   const uiAccount =  "mis";
 
+  const fakeUserRole = "user_reservation"; // Change this to test different dashboards
+
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
   return (

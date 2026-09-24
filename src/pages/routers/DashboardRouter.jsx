@@ -8,6 +8,14 @@ const OsaDashboard = lazy(() => import('../osa/OsaDashboard'));
 const SchoolAdminDashboard = lazy(() => import('../school_admin/SchoolAdminDashboard'));
 const UserDashboard = lazy(() => import('../user/UserDashboard'));
 
+const MisCalendar = lazy(() => import('../mis/MisCalendar'));
+const MisEquipmentManagement = lazy(() => import('../mis/MisEquipmentManagement'));
+const MisUserManagement = lazy(() => import('../mis/MisUserManagement'));
+const MisApproval = lazy(() => import('../mis/MisApproval'));
+const MisProfile = lazy(() => import('../mis/MisProfile'));
+
+const UserReservation = lazy(() => import("../user/UserReservation"));
+
 const DashboardRouter = ({ currentUserRole }) => {
   
   const dashboardComponents = {
@@ -18,6 +26,15 @@ const DashboardRouter = ({ currentUserRole }) => {
     'osa': <OsaDashboard />,
     'school_admin': <SchoolAdminDashboard />,
     'user': <UserDashboard />,
+
+    'mis_calendar': <MisCalendar />,
+    'mis_equipment': <MisEquipmentManagement />,
+    'mis_user': <MisUserManagement/>,
+    'mis_approval': <MisApproval/>,
+    'mis_profile': <MisProfile />,
+    
+    'user_reservation': <UserReservation />
+
   };
 
   const CurrentDashboard = dashboardComponents[currentUserRole] || null;

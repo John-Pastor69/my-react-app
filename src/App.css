@@ -181,8 +181,8 @@
     right: 0;
     border-right-color: var(--border);
   }
-
 }
+
 .app-container {
   display: flex;
   flex-direction: row; 
@@ -190,15 +190,23 @@
   width: 100vw;
   overflow: hidden;
 }
+
 .main-content {
   display: flex;
   flex-direction: column;
-  flex: 1; /* Stretches the container to fill the screen */
+  flex: 1; 
   background-color: #f9fafb; 
 }
 
 @media (max-width: 768px) {
   .page-content {
-    padding: 16px; /* Reduces the 32px PC padding to 16px for phones */
+    padding: 16px; 
+  }
+  
+  .main-content {
+    min-width: 100vw;
+    max-width: 100vw;
+    margin-left: 0 !important;
+    overflow-x: hidden;
   }
 }
