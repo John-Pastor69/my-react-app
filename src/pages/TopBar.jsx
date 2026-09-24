@@ -1,5 +1,5 @@
 import { Search, Bell, Menu } from 'lucide-react';
-import '../styles/TopBar.scss';
+import '../styles/Topbar.scss'; 
 
 const TopBar = ({toggleSidebar}) => {
   return (

@@ -40,6 +40,7 @@ const Sidebar = ({isOpen, setIsOpen}) => {
         <NavLink 
           to="/approvals" 
           className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
+          onClick={() => setIsOpen(false)} // Adds automatic closing
         >
           <CheckCircle2 className="nav-icon" size={20} />
           <span className="nav-label">Approvals</span>
@@ -48,6 +49,7 @@ const Sidebar = ({isOpen, setIsOpen}) => {
         <NavLink 
           to="/calendar" 
           className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
+          onClick={() => setIsOpen(false)} // Adds automatic closing
         >
           <Calendar className="nav-icon" size={20} />
           <span className="nav-label">Calendar</span>
@@ -56,6 +58,7 @@ const Sidebar = ({isOpen, setIsOpen}) => {
         <NavLink 
           to="/equipment" 
           className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
+          onClick={() => setIsOpen(false)} // Adds automatic closing
         >
           <Briefcase className="nav-icon" size={20} />
           <span className="nav-label">Equipment</span>
@@ -64,6 +67,7 @@ const Sidebar = ({isOpen, setIsOpen}) => {
         <NavLink 
           to="/users" 
           className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
+          onClick={() => setIsOpen(false)} // Adds automatic closing
         >
           <Users className="nav-icon" size={20} />
           <span className="nav-label">Users</span>
@@ -72,6 +76,7 @@ const Sidebar = ({isOpen, setIsOpen}) => {
         <NavLink 
           to="/account" 
           className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
+          onClick={() => setIsOpen(false)} // Adds automatic closing
         >
           <User className="nav-icon" size={20} />
           <span className="nav-label">Account</span>

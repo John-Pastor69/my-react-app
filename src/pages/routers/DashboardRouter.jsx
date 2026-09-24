@@ -8,13 +8,6 @@ const OsaDashboard = lazy(() => import('../osa/OsaDashboard'));
 const SchoolAdminDashboard = lazy(() => import('../school_admin/SchoolAdminDashboard'));
 const UserDashboard = lazy(() => import('../user/UserDashboard'));
 
-const MisCalendar = lazy(() => import('../mis/MisCalendar'));
-const MisEquipmentManagement = lazy(() => import('../mis/MisEquipmentManagement'));
-const MisUserManagement = lazy(() => import('../mis/MisUserManagement'));
-const MisApproval = lazy(() => import('../mis/MisApproval'));
-const MisProfile = lazy(() => import('../mis/MisProfile'));
-
-
 const DashboardRouter = ({ currentUserRole }) => {
   
   const dashboardComponents = {
@@ -25,20 +18,12 @@ const DashboardRouter = ({ currentUserRole }) => {
     'osa': <OsaDashboard />,
     'school_admin': <SchoolAdminDashboard />,
     'user': <UserDashboard />,
-
-    'mis_calendar': <MisCalendar />,
-    'mis_equipment': <MisEquipmentManagement />,
-    'mis_user': <MisUserManagement/>,
-    'mis_approval': <MisApproval/>,
-    'mis_profile': <MisProfile />
   };
 
-  const CurrentDashboard = dashboardComponents[currentUserRole] || (
-    <div className="error-state">Unauthorized Access or Invalid Role</div>
-  );
+  const CurrentDashboard = dashboardComponents[currentUserRole] || null;
 
   return (
-    <Suspense fallback={<div className="loading-spinner">Loading dashboard...</div>}>
+    <Suspense fallback={<div className="loading-spinner">Loading...</div>}>
       {CurrentDashboard}
     </Suspense>
   );
