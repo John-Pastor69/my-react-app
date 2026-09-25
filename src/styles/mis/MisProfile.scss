@@ -189,12 +189,15 @@ $red-main: #EF4444;
     input {
       background: $bg-panel;
       border: 1px solid transparent; 
-      padding: 12px 16px;
+      padding: 12px 16px !important; /* Enforces standard padding */
       border-radius: 6px;
       color: $text-dark;
       font-size: 14px;
       outline: none;
       box-shadow: 0 1px 2px rgba(0,0,0,0.02);
+      text-align: left !important; /* Forcefully stops Vite from centering */
+      width: 100%;
+      box-sizing: border-box;
 
       &:focus { border-color: $blue-main; }
     }
@@ -203,17 +206,23 @@ $red-main: #EF4444;
       position: relative;
       display: flex;
       align-items: center;
+      width: 100%;
       
-      i { position: absolute; color: $text-light; font-size: 16px; }
+      i { 
+        position: absolute; 
+        color: $text-light; 
+        font-size: 16px; 
+        z-index: 10; /* FIX: Brings the hidden icon to the front! */
+      }
       
       &:not(.right-icon) {
         i { left: 16px; }
-        input { width: 100%; padding-left: 44px; }
+        input { padding-left: 44px !important; } /* Fits the text perfectly next to the icon */
       }
 
       &.right-icon {
         i { right: 16px; cursor: pointer; }
-        input { width: 100%; padding-right: 44px; }
+        input { padding-right: 44px !important; }
       }
     }
   }
