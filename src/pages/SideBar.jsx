@@ -18,17 +18,17 @@ import '../styles/Sidebar.scss';
 
 // Roles that have elevated access beyond a standard requestor
 const ELEVATED_ROLES = [
-  'endorser', 
-  'building_admin', 
-  'osa', 
-  'mis', 
-  'academic_head', 
-  'school_admin'
+  'Endorser', 
+  'Building Admin', 
+  'OSA', 
+  'MIS', 
+  'Academic Head', 
+  'School Admin'
 ];
 
 // Roles with specific management tabs
-const FACILITY_ADMIN_ROLES = ['building_admin'];
-const SYSTEM_ADMIN_ROLES = ['mis'];
+const FACILITY_ADMIN_ROLES = ['Building Admin'];
+const SYSTEM_ADMIN_ROLES = ['MIS'];
 
 const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
 

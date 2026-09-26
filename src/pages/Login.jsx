@@ -42,18 +42,26 @@ export default function Login({ onLogin }) {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      let assignedRole = 'requestor'; // Set default to 'requestor'
+      let assignedRole = 'R equestor'; // Set default to 'requestor'
 
       if (userDoc.exists()) {
-        // If they are already in the database, grab their current role
         assignedRole = userDoc.data().role; 
       } else {
-        // If they are not in the database yet, add them immediately!
+        // Format live date as MM/DD/YYYY (e.g., 09/26/2026)
+        const d = new Date();
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const day = String(d.getDate()).padStart(2, '0');
+        const liveDate = `${month}/${day}/${d.getFullYear()}`;
+
+        // Add the new user to Firestore
         await setDoc(userDocRef, {
           email: user.email,
-          name: user.displayName || "Unknown User", // Saves their Microsoft display name
-          role: 'requestor', // Sets the default role you wanted
-          uid: user.uid
+          name: user.displayName || "Unknown User",
+          role: 'requestor',
+          uid: user.uid,
+          dateJoined: liveDate,
+          officeLocation: '',
+          phone: ''
         });
       }
 
@@ -98,9 +106,7 @@ export default function Login({ onLogin }) {
             <div className="login-modal-content" onClick={(e) => e.stopPropagation()}>
               
               <div className="modal-header">
-                <i className="ph ph-x close-icon" onClick={closeModal}>
-                  ✕
-                </i>
+                <i className="ph ph-x close-icon" onClick={closeModal}></i>
               </div>
 
               <div className="modal-body">

@@ -1,3 +1,25 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;700&display=swap');
+
+:root, body, html {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 400; 
+  color: #1E293B; 
+}
+
+button, input, textarea, select {
+  font-family: inherit;
+  font-weight: 400;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: 'Inter', system-ui, sans-serif;
+  font-weight: 700;
+}
+
+label {
+  font-weight: 700;
+}
+
 .counter {
   font-size: 16px;
   padding: 5px 10px;
