@@ -12,7 +12,7 @@
   font-family: system-ui, -apple-system, sans-serif;
   transition: width 0.3s ease;
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1200px) {
     display: flex;
     flex-direction: column;
     position: fixed;
@@ -174,7 +174,7 @@
 .sidebar-overlay {
   display: none;
 
-  @media (max-width: 1024px) {
+  @media (max-width: 1200px) {
     display: block;
     position: fixed;
     top: 0;

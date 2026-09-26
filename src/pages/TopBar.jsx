@@ -1,7 +1,56 @@
+import React, { useState, useEffect } from 'react';
 import { Search, Bell, Menu } from 'lucide-react';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { auth, db } from '../Firebase'; 
 import '../styles/Topbar.scss'; 
 
-const TopBar = ({toggleSidebar}) => {
+const TopBar = ({ toggleSidebar }) => {
+  const [userData, setUserData] = useState({
+    displayName: 'Loading...',
+    avatarName: 'User',
+    role: '...',
+    avatarUrl: null
+  });
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const docRef = doc(db, 'users', user.uid);
+        
+        const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data();
+            const rawName = data.name || '';
+            
+            let finalDisplayName = rawName;
+            let finalAvatarName = rawName.replace(/ /g, '+');
+
+            // Apply the exact same name cleanup logic used in MisProfile
+            if (rawName.includes(',')) {
+              const nameParts = rawName.split(',');
+              const parsedLastName = nameParts[0].trim();
+              const parsedFirstName = (nameParts[1] || '').replace(/\s*\(.*\)$/, '').trim();
+              
+              finalDisplayName = `${parsedFirstName} ${parsedLastName}`;
+              finalAvatarName = `${parsedFirstName}+${parsedLastName}`;
+            }
+
+            setUserData({
+              displayName: finalDisplayName,
+              avatarName: finalAvatarName,
+              role: data.role ? data.role : 'Requestor',
+              avatarUrl: data.avatarUrl || null
+            });
+          }
+        });
+
+        return () => unsubscribeSnapshot();
+      }
+    });
+
+    return () => unsubscribeAuth();
+  }, []);
+
   return (
     <header className="topbar">
       <div className="header-titles">
@@ -25,13 +74,19 @@ const TopBar = ({toggleSidebar}) => {
 
         <div className="user-profile">
           <img 
-            src="https://ui-avatars.com/api/?name=Marcus+Reid&background=0D8ABC&color=fff" 
+            src={
+              userData.avatarUrl || 
+              `https://ui-avatars.com/api/?name=${userData.avatarName}&background=1E293B&color=fff`
+            } 
             alt="User Profile" 
             className="avatar" 
+            style={{ objectFit: 'cover' }} 
           />
           <div className="user-info">
-            <span className="user-name">Marcus Reid</span>
-            <span className="user-role">Building Admin</span>
+            <span className="user-name">{userData.displayName}</span>
+            <span className="user-role" style={{ textTransform: 'capitalize' }}>
+              {userData.role}
+            </span>
           </div>
         </div>
       </div>

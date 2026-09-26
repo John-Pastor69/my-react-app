@@ -16,6 +16,13 @@
     padding: 0;
     margin-right: 16px;
     color: #111827;
+
+    @media (max-width: 1200px) {
+    display: flex; 
+    align-items: center;
+    justify-content: center;
+    padding: 8px;
+    }
   }
 
   .header-titles {
