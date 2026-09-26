@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db, microsoftProvider } from '../Firebase';
 import '../styles/Login.scss';
 
@@ -26,32 +26,41 @@ export default function Login({ onLogin }) {
       const result = await signInWithPopup(auth, microsoftProvider);
       const user = result.user;
       
-      // 2. Verify if the email belongs to the STI domain (adjust domain suffix if needed)
+      // 2. Verify if the email belongs to the STI domain
       const isStiEmail = user.email && (
         user.email.endsWith('@globalcity.sti.edu.ph') || 
         user.email.endsWith('@sti.edu.ph')
       );
 
       if (!isStiEmail) {
-        // Kick out non-STI accounts
         await signOut(auth);
         setError("Access denied. Only STI institutional accounts are allowed.");
         return;
       }
 
-      // 3. Check Firestore to see if this specific user has an explicit role (e.g., 'admin')
+      // 3. Check Firestore for the user's role
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      let assignedRole = 'user'; // Default role for any valid STI login
+      let assignedRole = 'requestor'; // Set default to 'requestor'
+
       if (userDoc.exists()) {
-        assignedRole = userDoc.data().role; // Pulls 'admin' or other roles from Firestore
+        // If they are already in the database, grab their current role
+        assignedRole = userDoc.data().role; 
+      } else {
+        // If they are not in the database yet, add them immediately!
+        await setDoc(userDocRef, {
+          email: user.email,
+          name: user.displayName || "Unknown User", // Saves their Microsoft display name
+          role: 'requestor', // Sets the default role you wanted
+          uid: user.uid
+        });
       }
 
       console.log(`Successfully logged in as ${user.email} with role: ${assignedRole}`);
       
-      // 4. Proceed to dashboard for all valid STI accounts
-      onLogin();
+      // 4. THIS IS THE FIX: Pass the role to App.jsx!
+      onLogin(assignedRole); 
       
     } catch (error) {
       console.error("Error signing in with Microsoft:", error.message);

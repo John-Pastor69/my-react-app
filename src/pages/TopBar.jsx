@@ -8,8 +8,6 @@ const TopBar = ({toggleSidebar}) => {
         <button className="mobile-menu-btn" onClick={toggleSidebar}>
           <Menu size={24} />
         </button>
-
-        <h1>Dashboard</h1>
       </div>
 
       <div className="header-actions">

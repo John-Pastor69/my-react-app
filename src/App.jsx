@@ -26,15 +26,28 @@ export default function App() {
 
   // if user is logged in
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
+  // assign role
+  const [userRole, setUserRole] = useState('requestor');
 
-  // If not logged in, only show the Login page
+  // If not logged in, only show the Login page, when logged in set the role to user(default)
   if (!isAuthenticated) {
-    return <Login onLogin={() => setIsAuthenticated(true)} />;
-  }
+  return <Login onLogin={(role) => {
+    setIsAuthenticated(true);
+    setUserRole(role);
+  }} />;
+}
 
   return (
     <div className="app-container">
-      <SideBar isOpen={isSidebarOpen} setIsOpen={setIsSidebarOpen} onLogout={() => setIsAuthenticated(false)}/>
+      <SideBar 
+        isOpen={isSidebarOpen} 
+        setIsOpen={setIsSidebarOpen} 
+        onLogout={() => {
+         setIsAuthenticated(false); 
+         setUserRole('requestor'); 
+        }} 
+        userRole={userRole} 
+    />
       <div className="main-content">
         <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
         <div className="page-content">
@@ -52,16 +65,16 @@ export default function App() {
               element={<ApprovalRouter currentUserRole={uiApproval} />}
             />
             <Route 
-              path="/calendar" 
-              element={<CalendarRouter currentUserRole={uiCalendar} />}
-            />
-            <Route 
               path="/equipment" 
               element={<EquipmentManagementRouter currentUserRole={uiEquipment} />}
             />
             <Route 
-              path="/users" 
+              path="/user" 
               element={<UserManagementRouter currentUserRole={uiUserManage} />}
+            />
+            <Route 
+              path="/calendar" 
+              element={<CalendarRouter currentUserRole={uiCalendar} />}
             />
             <Route 
               path="/account" 

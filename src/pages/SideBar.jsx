@@ -3,17 +3,34 @@ import { signOut } from 'firebase/auth';
 import { auth } from '../Firebase';
 import { 
   LayoutDashboard, 
+  PlusCircle, 
+  List,       
   CheckCircle2, 
+  Building,   
+  Package,    
+  Users,      
   Calendar, 
-  Briefcase, 
-  Users, 
   User, 
   LogOut,
   X
 } from 'lucide-react';
 import '../styles/Sidebar.scss'; 
 
-const Sidebar = ({isOpen, setIsOpen, onLogout}) => {
+// Roles that have elevated access beyond a standard requestor
+const ELEVATED_ROLES = [
+  'endorser', 
+  'building_admin', 
+  'osa', 
+  'mis', 
+  'academic_head', 
+  'school_admin'
+];
+
+// Roles with specific management tabs
+const FACILITY_ADMIN_ROLES = ['building_admin'];
+const SYSTEM_ADMIN_ROLES = ['mis'];
+
+const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
 
   const handleSignOut = async () => {
     try {
@@ -32,6 +49,7 @@ const Sidebar = ({isOpen, setIsOpen, onLogout}) => {
           <X size={28} />
         </button>
       </div>
+      
       {/* Brand Header */}        
       <div className="sidebar-header">
         <div className="brand-icon">F</div>
@@ -40,66 +58,73 @@ const Sidebar = ({isOpen, setIsOpen, onLogout}) => {
 
       {/* Main Navigation */}
       <nav className="sidebar-nav">
-        <NavLink 
-          to="/dashboard" 
-          className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
-          onClick={() => setIsOpen(false)} // Adds automatic closing
-        >
-          <LayoutDashboard className="nav-icon" size={20} />
-          <span className="nav-label">Dashboard</span>
+        
+        {/* --- DASHBOARD (Hidden from Requestor) --- */}
+        {ELEVATED_ROLES.includes(userRole) && (
+          <NavLink to="/dashboard" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+            <LayoutDashboard className="nav-icon" size={20} />
+            <span className="nav-label">Dashboard</span>
+          </NavLink>
+        )}
+
+        {/* --- BASE TABS (Visible to Everyone) --- */}
+        <NavLink to="/reserve" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+          <PlusCircle className="nav-icon" size={20} />
+          <span className="nav-label">Reserve</span>
         </NavLink>
 
-        <NavLink 
-          to="/approvals" 
-          className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
-          onClick={() => setIsOpen(false)} // Adds automatic closing
-        >
-          <CheckCircle2 className="nav-icon" size={20} />
-          <span className="nav-label">Approvals</span>
+        <NavLink to="/schedule" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+          <List className="nav-icon" size={20} />
+          <span className="nav-label">Schedule</span>
         </NavLink>
 
-        <NavLink 
-          to="/calendar" 
-          className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
-          onClick={() => setIsOpen(false)} // Adds automatic closing
-        >
+        {/* --- APPROVAL (Hidden from Requestor) --- */}
+        {ELEVATED_ROLES.includes(userRole) && (
+          <NavLink to="/approval" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+            <CheckCircle2 className="nav-icon" size={20} />
+            <span className="nav-label">Approval</span>
+          </NavLink>
+        )}
+
+        {/* --- FACILITY MANAGEMENT (Only Building Admin) --- */}
+        {FACILITY_ADMIN_ROLES.includes(userRole) && (
+          <NavLink to="/facility" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+            <Building className="nav-icon" size={20} />
+            <span className="nav-label">Facilities</span>
+          </NavLink>
+        )}
+
+        {/* --- SYSTEM MANAGEMENT (Only MIS) --- */}
+        {SYSTEM_ADMIN_ROLES.includes(userRole) && (
+          <>
+            <NavLink to="/equipment" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+              <Package className="nav-icon" size={20} />
+              <span className="nav-label">Equipments</span>
+            </NavLink>
+
+            <NavLink to="/user" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+              <Users className="nav-icon" size={20} />
+              <span className="nav-label">Users</span>
+            </NavLink>
+          </>
+        )}
+
+        {/* --- OTHER TABS (Visible to Everyone) --- */}
+        <NavLink to="/calendar" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
           <Calendar className="nav-icon" size={20} />
           <span className="nav-label">Calendar</span>
         </NavLink>
 
-        <NavLink 
-          to="/equipment" 
-          className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
-          onClick={() => setIsOpen(false)} // Adds automatic closing
-        >
-          <Briefcase className="nav-icon" size={20} />
-          <span className="nav-label">Equipment</span>
-        </NavLink>
-
-        <NavLink 
-          to="/users" 
-          className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
-          onClick={() => setIsOpen(false)} // Adds automatic closing
-        >
-          <Users className="nav-icon" size={20} />
-          <span className="nav-label">Users</span>
-        </NavLink>
-
-        <NavLink 
-          to="/account" 
-          className={({ isActive }) => isActive ? "nav-link active" : "nav-link"}
-          onClick={() => setIsOpen(false)} // Adds automatic closing
-        >
+        <NavLink to="/account" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
           <User className="nav-icon" size={20} />
           <span className="nav-label">Account</span>
         </NavLink>
       </nav>
 
-      {/* Footer Actions */}
       <div className="sidebar-footer">
         <button className="sign-out-btn" onClick={handleSignOut}>
           <LogOut className="nav-icon" size={20} />
-          <span className="nav-lab  el">Sign Out</span>
+          <span className="nav-label">Sign Out</span>
         </button>
       </div>
     </aside>
