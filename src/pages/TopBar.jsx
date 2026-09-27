@@ -35,10 +35,20 @@ const TopBar = ({ toggleSidebar }) => {
               finalAvatarName = `${parsedFirstName}+${parsedLastName}`;
             }
 
+            // --- Custom Role Formatting ---
+            let fetchedRole = data.role ? data.role : 'Requestor';
+            const lowerRole = fetchedRole.toLowerCase();
+            
+            if (lowerRole === 'mis') {
+              fetchedRole = 'MIS';
+            } else if (lowerRole === 'osa') {
+              fetchedRole = 'OSA';
+            }
+
             setUserData({
               displayName: finalDisplayName,
               avatarName: finalAvatarName,
-              role: data.role ? data.role : 'Requestor',
+              role: fetchedRole,
               avatarUrl: data.avatarUrl || null
             });
           }
@@ -84,6 +94,7 @@ const TopBar = ({ toggleSidebar }) => {
           />
           <div className="user-info">
             <span className="user-name">{userData.displayName}</span>
+            {/* CSS capitalize handles standard roles, while our JS handles acronyms */}
             <span className="user-role" style={{ textTransform: 'capitalize' }}>
               {userData.role}
             </span>

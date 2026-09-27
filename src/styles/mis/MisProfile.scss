@@ -134,8 +134,8 @@ $red-main: #EF4444;
         
         h2 { font-size: 24px; font-weight: 700; color: $text-dark; margin: 0; }
         .role-badge {
-          background: #E2E8F0;
-          color: $text-dark;
+          background: #E0E7FF;
+          color: #4338CA;
           padding: 4px 10px;
           border-radius: 12px;
           font-size: 12px;
@@ -377,6 +377,49 @@ $red-main: #EF4444;
         }
       }
     }
+  }
+}
+
+// Make images look clickable when not editing
+.banner-bg { cursor: pointer; }
+.avatar-container img { cursor: pointer; }
+
+// Image Expansion Modal
+.image-modal-content {
+  background: transparent !important;
+  box-shadow: none !important;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 !important;
+  max-width: 90vw !important;
+  max-height: 90vh !important;
+
+  img {
+    max-width: 100%;
+    max-height: 85vh;
+    object-fit: contain;
+    border-radius: 8px;
+    box-shadow: 0 10px 25px rgba(0,0,0,0.5);
+  }
+
+  .btn-close-image {
+    align-self: flex-end;
+    background: rgba(0, 0, 0, 0.6);
+    color: white;
+    border: none;
+    border-radius: 50%;
+    width: 36px;
+    height: 36px;
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    font-size: 20px;
+    transition: background 0.2s;
+
+    &:hover { background: rgba(0, 0, 0, 0.9); }
   }
 }
 

@@ -21,6 +21,8 @@ const MisProfile = () => {
   const [deleteVerification, setDeleteVerification] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
 
+  const [expandedImage, setExpandedImage] = useState(null);
+
   const [formData, setFormData] = useState({
     firstName: '',
     lastName: '',
@@ -225,6 +227,11 @@ const MisProfile = () => {
         {/* DYNAMIC BANNER BACKGROUND */}
         <div 
           className="banner-bg" 
+          onClick={() => {
+            if (!isEditing && (bannerPreview || formData.bannerUrl)) {
+              setExpandedImage(bannerPreview || formData.bannerUrl);
+            }
+          }}
           style={{ 
             backgroundImage: bannerPreview 
               ? `url(${bannerPreview})` 
@@ -249,6 +256,15 @@ const MisProfile = () => {
             {/* DYNAMIC AVATAR */}
             <div className="avatar-container">
               <img 
+                onClick={() => {
+                  if (!isEditing) {
+                    setExpandedImage(
+                      avatarPreview || 
+                      formData.avatarUrl || 
+                      `https://ui-avatars.com/api/?name=${formData.firstName || 'User'}+${formData.lastName || ''}&background=1E293B&color=fff&size=120`
+                    );
+                  }
+                }}
                 src={
                   avatarPreview || 
                   formData.avatarUrl || 
@@ -365,6 +381,19 @@ const MisProfile = () => {
             </div>
           </div>
         )}
+
+        {/* IMAGE EXPANSION MODAL */}
+        {expandedImage && (
+          <div className="modal-overlay" onClick={() => setExpandedImage(null)}>
+            <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
+              <button className="btn-close-image" onClick={() => setExpandedImage(null)}>
+                <i className="ph ph-x"></i>
+              </button>
+              <img src={expandedImage} alt="Expanded Fullscreen" />
+            </div>
+          </div>
+        )}
+        
       </div>
     </div>
   );

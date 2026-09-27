@@ -12,30 +12,22 @@ import ApprovalRouter from './pages/routers/ApprovalRouter';
 import UserManagementRouter from './pages/routers/UserManagementRouter';
 import EquipmentManagementRouter from './pages/routers/EquipmentRouter';
 import ProfileRouter from './pages/routers/ProfileRouter';
+import ReservationRouter from './pages/routers/ReservationRouter'
 
 export default function App() {
-
-  const uiDashboard = "mis";
-  const uiApproval = "mis";
-  const uiCalendar = "mis";
-  const uiEquipment = "mis";
-  const uiUserManage = "mis";
-  const uiAccount =  "mis";
-
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
 
-  // if user is logged in
+  // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
-  // assign role
   const [userRole, setUserRole] = useState('requestor');
 
-  // If not logged in, only show the Login page, when logged in set the role to user(default)
+  // If not logged in, only show the Login page
   if (!isAuthenticated) {
-  return <Login onLogin={(role) => {
-    setIsAuthenticated(true);
-    setUserRole(role);
-  }} />;
-}
+    return <Login onLogin={(role) => {
+      setIsAuthenticated(true);
+      setUserRole(role);
+    }} />;
+  }
 
   return (
     <div className="app-container">
@@ -47,38 +39,57 @@ export default function App() {
          setUserRole('requestor'); 
         }} 
         userRole={userRole} 
-    />
+      />
       <div className="main-content">
         <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
         <div className="page-content">
           <Routes> 
             
-            //login route
-            <Route path="/" element={<Navigate to="/dashboard" replace />} />
+            {/* 1. Dynamic Login Redirect */}
+            <Route 
+              path="/" 
+              element={
+                userRole.toLowerCase() === 'requestor' 
+                  ? <Navigate to="/reserve" replace /> 
+                  : <Navigate to="/dashboard" replace />
+              } 
+            />
 
+            {/* 2. Protected Dashboard Route */}
             <Route 
               path="/dashboard" 
-              element={<DashboardRouter currentUserRole={uiDashboard} />}
+              element={
+                userRole.toLowerCase() === 'requestor'
+                  ? <Navigate to="/reserve" replace />
+                  : <DashboardRouter currentUserRole={userRole.toLowerCase()} />
+              }
             />
+
             <Route 
-              path="/approvals" 
-              element={<ApprovalRouter currentUserRole={uiApproval} />}
+              path="/reserve" 
+              element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />}
+            />
+
+            {/* 3. Dynamic Routers */}
+            <Route 
+              path="/approval" 
+              element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
               path="/equipment" 
-              element={<EquipmentManagementRouter currentUserRole={uiEquipment} />}
+              element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
               path="/user" 
-              element={<UserManagementRouter currentUserRole={uiUserManage} />}
+              element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
               path="/calendar" 
-              element={<CalendarRouter currentUserRole={uiCalendar} />}
+              element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
               path="/account" 
-              element={<ProfileRouter currentUserRole={uiAccount} />}
+              element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />}
             />
           </Routes>
         </div>

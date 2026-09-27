@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
-import '../../styles/user/UserReservation.scss';
+import '../../styles/user/EndorserReservation.scss';
 
-const UserReservation = () => {
+const EndorserReservation = () => {
   // --- STATE MANAGEMENT ---
   const [days, setDays] = useState(0);
   
@@ -323,4 +323,4 @@ const UserReservation = () => {
   );
 };
 
-export default UserReservation;
+export default EndorserReservation;

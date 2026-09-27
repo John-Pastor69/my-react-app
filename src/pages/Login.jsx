@@ -42,7 +42,7 @@ export default function Login({ onLogin }) {
       const userDocRef = doc(db, 'users', user.uid);
       const userDoc = await getDoc(userDocRef);
 
-      let assignedRole = 'R equestor'; // Set default to 'requestor'
+      let assignedRole = 'Requestor'; // Set default to 'requestor'
 
       if (userDoc.exists()) {
         assignedRole = userDoc.data().role; 

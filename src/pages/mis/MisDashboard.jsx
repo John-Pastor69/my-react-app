@@ -37,7 +37,7 @@ const MisDashboard = () => {
                         value={selectedMonth}
                         onChange={(e) => setSelectedMonth(e.target.value)}
                     >
-                        <option>November 2023</option>
+                        <option>mis dashboard</option>
                         <option>December 2023</option>
                         <option>January 2024</option>
                     </select>

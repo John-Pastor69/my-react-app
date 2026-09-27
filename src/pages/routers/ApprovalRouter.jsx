@@ -1,11 +1,13 @@
 import { Suspense, lazy } from 'react';
 
 const MisApproval = lazy(() => import('../mis/MisApproval'));
+const EndorserApproval = lazy(() => import('../endorser/EndorserApproval'));
 
 const ApprovalRouter = ({currentUserRole}) => {
 
     const approvalComponents = {
-        'mis': <MisApproval />
+        'mis': <MisApproval />,
+        'endorser': <EndorserApproval/>
     };
 
     const CurrentDashboard = approvalComponents[currentUserRole] || null;
