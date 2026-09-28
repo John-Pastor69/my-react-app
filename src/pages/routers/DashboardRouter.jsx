@@ -14,7 +14,7 @@ const DashboardRouter = ({ currentUserRole }) => {
     'endorser': <EndorserDashboard />,
     'building admin': <BuildingDashboard />,
     'osa': <OsaDashboard />,
-    'mis': <Schedule />,
+    'mis': <MisDashboard />,
     'academic head': <AcadHeadDashboard />,
     'school admin': <SchoolAdminDashboard />,
     'schedule': <Schedule />
