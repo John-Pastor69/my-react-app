@@ -1,4 +1,3 @@
-// Variables
 $bg-main: #F8FAFC;
 $bg-card: #FFFFFF;
 $text-dark: #1E293B;
@@ -252,20 +251,23 @@ $green-main: #10B981;
 
     .equip-item {
       display: flex;
-      justify-content: space-between;
-      align-items: center;
-      padding: 12px;
+      flex-direction: column; // Stack vertically on mobile phones
+      align-items: stretch;
+      gap: 12px;
+      padding: 14px;
       border: 1px solid $border-color;
       border-radius: 6px;
+      background: #FFFFFF;
 
       .equip-info {
         display: flex;
         align-items: center;
         gap: 12px;
+        width: 100%;
         
         .icon-box {
-          width: 32px; height: 32px; border-radius: 6px;
-          display: flex; align-items: center; justify-content: center; font-size: 16px;
+          width: 36px; height: 36px; border-radius: 6px;
+          display: flex; align-items: center; justify-content: center; font-size: 18px;
           flex-shrink: 0;
           &.bg-purple { background: #F3E8FF; color: #9333EA; }
           &.bg-blue { background: #DBEAFE; color: #2563EB; }
@@ -277,7 +279,7 @@ $green-main: #10B981;
 
         div {
           display: flex; flex-direction: column;
-          strong { font-size: 13px; }
+          strong { font-size: 13px; color: $text-dark; }
           span { font-size: 11px; color: $text-light; }
         }
       }
@@ -285,17 +287,19 @@ $green-main: #10B981;
       .counter {
         display: flex;
         align-items: center;
+        justify-content: flex-end; // Aligns the counter nicely to the right on mobile
         background: #F8FAFC;
         border: 1px solid $border-color;
         border-radius: 6px;
-        flex-shrink: 0;
+        width: fit-content;
+        align-self: flex-end; // Pushes counter to the right side of the card
         
         button {
-          background: transparent; border: none; padding: 6px 10px; cursor: pointer; color: $text-light;
+          background: transparent; border: none; padding: 6px 14px; cursor: pointer; color: $text-light; font-weight: 600;
           &:hover { color: $text-dark; }
         }
         input {
-          width: 30px; text-align: center; border: none; background: transparent; font-size: 13px; font-weight: 600; padding: 0; outline: none;
+          width: 36px; text-align: center; border: none; background: transparent; font-size: 13px; font-weight: 600; padding: 0; outline: none;
         }
       }
     }
@@ -307,6 +311,13 @@ $green-main: #10B981;
     gap: 16px;
     width: 100%;
 
+    .aircon-inputs-row {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      width: 100%;
+    }
+
     .toggle-box {
       display: flex;
       align-items: center;
@@ -315,6 +326,7 @@ $green-main: #10B981;
       border: 1px solid $green-main;
       border-radius: 6px;
       background: #ECFDF5;
+      flex-shrink: 0;
       
       div {
         display: flex; flex-direction: column;
@@ -370,13 +382,93 @@ $green-main: #10B981;
   }
 }
 
+// --- CUSTOM CALENDAR POPUP ---
+.calendar-overlay {
+  position: fixed;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: 40;
+}
+
+.custom-calendar-popup {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  margin-top: 8px;
+  background: $bg-card;
+  border: 1px solid $border-color;
+  border-radius: 8px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  padding: 16px;
+  z-index: 50;
+  width: 280px;
+  box-sizing: border-box;
+
+  .calendar-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 16px;
+    font-weight: 600;
+    font-size: 14px;
+    color: $text-dark;
+
+    button {
+      background: #F1F5F9;
+      border: none;
+      border-radius: 6px;
+      width: 28px;
+      height: 28px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      color: $text-dark;
+      transition: background 0.2s;
+      
+      &:hover { background: #E2E8F0; }
+    }
+  }
+
+  .calendar-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 6px;
+    text-align: center;
+
+    .calendar-day-name {
+      font-size: 12px;
+      font-weight: 600;
+      color: $text-light;
+      margin-bottom: 8px;
+    }
+
+    .calendar-day {
+      font-size: 13px;
+      padding: 8px 0;
+      border-radius: 6px;
+      cursor: pointer;
+      color: $text-dark;
+      transition: all 0.2s;
+
+      &:hover:not(.empty) {
+        background: $blue-main;
+        color: white;
+      }
+
+      &.empty {
+        cursor: default;
+      }
+    }
+  }
+}
+
 // --- RESPONSIVE BREAKPOINTS ---
-@media (min-width: 768px) { // Tablet
+@media (min-width: 768px) { // Tablet & PC
   .reservation-container {
     padding: 24px;
     
     .form-card {
-      padding: 24px; /* Restores wider padding on PC */
+      padding: 24px; 
     }
 
     .form-grid {
@@ -386,8 +478,22 @@ $green-main: #10B981;
     
     .checkbox-grid { grid-template-columns: 1fr 1fr; }
     
-    .aircon-controls { flex-direction: row; align-items: center; }
+    // Switch equipment items back to side-by-side row on larger screens
+    .equipment-list .equip-item {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
 
+      .counter {
+        align-self: center;
+      }
+    }
+    
+    .aircon-controls .aircon-inputs-row { 
+      flex-direction: row; 
+      align-items: center; 
+    }
+    
     .form-actions {
       flex-direction: row; justify-content: space-between;
       .right-actions { flex-direction: row; }

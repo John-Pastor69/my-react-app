@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { deleteUser } from 'firebase/auth';
-import { auth, db } from '../../Firebase'; 
-import '../../styles/mis/MisProfile.scss';
+import { auth, db } from '../Firebase'; 
+import '../styles/Profile.scss';
 
 const MisProfile = () => {
   // --- STATE MANAGEMENT ---
@@ -362,7 +362,7 @@ const MisProfile = () => {
               <h3>Danger Zone</h3>
             </div>
             <p>This action cannot be undone.</p>
-            <button className="btn-deactivate" onClick={() => setShowDeleteModal(true)}><i className="ph ph-prohibit"></i> Deactivate Account</button>
+            <button className="btn-deactivate" onClick={() => setShowDeleteModal(true)}><i className="ph ph-prohibit"></i> Delete Account</button>
           </div>
         </div>
 

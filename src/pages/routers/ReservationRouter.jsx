@@ -5,13 +5,13 @@ const Reservation = lazy(() => import('../Reservation'))
 const ReservationRouter = ({currentUserRole}) => {
 
     const reservationComponents = {
-        'requestor': <Reservation/>,
-        'endorser': <Reservation />,
-        'building admin': <Reservation />,
-        'osa': <Reservation/>,
-        'mis': <Reservation/>,
-        'academic head': <Reservation/>,
-        'school admin': <Reservation/>,
+        'requestor': <Reservation currentUserRole={currentUserRole} />,
+        'endorser': <Reservation currentUserRole={currentUserRole} />,
+        'building admin': <Reservation currentUserRole={currentUserRole} />,
+        'osa': <Reservation currentUserRole={currentUserRole} />,
+        'mis': <Reservation currentUserRole={currentUserRole} />,
+        'academic head': <Reservation currentUserRole={currentUserRole} />,
+        'school admin': <Reservation currentUserRole={currentUserRole} />,
 
     };
 

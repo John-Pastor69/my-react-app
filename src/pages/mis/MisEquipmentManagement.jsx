@@ -1,9 +1,16 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../../Firebase';
 import "../../styles/mis/MisEquipmentManagement.scss";
 
 const MisEquipmentManagement = () => {
-  // Initial local state for equipment inventory
+  // Equipment state loaded from Firestore
   const [equipmentData, setEquipmentData] = useState([]);
+
+  // --- SEARCH & PAGINATION STATES ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // Modal State for Editing
   const [editingItem, setEditingItem] = useState(null);
@@ -13,21 +20,37 @@ const MisEquipmentManagement = () => {
   const [newItem, setNewItem] = useState({
     name: '',
     sku: '',
-    category: '',
-    totalCount: '',
+    quantity: '',
     status: 'Available'
   });
 
   const handleAddClick = () => {
-    setNewItem({ name: '', sku: '', category: '', totalCount: '', status: 'Available' });
+    setNewItem({ name: '', sku: '', quantity: '', status: 'Available' });
     setIsAddingNew(true);
   };
+
+  // --- LIVE LISTEN TO FIRESTORE "equipments" COLLECTION ---
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'equipments'),
+      (snapshot) => {
+        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+        setEquipmentData(list);
+        setSelectedIds((prev) => prev.filter((id) => list.some((item) => item.id === id)));
+      },
+      (error) => {
+        console.error('Failed to load equipment from Firestore:', error);
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // Row selection for bulk delete
   const [selectedIds, setSelectedIds] = useState([]);
 
   const toggleSelectAll = (e) => {
-    setSelectedIds(e.target.checked ? equipmentData.map((item) => item.id) : []);
+    setSelectedIds(e.target.checked ? currentData.map((item) => item.id) : []);
   };
 
   const toggleSelectOne = (id) => {
@@ -36,8 +59,7 @@ const MisEquipmentManagement = () => {
     );
   };
 
-  // Confirmation modal state (instead of window.confirm, which some
-  // embedded/dev environments silently block)
+  // Confirmation modal state
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   const handleDeleteSelected = () => {
@@ -45,103 +67,144 @@ const MisEquipmentManagement = () => {
     setIsConfirmingDelete(true);
   };
 
-  const confirmDelete = () => {
-    setEquipmentData((prev) => prev.filter((item) => !selectedIds.includes(item.id)));
-    setSelectedIds([]);
-    setIsConfirmingDelete(false);
+  const confirmDelete = async () => {
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach((id) => batch.delete(doc(db, 'equipments', id)));
+      await batch.commit();
+      
+      setSelectedIds([]);
+      setIsConfirmingDelete(false);
+      
+      const newTotalItems = filteredData.length - selectedIds.length;
+      const newTotalPages = Math.max(1, Math.ceil(newTotalItems / itemsPerPage));
+      if (currentPage > newTotalPages) {
+        setCurrentPage(newTotalPages);
+      }
+    } catch (error) {
+      console.error('Failed to delete equipment:', error);
+    }
   };
 
-  // Helper to open edit modal
   const handleEditClick = (item) => {
-    setEditingItem({ ...item });
+    setEditingItem({ 
+      ...item, 
+      adjustment: 0 // starts at 0 for adding/subtracting
+    });
   };
 
-  // Helper to decrease available units directly from table
-  const handleDecreaseAvailable = (id) => {
-    setEquipmentData((prevData) =>
-      prevData.map((item) => {
-        if (item.id === id && item.availableCount > 0) {
-          const newAvailable = item.availableCount - 1;
-          const newStatus = newAvailable === 0 ? 'In Use' : item.status;
-          const newStatusClass = newAvailable === 0 ? 'status-in-use' : item.statusClass;
-
-          return {
-            ...item,
-            availableCount: newAvailable,
-            status: newStatus,
-            statusClass: newStatusClass,
-            lastUpdated: 'Just now'
-          };
-        }
-        return item;
-      })
-    );
-  };
-
-  // Save changes from Edit Modal
-  const handleSaveEdit = (e) => {
+  // Save changes to Firestore on Save Changes click (Base Available + Adjustment)
+  const handleSaveEdit = async (e) => {
     e.preventDefault();
+    if (!editingItem) return;
+    
+    const baseAvailable = Number(editingItem.availableCount) || 0;
+    const currentInUse = (Number(editingItem.totalCount) || 0) - baseAvailable;
+    const adjustment = Number(editingItem.adjustment) || 0;
+    
+    const newAvailable = Math.max(0, baseAvailable + adjustment);
+    const newTotal = newAvailable + currentInUse;
+    
+    let status = editingItem.status;
+    let available = newAvailable;
 
-    let updatedClass = 'status-available';
-    if (editingItem.status === 'In Use') updatedClass = 'status-in-use';
-    if (editingItem.status === 'Maintenance') updatedClass = 'status-maintenance';
-    if (editingItem.status === 'Unavailable') updatedClass = 'status-unavailable';
-
-    setEquipmentData((prevData) =>
-      prevData.map((item) =>
-        item.id === editingItem.id
-          ? {
-              ...editingItem,
-              availableCount: Number(editingItem.availableCount),
-              totalCount: Number(editingItem.totalCount),
-              statusClass: updatedClass,
-              lastUpdated: 'Just now'
-            }
-          : item
-      )
-    );
-
-    setEditingItem(null); // Close modal
-  };
-
-  // Save a brand new equipment item
-  const handleSaveNewEquipment = (e) => {
-    e.preventDefault();
+    if (status === 'Maintenance' || status === 'Unavailable' || newTotal === 0) {
+      available = 0;
+      if (newTotal === 0 && status !== 'Maintenance') status = 'Unavailable';
+    }
 
     let statusClass = 'status-available';
-    if (newItem.status === 'In Use') statusClass = 'status-in-use';
-    if (newItem.status === 'Maintenance') statusClass = 'status-maintenance';
-    if (newItem.status === 'Unavailable') statusClass = 'status-unavailable';
+    if (status === 'Unavailable') statusClass = 'status-unavailable';
+    if (status === 'Maintenance') statusClass = 'status-maintenance';
 
-    const total = Number(newItem.totalCount) || 0;
-    // A brand new item starts fully available, unless it's already In Use/Maintenance
-    const available = (newItem.status === 'Available') ? total : 0;
-
-    const nextId = equipmentData.length > 0
-      ? Math.max(...equipmentData.map((item) => item.id)) + 1
-      : 1;
-
-    const itemToAdd = {
-      id: nextId,
-      name: newItem.name.trim() || 'Untitled Equipment',
-      sku: newItem.sku.trim() || `SKU: NEW-${nextId}`,
-      category: newItem.category.trim() || 'Uncategorized',
-      quantity: total,
-      availableCount: available,
-      totalCount: total,
-      status: newItem.status,
-      statusClass,
-      lastUpdated: 'Just now'
-    };
-
-    setEquipmentData((prevData) => [...prevData, itemToAdd]);
-    setIsAddingNew(false);
+    try {
+      await updateDoc(doc(db, 'equipments', editingItem.id), {
+        availableCount: available,
+        totalCount: newTotal,
+        status: status,
+        statusClass: statusClass,
+        lastUpdated: 'Just now'
+      });
+      setEditingItem(null); 
+    } catch (error) {
+      console.error('Failed to update equipment:', error);
+    }
   };
 
-  // Dynamic summary metrics calculation
-  const totalAvailableUnits = equipmentData.reduce((acc, curr) => acc + curr.availableCount, 0);
-  const totalInUseUnits = equipmentData.reduce((acc, curr) => acc + (curr.totalCount - curr.availableCount), 0);
-  const totalMaintenanceItems = equipmentData.filter((item) => item.status === 'Maintenance').length;
+  // Save new equipment to Firestore with Maintenance support
+  const handleSaveNewEquipment = async (e) => {
+    e.preventDefault();
+    const total = Number(newItem.quantity) || 0;
+
+    let status = newItem.status;
+    let available = total;
+
+    if (status === 'Maintenance' || status === 'Unavailable' || total === 0) {
+      available = 0;
+      if (total === 0 && status !== 'Maintenance') status = 'Unavailable';
+    }
+
+    let statusClass = 'status-available';
+    if (status === 'Unavailable') statusClass = 'status-unavailable';
+    if (status === 'Maintenance') statusClass = 'status-maintenance';
+
+    try {
+      await addDoc(collection(db, 'equipments'), {
+        name: newItem.name.trim() || 'Untitled Equipment',
+        sku: newItem.sku.trim() || `SKU: NEW-${Date.now().toString().slice(-4)}`,
+        availableCount: available,
+        totalCount: total,
+        status: status,
+        statusClass,
+        lastUpdated: 'Just now'
+      });
+      setIsAddingNew(false);
+    } catch (error) {
+      console.error('Failed to add equipment to Firestore:', error);
+    }
+  };
+
+  // --- FILTERING & PAGINATION LOGIC ---
+  const filteredData = equipmentData.filter((item) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (item.name && item.name.toLowerCase().includes(query)) || 
+      (item.sku && item.sku.toLowerCase().includes(query))
+    );
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentData = filteredData.slice(startIndex, startIndex + itemsPerPage); 
+
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, '...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage, '...', totalPages);
+      }
+    }
+    return pages;
+  };
+
+  // --- METRIC CALCULATIONS ---
+  const totalAvailableUnits = equipmentData
+    .filter(item => item.status === 'Available')
+    .reduce((acc, curr) => acc + (curr.availableCount || 0), 0);
+
+  const totalInUseUnits = equipmentData
+    .filter(item => item.status === 'Available')
+    .reduce((acc, curr) => acc + ((curr.totalCount || 0) - (curr.availableCount || 0)), 0);
+
+  const totalMaintenanceUnits = equipmentData
+    .filter(item => item.status === 'Maintenance')
+    .reduce((acc, curr) => acc + (curr.totalCount || 0), 0);
 
   return (
     <div className="equipment-management-content">
@@ -153,18 +216,16 @@ const MisEquipmentManagement = () => {
             <span className="count">{totalAvailableUnits}</span>
           </div>
         </div>
-
         <div className="metric-card">
           <div className="metric-info">
-            <span className="label">In Use</span>
+            <span className="label">In-Use</span>
             <span className="count">{totalInUseUnits}</span>
           </div>
         </div>
-
         <div className="metric-card">
           <div className="metric-info">
             <span className="label">Maintenance</span>
-            <span className="count">{totalMaintenanceItems}</span>
+            <span className="count">{totalMaintenanceUnits}</span>
           </div>
         </div>
       </div>
@@ -174,15 +235,22 @@ const MisEquipmentManagement = () => {
         <div className="table-controls">
           <div className="controls-left">
             <h2>Equipment Inventory</h2>
-            <p>{equipmentData.length} total items listed across all categories</p>
+            <p>{equipmentData.length} total items listed</p>
           </div>
 
           <div className="controls-right">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
-              <input type="text" placeholder="Search equipment..." />
+              <input 
+                type="text" 
+                placeholder="Search equipment..." 
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
             </div>
-            <button className="btn-secondary">⚙ Filter</button>
             <button
               className="btn-danger"
               onClick={handleDeleteSelected}
@@ -202,91 +270,107 @@ const MisEquipmentManagement = () => {
               <th className="checkbox-col">
                 <input
                   type="checkbox"
-                  checked={equipmentData.length > 0 && selectedIds.length === equipmentData.length}
+                  checked={currentData.length > 0 && selectedIds.length === currentData.length}
                   onChange={toggleSelectAll}
                 />
               </th>
               <th>EQUIPMENT NAME</th>
-              <th>CATEGORY</th>
-              <th>QUANTITY</th>
               <th>AVAILABLE</th>
+              <th>IN-USE</th>
               <th>STATUS</th>
               <th>LAST UPDATED</th>
               <th>ACTIONS</th>
             </tr>
           </thead>
           <tbody>
-            {equipmentData.length === 0 ? (
+            {filteredData.length === 0 ? (
               <tr>
-                <td colSpan={8} className="empty-state-cell">
+                <td colSpan={7} className="empty-state-cell">
                   <div className="empty-state">
                     <span className="empty-state-icon">📭</span>
-                    <p className="empty-state-title">No equipment yet</p>
-                    <p className="empty-state-subtitle">Add your first item to start tracking inventory.</p>
+                    <p className="empty-state-title">{searchQuery ? 'No matching equipment found' : 'No equipment yet'}</p>
+                    <p className="empty-state-subtitle">{searchQuery ? 'Try adjusting your search query.' : 'Add your first item to start tracking inventory.'}</p>
                   </div>
                 </td>
               </tr>
             ) : (
-              equipmentData.map((item) => (
-              <tr key={item.id}>
-                <td className="checkbox-col">
-                  <input
-                    type="checkbox"
-                    checked={selectedIds.includes(item.id)}
-                    onChange={() => toggleSelectOne(item.id)}
-                  />
-                </td>
-                <td>
-                  <div className="item-name-cell">
-                    <div>
-                      <div className="item-title">{item.name}</div>
-                      <div className="item-sku">{item.sku}</div>
-                    </div>
-                  </div>
-                </td>
-                <td><span className="category-tag">{item.category}</span></td>
-                <td className="font-semibold">{item.quantity} units</td>
-                <td className="font-semibold">{item.availableCount} / {item.totalCount}</td>
-                <td>
-                  <span className={`status-badge ${item.statusClass}`}>{item.status}</span>
-                </td>
-                <td className="text-muted">{item.lastUpdated}</td>
-                <td>
-                  <div className="action-buttons">
-                    <button className="action-btn" onClick={() => handleEditClick(item)}>
-                      ✏ Edit
-                    </button>
-                    <button
-                      className="action-btn borrow-btn"
-                      onClick={() => handleDecreaseAvailable(item.id)}
-                      disabled={item.availableCount === 0}
-                    >
-                      ➖ Use
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
+              currentData.map((item) => {
+                const inUseCount = item.status === 'Available' ? (item.totalCount - item.availableCount) : 0;
+                return (
+                  <tr key={item.id}>
+                    <td className="checkbox-col">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(item.id)}
+                        onChange={() => toggleSelectOne(item.id)}
+                      />
+                    </td>
+                    <td>
+                      <div className="item-name-cell">
+                        <div>
+                          <div className="item-title">{item.name}</div>
+                          <div className="item-sku">{item.sku}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td className="font-semibold">{item.availableCount}</td>
+                    <td className="font-semibold">{inUseCount}</td>
+                    <td>
+                      <span className={`status-badge ${item.statusClass}`}>{item.status}</span>
+                    </td>
+                    <td className="text-muted">{item.lastUpdated}</td>
+                    <td>
+                      <div className="action-buttons">
+                        <button className="action-btn" onClick={() => handleEditClick(item)}>
+                          ✏ Edit
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                );
+              })
             )}
           </tbody>
         </table>
         </div>
 
-        {/* Table Footer */}
+        {/* Dynamic Table Footer & Pagination */}
         <div className="table-pagination">
           <span className="pagination-text">
-            {equipmentData.length === 0
+            {filteredData.length === 0
               ? 'No equipment items to show'
-              : `Showing 1 to ${equipmentData.length} of ${equipmentData.length} equipment items`}
+              : `Showing ${startIndex + 1} to ${Math.min(startIndex + itemsPerPage, filteredData.length)} of ${filteredData.length} equipment items`}
           </span>
           <div className="pagination-buttons">
-            <button className="page-btn" disabled>Prev</button>
-            <button className="page-btn active">1</button>
-            <button className="page-btn">2</button>
-            <button className="page-btn">3</button>
-            <span className="dots">...</span>
-            <button className="page-btn">23</button>
-            <button className="page-btn">Next</button>
+            <button 
+              className="page-btn" 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Prev
+            </button>
+            
+            {getPageNumbers().map((num, idx) => (
+              num === '...' ? (
+                <span key={`dots-${idx}`} className="dots">...</span>
+              ) : (
+                <button 
+                  key={idx}
+                  className={`page-btn ${currentPage === num ? 'active' : ''}`}
+                  onClick={() => setCurrentPage(num)}
+                >
+                  {num}
+                </button>
+              )
+            ))}
+
+            <button 
+              className="page-btn" 
+              disabled={currentPage === totalPages || filteredData.length === 0}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
@@ -304,27 +388,57 @@ const MisEquipmentManagement = () => {
                   onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value })}
                 >
                   <option value="Available">Available</option>
-                  <option value="In Use">In Use</option>
-                  <option value="Maintenance">Maintenance</option>
                   <option value="Unavailable">Unavailable</option>
+                  <option value="Maintenance">Maintenance</option>
                 </select>
               </div>
 
+              {/* 1st Field: Current Available Display */}
               <div className="form-group">
-                <label>Available Units</label>
+                <label>Current Available</label>
                 <input
                   type="number"
                   value={editingItem.availableCount}
-                  onChange={(e) => setEditingItem({ ...editingItem, availableCount: e.target.value })}
+                  readOnly
+                  style={{
+                    border: '1px solid #E2E8F0', 
+                    borderRadius: '6px', 
+                    padding: '9px 12px', 
+                    textAlign: 'center', 
+                    fontWeight: 600, 
+                    fontSize: '15px',
+                    background: '#F8FAFC',
+                    color: '#1E293B',
+                    width: '100%',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
                 />
               </div>
 
+              {/* 2nd Field: Add / Deduct Quantity starting at 0 */}
               <div className="form-group">
-                <label>Total Units</label>
+                <label>Add / Deduct Quantity</label>
                 <input
                   type="number"
-                  value={editingItem.totalCount}
-                  onChange={(e) => setEditingItem({ ...editingItem, totalCount: e.target.value })}
+                  value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0}
+                  onChange={(e) => {
+                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0;
+                    setEditingItem({ ...editingItem, adjustment: val });
+                  }}
+                  style={{
+                    border: '1px solid #E2E8F0', 
+                    borderRadius: '6px', 
+                    padding: '9px 12px', 
+                    textAlign: 'center', 
+                    fontWeight: 600, 
+                    fontSize: '15px',
+                    background: '#FFFFFF',
+                    color: '#1E293B',
+                    width: '100%',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
                 />
               </div>
 
@@ -365,23 +479,12 @@ const MisEquipmentManagement = () => {
               </div>
 
               <div className="form-group">
-                <label>Category</label>
-                <input
-                  type="text"
-                  value={newItem.category}
-                  onChange={(e) => setNewItem({ ...newItem, category: e.target.value })}
-                  placeholder="e.g. AV Equipment"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Total Units</label>
+                <label>Quantity</label>
                 <input
                   type="number"
                   min="0"
-                  value={newItem.totalCount}
-                  onChange={(e) => setNewItem({ ...newItem, totalCount: e.target.value })}
+                  value={newItem.quantity}
+                  onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
                   required
                 />
               </div>
@@ -393,9 +496,8 @@ const MisEquipmentManagement = () => {
                   onChange={(e) => setNewItem({ ...newItem, status: e.target.value })}
                 >
                   <option value="Available">Available</option>
-                  <option value="In Use">In Use</option>
-                  <option value="Maintenance">Maintenance</option>
                   <option value="Unavailable">Unavailable</option>
+                  <option value="Maintenance">Maintenance</option>
                 </select>
               </div>
 
@@ -425,5 +527,4 @@ const MisEquipmentManagement = () => {
   );
 };
 
-// This exact line is required for React.lazy() to work
 export default MisEquipmentManagement;
