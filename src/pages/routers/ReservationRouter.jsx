@@ -1,15 +1,21 @@
 import { Suspense, lazy } from 'react';
 
-const EndorserReservation = lazy(() => import('../user/EndorserReservation'))
+const Reservation = lazy(() => import('../Reservation'))
 
-const EndorserRouter = ({currentUserRole}) => {
+const ReservationRouter = ({currentUserRole}) => {
 
-    const endorserComponents = {
-        'endorser': <EndorserReservation />,
-        'mis': <EndorserReservation />
+    const reservationComponents = {
+        'requestor': <Reservation/>,
+        'endorser': <Reservation />,
+        'building admin': <Reservation />,
+        'osa': <Reservation/>,
+        'mis': <Reservation/>,
+        'academic head': <Reservation/>,
+        'school admin': <Reservation/>,
+
     };
 
-    const CurrentDashboard = endorserComponents[currentUserRole] || null;
+    const CurrentDashboard = reservationComponents[currentUserRole] || null;
 
     return (
     <Suspense fallback={<div className="loading-spinner">Loading...</div>}>
@@ -18,4 +24,4 @@ const EndorserRouter = ({currentUserRole}) => {
     );
 };
 
-export default EndorserRouter;
+export default ReservationRouter;

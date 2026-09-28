@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import '../../styles/user/EndorserReservation.scss';
+import '../styles/Reservation.scss';
 
-const EndorserReservation = () => {
+// 1. Accept the currentUserRole as a prop (default to requestor just in case)
+const EndorserReservation = ({ currentUserRole = 'requestor' }) => {
   // --- STATE MANAGEMENT ---
   const [days, setDays] = useState(0);
   
@@ -15,6 +16,9 @@ const EndorserReservation = () => {
   });
 
   const [aircon, setAircon] = useState(true);
+
+  // 2. Create a clean boolean variable to check the role
+  const isRequestor = currentUserRole === 'requestor';
 
   // --- HANDLERS ---
   const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount));
@@ -32,13 +36,16 @@ const EndorserReservation = () => {
       <div className="form-card">
         <div className="section-header"><span className="step-badge">1</span> Requestor Information</div>
         
-        <div className="info-box blue">
-          <i className="ph ph-user-focus"></i>
-          <div>
-            <strong>Endorser Required</strong><br/>
-            Since you selected <strong>Student</strong> as your role, an endorser's information is required below.
+        {/* 3. Conditionally Render the Info Box */}
+        {isRequestor && (
+          <div className="info-box blue">
+            <i className="ph ph-user-focus"></i>
+            <div>
+              <strong>Endorser Required</strong><br/>
+              Since your role is a <strong>Student / Requestor</strong>, an endorser's information is required below.
+            </div>
           </div>
-        </div>
+        )}
 
         <div className="form-grid col-2">
           <div className="input-group">
@@ -83,25 +90,30 @@ const EndorserReservation = () => {
           </div>
         </div>
 
-        <div className="divider"><span>Endorser Information (Students Role Only)</span></div>
+        {/* 4. Conditionally Render the Endorser Fields */}
+        {isRequestor && (
+          <>
+            <div className="divider"><span>Endorser Information (Students Role Only)</span></div>
 
-        <div className="form-grid col-2">
-          <div className="input-group">
-            <label>Endorser's Full Name <span>*</span></label>
-            <input type="text" defaultValue="" placeholder="Faculty/Adviser name" />
-          </div>
-          <div className="input-group">
-            <label>Endorser's Designation <span>*</span></label>
-            <input type="text" defaultValue="" placeholder="e.g. Dean, Faculty Adviser" />
-          </div>
-          <div className="input-group" style={{gridColumn: '1 / -1'}}>
-            <label>Endorser's Contact Email <span>*</span></label>
-            <div className="input-with-icon left-icon">
-              <i className="ph ph-envelope-simple"></i>
-              <input type="email" defaultValue="" placeholder="endorser@university.edu.ph" />
+            <div className="form-grid col-2">
+              <div className="input-group">
+                <label>Endorser's Full Name <span>*</span></label>
+                <input type="text" defaultValue="" placeholder="Faculty/Adviser name" />
+              </div>
+              <div className="input-group">
+                <label>Endorser's Designation <span>*</span></label>
+                <input type="text" defaultValue="" placeholder="e.g. Dean, Faculty Adviser" />
+              </div>
+              <div className="input-group" style={{gridColumn: '1 / -1'}}>
+                <label>Endorser's Contact Email <span>*</span></label>
+                <div className="input-with-icon left-icon">
+                  <i className="ph ph-envelope-simple"></i>
+                  <input type="email" defaultValue="" placeholder="endorser@university.edu.ph" />
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
       </div>
 
       {/* SECTION 2: Event Information */}

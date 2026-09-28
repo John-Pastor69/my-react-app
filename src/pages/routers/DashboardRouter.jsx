@@ -10,11 +10,11 @@ const SchoolAdminDashboard = lazy(() => import('../school_admin/SchoolAdminDashb
 const DashboardRouter = ({ currentUserRole }) => {
   
   const dashboardComponents = {
-    'academic head': <AcadHeadDashboard />,
-    'building admin': <BuildingDashboard />,
     'endorser': <EndorserDashboard />,
-    'mis': <MisDashboard />,
+    'building admin': <BuildingDashboard />,
     'osa': <OsaDashboard />,
+    'mis': <MisDashboard />,
+    'academic head': <AcadHeadDashboard />,
     'school admin': <SchoolAdminDashboard />,
 
   };
