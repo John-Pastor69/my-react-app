@@ -74,30 +74,9 @@ main,
         word-break: keep-all;
       }
     }
-
-    .btn-primary {
-      background: $primary-color;
-      color: #ffffff;
-      border: none;
-      padding: 10px 18px;
-      border-radius: 8px;
-      font-size: 0.875rem;
-      font-weight: 600;
-      cursor: pointer;
-      width: 100%;
-      box-sizing: border-box;
-
-      @media (min-width: $bp-tablet) {
-        width: auto;
-      }
-
-      &:hover {
-        background: color.adjust($primary-color, $lightness: -8%);
-      }
-    }
   }
 
-  /* Top Metrics */
+  /* Top Metrics (3 cards) */
   .metrics-grid {
     display: grid;
     grid-template-columns: 1fr;
@@ -107,12 +86,11 @@ main,
     box-sizing: border-box;
 
     @media (min-width: $bp-tablet) {
-      grid-template-columns: repeat(2, 1fr);
+      grid-template-columns: repeat(3, 1fr);
       gap: 16px;
     }
 
     @media (min-width: $bp-desktop) {
-      grid-template-columns: repeat(4, 1fr);
       gap: 20px;
     }
 
@@ -273,6 +251,16 @@ main,
       }
     }
 
+    .error-banner {
+      background: #fef2f2;
+      border: 1px solid #fecaca;
+      color: #dc2626;
+      padding: 10px 12px;
+      border-radius: 8px;
+      font-size: 0.85rem;
+      margin-bottom: 12px;
+    }
+
     /* Scrollable Table Area w/ Styled Scrollbar */
     .table-scroll-wrapper {
       width: 100%;
@@ -348,6 +336,14 @@ main,
           justify-content: center;
           font-weight: 700;
           font-size: 0.9rem;
+          flex-shrink: 0;
+        }
+
+        .avatar-img {
+          width: 36px;
+          height: 36px;
+          border-radius: 50%;
+          object-fit: cover;
           flex-shrink: 0;
         }
 
@@ -521,7 +517,7 @@ main,
     }
   }
 
-  /* Modal */
+  /* Delete Confirmation Modal */
   .modal-overlay {
     position: fixed;
     top: 0;
@@ -549,34 +545,14 @@ main,
 
       h3 {
         margin-top: 0;
-        margin-bottom: 16px;
+        margin-bottom: 12px;
       }
 
-      .form-group {
-        margin-bottom: 16px;
-
-        label {
-          display: block;
-          font-size: 0.8rem;
-          font-weight: 600;
-          margin-bottom: 6px;
-          color: $text-muted;
-        }
-
-        input,
-        select {
-          width: 100%;
-          padding: 8px 12px;
-          border: 1px solid $border-color;
-          border-radius: 6px;
-          box-sizing: border-box;
-          font-size: 0.875rem;
-
-          &:focus {
-            outline: none;
-            border-color: $primary-color;
-          }
-        }
+      .confirm-text {
+        margin: 0 0 4px 0;
+        font-size: 0.875rem;
+        color: $text-muted;
+        line-height: 1.5;
       }
 
       .modal-actions {
@@ -592,12 +568,16 @@ main,
           border: 1px solid $border-color;
           font-size: 0.85rem;
           background: #fff;
+        }
 
-          &.btn-save {
-            background-color: $primary-color;
-            color: #fff;
-            border: none;
-            font-weight: 600;
+        .btn-danger-solid {
+          background-color: #dc2626;
+          color: #fff;
+          border: none;
+          font-weight: 600;
+
+          &:hover {
+            background-color: color.adjust(#dc2626, $lightness: -8%);
           }
         }
       }

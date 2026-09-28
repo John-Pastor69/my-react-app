@@ -1,93 +1,133 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
 
+// Map the `role` value stored in Firestore to a readable label.
+// Adjust these keys if your role values are spelled differently.
+const ROLE_LABELS = {
+  mis: 'MIS Admin',
+  building_admin: 'Building Admin',
+  school_admin: 'School Admin',
+  academic_head: 'Academic Head',
+  endorser: 'Endorser',
+  osa: 'OSA',
+  user: 'Requestor'
+};
+
+// Roles counted in the "Admins" card
+const ADMIN_ROLES = ['mis', 'building_admin', 'school_admin'];
+
+const roleLabel = (role) => ROLE_LABELS[role] || role || 'Unknown';
+
+const roleBadgeClass = (role) => {
+  if (role === 'mis') return 'role-admin';
+  if (!role || role === 'user') return 'role-requestor';
+  return 'role-approver';
+};
+
+// Users without a `status` field are treated as Active
+const getStatus = (user) => user.status || 'Active';
+
+// `lastActive` is expected to be a Firestore Timestamp (written on login)
+const formatLastActive = (value) => {
+  if (value && typeof value.toDate === 'function') {
+    return value.toDate().toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
+  }
+  return '—';
+};
+
 const MisUserManagement = () => {
-  // Initial local state for the user directory — starts empty
   const [usersData, setUsersData] = useState([]);
   const [selectedUserIds, setSelectedUserIds] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState('');
+  const [actionError, setActionError] = useState('');
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
-  // Modal state for adding a new user
-  const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newUser, setNewUser] = useState({
-    name: '',
-    email: '',
-    role: 'Requestor',
-    department: '',
-    status: 'Active'
-  });
+  // Live-listen to the "users" collection in Firestore
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      collection(db, 'users'),
+      (snapshot) => {
+        const list = snapshot.docs
+          .map((d) => ({ id: d.id, ...d.data() }))
+          .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
-  const handleAddClick = () => {
-    setNewUser({ name: '', email: '', role: 'Requestor', department: '', status: 'Active' });
-    setIsAddingNew(true);
-  };
-
-  const roleBadgeClass = (role) => {
-    if (role === 'MIS Admin') return 'role-admin';
-    if (role === 'Approver') return 'role-approver';
-    return 'role-requestor';
-  };
-
-  const handleSaveNewUser = (e) => {
-    e.preventDefault();
-
-    const nextId = usersData.length > 0
-      ? Math.max(...usersData.map((u) => u.id)) + 1
-      : 1;
-
-    const userToAdd = {
-      id: nextId,
-      name: newUser.name.trim() || 'Unnamed User',
-      email: newUser.email.trim() || 'unknown@facilityres.com',
-      role: newUser.role,
-      roleClass: roleBadgeClass(newUser.role),
-      department: newUser.department.trim() || 'Unassigned',
-      status: newUser.status,
-      lastActive: 'Just now'
-    };
-
-    setUsersData((prevData) => [...prevData, userToAdd]);
-    setIsAddingNew(false);
-  };
-
-  // Toggle a user's Active / Inactive status directly from the table
-  const handleToggleStatus = (id) => {
-    setUsersData((prevData) =>
-      prevData.map((user) =>
-        user.id === id
-          ? { ...user, status: user.status === 'Active' ? 'Inactive' : 'Active', lastActive: 'Just now' }
-          : user
-      )
+        setUsersData(list);
+        // Drop selections for users that no longer exist
+        setSelectedUserIds((prev) => prev.filter((id) => list.some((u) => u.id === id)));
+        setLoadError('');
+        setIsLoading(false);
+      },
+      (error) => {
+        console.error('Failed to load users:', error);
+        setLoadError(
+          error.code === 'permission-denied'
+            ? 'You do not have permission to view users. Check your Firestore rules.'
+            : 'Could not load users. Please try again.'
+        );
+        setIsLoading(false);
+      }
     );
+
+    return () => unsubscribe();
+  }, []);
+
+  // Toggle a user's Active / Inactive status in Firestore
+  const handleToggleStatus = async (user) => {
+    const nextStatus = getStatus(user) === 'Active' ? 'Inactive' : 'Active';
+    try {
+      setActionError('');
+      await updateDoc(doc(db, 'users', user.id), { status: nextStatus });
+    } catch (error) {
+      console.error('Failed to update status:', error);
+      setActionError('Could not update the user status.');
+    }
   };
 
-  // Handle single item checkbox selection
+  // Single checkbox selection
   const handleSelectUser = (id) => {
     setSelectedUserIds((prev) =>
       prev.includes(id) ? prev.filter((userId) => userId !== id) : [...prev, id]
     );
   };
 
-  // Handle "Select All" checkbox
+  // "Select All" checkbox
   const handleSelectAll = (e) => {
-    if (e.target.checked) {
-      setSelectedUserIds(usersData.map((u) => u.id));
-    } else {
-      setSelectedUserIds([]);
-    }
+    setSelectedUserIds(e.target.checked ? usersData.map((u) => u.id) : []);
   };
 
-  // Delete selected users
+  // Delete selected users (asks for confirmation first)
   const handleDeleteSelected = () => {
     if (selectedUserIds.length === 0) return;
-    setUsersData((prevData) => prevData.filter((user) => !selectedUserIds.includes(user.id)));
-    setSelectedUserIds([]);
+    setIsConfirmingDelete(true);
+  };
+
+  const confirmDelete = async () => {
+    try {
+      setActionError('');
+      const batch = writeBatch(db);
+      selectedUserIds.forEach((id) => batch.delete(doc(db, 'users', id)));
+      await batch.commit();
+      setSelectedUserIds([]);
+    } catch (error) {
+      console.error('Failed to delete users:', error);
+      setActionError('Could not delete the selected users.');
+    }
+    setIsConfirmingDelete(false);
   };
 
   // Dynamic summary metrics — all derived from usersData
   const totalUsers = usersData.length;
-  const activeUsers = usersData.filter((u) => u.status === 'Active').length;
-  const inactiveUsers = usersData.filter((u) => u.status === 'Inactive').length;
-  const totalAdmins = usersData.filter((u) => u.role === 'MIS Admin').length;
+  const activeUsers = usersData.filter((u) => getStatus(u) === 'Active').length;
+  const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role)).length;
 
   return (
     <div className="user-management-content">
@@ -95,9 +135,7 @@ const MisUserManagement = () => {
       <div className="page-header">
         <div>
           <h1>All Users</h1>
-          <p>{totalUsers} registered users across all roles</p>
         </div>
-        <button className="btn-primary" onClick={handleAddClick}>+ Add User</button>
       </div>
 
       {/* Top Metric Cards */}
@@ -118,13 +156,6 @@ const MisUserManagement = () => {
 
         <div className="metric-card">
           <div className="metric-info">
-            <span className="label">Inactive Users</span>
-            <span className="count">{inactiveUsers}</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-info">
             <span className="label">Admins</span>
             <span className="count">{totalAdmins}</span>
           </div>
@@ -136,7 +167,7 @@ const MisUserManagement = () => {
         <div className="table-controls">
           <div className="controls-left">
             <h2>User Directory</h2>
-            <p>Search, filter and manage all system users</p>
+            <p>Search and manage all system users</p>
           </div>
 
           <div className="controls-right">
@@ -144,16 +175,17 @@ const MisUserManagement = () => {
               <span className="search-icon">🔍</span>
               <input type="text" placeholder="Search users..." />
             </div>
-            <button className="btn-secondary">⚑ Filter</button>
-            <button 
-              className="btn-secondary btn-danger" 
+            <button
+              className="btn-secondary btn-danger"
               onClick={handleDeleteSelected}
               disabled={selectedUserIds.length === 0}
             >
-              🗑 Delete
+              🗑 Delete{selectedUserIds.length > 0 ? ` (${selectedUserIds.length})` : ''}
             </button>
           </div>
         </div>
+
+        {actionError && <div className="error-banner">{actionError}</div>}
 
         {/* Users Table Wrapper with Horizontal Scroll */}
         <div className="table-responsive-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
@@ -161,69 +193,82 @@ const MisUserManagement = () => {
             <thead>
               <tr>
                 <th className="checkbox-col">
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     onChange={handleSelectAll}
                     checked={usersData.length > 0 && selectedUserIds.length === usersData.length}
                   />
                 </th>
                 <th>USER</th>
                 <th>ROLE</th>
-                <th>DEPARTMENT</th>
+                <th>OFFICE LOCATION</th>
                 <th>STATUS</th>
                 <th>LAST ACTIVE</th>
                 <th>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
-              {usersData.length === 0 ? (
+              {isLoading || loadError || usersData.length === 0 ? (
                 <tr>
                   <td colSpan={7} className="empty-state-cell">
                     <div className="empty-state">
-                      <span className="empty-state-icon">👥</span>
-                      <p className="empty-state-title">No users yet</p>
-                      <p className="empty-state-subtitle">Add your first user to start managing accounts.</p>
+                      <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
+                      <p className="empty-state-title">
+                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users yet'}
+                      </p>
+                      <p className="empty-state-subtitle">
+                        {isLoading
+                          ? 'Fetching the latest users from the database.'
+                          : loadError || 'Users will appear here once they are registered.'}
+                      </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                usersData.map((user) => (
-                  <tr key={user.id}>
-                    <td className="checkbox-col">
-                      <input 
-                        type="checkbox" 
-                        checked={selectedUserIds.includes(user.id)}
-                        onChange={() => handleSelectUser(user.id)}
-                      />
-                    </td>
-                    <td>
-                      <div className="user-name-cell">
-                        <div className="avatar-placeholder">{user.name.charAt(0)}</div>
-                        <div>
-                          <div className="user-title">{user.name}</div>
-                          <div className="user-email">{user.email}</div>
+                usersData.map((user) => {
+                  const status = getStatus(user);
+                  return (
+                    <tr key={user.id}>
+                      <td className="checkbox-col">
+                        <input
+                          type="checkbox"
+                          checked={selectedUserIds.includes(user.id)}
+                          onChange={() => handleSelectUser(user.id)}
+                        />
+                      </td>
+                      <td>
+                        <div className="user-name-cell">
+                          {user.avatarUrl ? (
+                            <img className="avatar-img" src={user.avatarUrl} alt="" />
+                          ) : (
+                            <div className="avatar-placeholder">{(user.name || '?').charAt(0)}</div>
+                          )}
+                          <div>
+                            <div className="user-title">{user.name || 'Unnamed User'}</div>
+                            <div className="user-email">{user.email}</div>
+                          </div>
                         </div>
-                      </div>
-                    </td>
-                    <td><span className={`role-badge ${user.roleClass}`}>{user.role}</span></td>
-                    <td>{user.department}</td>
-                    <td>
-                      <span className={`status-dot ${user.status === 'Active' ? 'status-active' : 'status-inactive'}`}>
-                        {user.status}
-                      </span>
-                    </td>
-                    <td className="text-muted">{user.lastActive}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button className="action-btn">✏ Edit</button>
-                        <button className="action-btn assign-role-btn">👤 Assign Role</button>
-                        <button className="action-btn" onClick={() => handleToggleStatus(user.id)}>
-                          {user.status === 'Active' ? '⊘ Deactivate' : '● Activate'}
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))
+                      </td>
+                      <td><span className={`role-badge ${roleBadgeClass(user.role)}`}>{roleLabel(user.role)}</span></td>
+                      <td>{user.officeLocation || '—'}</td>
+                      <td>
+                        <span className={`status-dot ${status === 'Active' ? 'status-active' : 'status-inactive'}`}>
+                          {status}
+                        </span>
+                      </td>
+                      <td className="text-muted">{formatLastActive(user.lastActive)}</td>
+                      <td>
+                        <div className="action-buttons">
+                          <button className="action-btn">✏ Edit</button>
+                          <button className="action-btn assign-role-btn">👤 Assign Role</button>
+                          <button className="action-btn" onClick={() => handleToggleStatus(user)}>
+                            {status === 'Active' ? '⊘ Deactivate' : '● Activate'}
+                          </button>
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
               )}
             </tbody>
           </table>
@@ -244,73 +289,16 @@ const MisUserManagement = () => {
         </div>
       </div>
 
-      {/* Add User Modal */}
-      {isAddingNew && (
+      {/* Delete Confirmation Modal */}
+      {isConfirmingDelete && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Add User</h3>
-            <form onSubmit={handleSaveNewUser}>
-              <div className="form-group">
-                <label>Full Name</label>
-                <input
-                  type="text"
-                  value={newUser.name}
-                  onChange={(e) => setNewUser({ ...newUser, name: e.target.value })}
-                  placeholder="e.g. Sarah Lin"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Email</label>
-                <input
-                  type="email"
-                  value={newUser.email}
-                  onChange={(e) => setNewUser({ ...newUser, email: e.target.value })}
-                  placeholder="e.g. sarah.lin@facilityres.com"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Department</label>
-                <input
-                  type="text"
-                  value={newUser.department}
-                  onChange={(e) => setNewUser({ ...newUser, department: e.target.value })}
-                  placeholder="e.g. Engineering"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Role</label>
-                <select
-                  value={newUser.role}
-                  onChange={(e) => setNewUser({ ...newUser, role: e.target.value })}
-                >
-                  <option value="Requestor">Requestor</option>
-                  <option value="Approver">Approver</option>
-                  <option value="MIS Admin">MIS Admin</option>
-                </select>
-              </div>
-
-              <div className="form-group">
-                <label>Status</label>
-                <select
-                  value={newUser.status}
-                  onChange={(e) => setNewUser({ ...newUser, status: e.target.value })}
-                >
-                  <option value="Active">Active</option>
-                  <option value="Inactive">Inactive</option>
-                </select>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" onClick={() => setIsAddingNew(false)}>Cancel</button>
-                <button type="submit" className="btn-save">Add User</button>
-              </div>
-            </form>
+            <h3>Delete {selectedUserIds.length} user{selectedUserIds.length > 1 ? 's' : ''}?</h3>
+            <p className="confirm-text">This removes their profile from the database and can't be undone.</p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setIsConfirmingDelete(false)}>Cancel</button>
+              <button type="button" className="btn-danger-solid" onClick={confirmDelete}>Delete</button>
+            </div>
           </div>
         </div>
       )}
