@@ -1,10 +1,20 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { db } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
 
-// Map the `role` value stored in Firestore to a readable label.
-// Adjust these keys if your role values are spelled differently.
+// Role options kung saan direct na "requestor" ang value na ibabato sa DB
+const ROLE_OPTIONS = [
+  { value: 'mis', label: 'MIS Admin' },
+  { value: 'building_admin', label: 'Building Admin' },
+  { value: 'school_admin', label: 'School Admin' },
+  { value: 'academic_head', label: 'Academic Head' },
+  { value: 'endorser', label: 'Endorser' },
+  { value: 'osa', label: 'OSA' },
+  { value: 'requestor', label: 'Requestor' }
+];
+
+// Display label mapping
 const ROLE_LABELS = {
   mis: 'MIS Admin',
   building_admin: 'Building Admin',
@@ -12,24 +22,22 @@ const ROLE_LABELS = {
   academic_head: 'Academic Head',
   endorser: 'Endorser',
   osa: 'OSA',
+  requestor: 'Requestor',
   user: 'Requestor'
 };
 
-// Roles counted in the "Admins" card
 const ADMIN_ROLES = ['mis', 'building_admin', 'school_admin'];
 
 const roleLabel = (role) => ROLE_LABELS[role] || role || 'Unknown';
 
 const roleBadgeClass = (role) => {
   if (role === 'mis') return 'role-admin';
-  if (!role || role === 'user') return 'role-requestor';
+  if (!role || role === 'requestor' || role === 'user') return 'role-requestor';
   return 'role-approver';
 };
 
-// Users without a `status` field are treated as Active
 const getStatus = (user) => user.status || 'Active';
 
-// `lastActive` is expected to be a Firestore Timestamp (written on login)
 const formatLastActive = (value) => {
   if (value && typeof value.toDate === 'function') {
     return value.toDate().toLocaleString([], {
@@ -45,13 +53,16 @@ const formatLastActive = (value) => {
 
 const MisUserManagement = () => {
   const [usersData, setUsersData] = useState([]);
-  const [selectedUserIds, setSelectedUserIds] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
-  // Live-listen to the "users" collection in Firestore
+  // Role Modal State
+  const [roleModalUser, setRoleModalUser] = useState(null);
+  const [selectedRole, setSelectedRole] = useState('requestor');
+  const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+
+  // Snapshot listener para sa live updates ng users collection
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, 'users'),
@@ -61,8 +72,6 @@ const MisUserManagement = () => {
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         setUsersData(list);
-        // Drop selections for users that no longer exist
-        setSelectedUserIds((prev) => prev.filter((id) => list.some((u) => u.id === id)));
         setLoadError('');
         setIsLoading(false);
       },
@@ -80,51 +89,32 @@ const MisUserManagement = () => {
     return () => unsubscribe();
   }, []);
 
-  // Toggle a user's Active / Inactive status in Firestore
-  const handleToggleStatus = async (user) => {
-    const nextStatus = getStatus(user) === 'Active' ? 'Inactive' : 'Active';
+  const handleOpenRoleModal = (user) => {
+    setRoleModalUser(user);
+    const currentRole = user.role === 'user' ? 'requestor' : (user.role || 'requestor');
+    setSelectedRole(currentRole);
+  };
+
+  const handleSaveRole = async () => {
+    if (!roleModalUser) return;
+
     try {
+      setIsUpdatingRole(true);
       setActionError('');
-      await updateDoc(doc(db, 'users', user.id), { status: nextStatus });
+
+      await updateDoc(doc(db, 'users', roleModalUser.id), {
+        role: selectedRole
+      });
+
+      setRoleModalUser(null);
     } catch (error) {
-      console.error('Failed to update status:', error);
-      setActionError('Could not update the user status.');
+      console.error('Failed to update role:', error);
+      setActionError('Could not update the user role.');
+    } finally {
+      setIsUpdatingRole(false);
     }
   };
 
-  // Single checkbox selection
-  const handleSelectUser = (id) => {
-    setSelectedUserIds((prev) =>
-      prev.includes(id) ? prev.filter((userId) => userId !== id) : [...prev, id]
-    );
-  };
-
-  // "Select All" checkbox
-  const handleSelectAll = (e) => {
-    setSelectedUserIds(e.target.checked ? usersData.map((u) => u.id) : []);
-  };
-
-  // Delete selected users (asks for confirmation first)
-  const handleDeleteSelected = () => {
-    if (selectedUserIds.length === 0) return;
-    setIsConfirmingDelete(true);
-  };
-
-  const confirmDelete = async () => {
-    try {
-      setActionError('');
-      const batch = writeBatch(db);
-      selectedUserIds.forEach((id) => batch.delete(doc(db, 'users', id)));
-      await batch.commit();
-      setSelectedUserIds([]);
-    } catch (error) {
-      console.error('Failed to delete users:', error);
-      setActionError('Could not delete the selected users.');
-    }
-    setIsConfirmingDelete(false);
-  };
-
-  // Dynamic summary metrics — all derived from usersData
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => getStatus(u) === 'Active').length;
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role)).length;
@@ -138,7 +128,7 @@ const MisUserManagement = () => {
         </div>
       </div>
 
-      {/* Top Metric Cards */}
+      {/* Metrics Grid */}
       <div className="metrics-grid">
         <div className="metric-card">
           <div className="metric-info">
@@ -162,7 +152,7 @@ const MisUserManagement = () => {
         </div>
       </div>
 
-      {/* Main Table Container */}
+      {/* Table Container */}
       <div className="table-container">
         <div className="table-controls">
           <div className="controls-left">
@@ -175,30 +165,16 @@ const MisUserManagement = () => {
               <span className="search-icon">🔍</span>
               <input type="text" placeholder="Search users..." />
             </div>
-            <button
-              className="btn-secondary btn-danger"
-              onClick={handleDeleteSelected}
-              disabled={selectedUserIds.length === 0}
-            >
-              🗑 Delete{selectedUserIds.length > 0 ? ` (${selectedUserIds.length})` : ''}
-            </button>
           </div>
         </div>
 
         {actionError && <div className="error-banner">{actionError}</div>}
 
-        {/* Users Table Wrapper with Horizontal Scroll */}
-        <div className="table-responsive-wrapper" style={{ overflowX: 'auto', WebkitOverflowScrolling: 'touch' }}>
-          <table className="user-table" style={{ minWidth: '800px', width: '100%' }}>
+        {/* Users Table */}
+        <div className="table-scroll-wrapper">
+          <table className="user-table">
             <thead>
               <tr>
-                <th className="checkbox-col">
-                  <input
-                    type="checkbox"
-                    onChange={handleSelectAll}
-                    checked={usersData.length > 0 && selectedUserIds.length === usersData.length}
-                  />
-                </th>
                 <th>USER</th>
                 <th>ROLE</th>
                 <th>OFFICE LOCATION</th>
@@ -210,7 +186,7 @@ const MisUserManagement = () => {
             <tbody>
               {isLoading || loadError || usersData.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="empty-state-cell">
+                  <td colSpan={6} className="empty-state-cell">
                     <div className="empty-state">
                       <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
                       <p className="empty-state-title">
@@ -229,13 +205,6 @@ const MisUserManagement = () => {
                   const status = getStatus(user);
                   return (
                     <tr key={user.id}>
-                      <td className="checkbox-col">
-                        <input
-                          type="checkbox"
-                          checked={selectedUserIds.includes(user.id)}
-                          onChange={() => handleSelectUser(user.id)}
-                        />
-                      </td>
                       <td>
                         <div className="user-name-cell">
                           {user.avatarUrl ? (
@@ -249,7 +218,11 @@ const MisUserManagement = () => {
                           </div>
                         </div>
                       </td>
-                      <td><span className={`role-badge ${roleBadgeClass(user.role)}`}>{roleLabel(user.role)}</span></td>
+                      <td>
+                        <span className={`role-badge ${roleBadgeClass(user.role)}`}>
+                          {roleLabel(user.role)}
+                        </span>
+                      </td>
                       <td>{user.officeLocation || '—'}</td>
                       <td>
                         <span className={`status-dot ${status === 'Active' ? 'status-active' : 'status-inactive'}`}>
@@ -259,10 +232,11 @@ const MisUserManagement = () => {
                       <td className="text-muted">{formatLastActive(user.lastActive)}</td>
                       <td>
                         <div className="action-buttons">
-                          <button className="action-btn">✏ Edit</button>
-                          <button className="action-btn assign-role-btn">👤 Assign Role</button>
-                          <button className="action-btn" onClick={() => handleToggleStatus(user)}>
-                            {status === 'Active' ? '⊘ Deactivate' : '● Activate'}
+                          <button
+                            className="action-btn assign-role-btn"
+                            onClick={() => handleOpenRoleModal(user)}
+                          >
+                            👤 Assign Role
                           </button>
                         </div>
                       </td>
@@ -289,15 +263,52 @@ const MisUserManagement = () => {
         </div>
       </div>
 
-      {/* Delete Confirmation Modal */}
-      {isConfirmingDelete && (
+      {/* Assign Role Modal */}
+      {roleModalUser && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Delete {selectedUserIds.length} user{selectedUserIds.length > 1 ? 's' : ''}?</h3>
-            <p className="confirm-text">This removes their profile from the database and can't be undone.</p>
+            <h3>Assign Role</h3>
+            <p className="confirm-text">
+              Select a new role for <strong>{roleModalUser.name || roleModalUser.email}</strong>:
+            </p>
+            
+            <div style={{ margin: '16px 0' }}>
+              <select
+                value={selectedRole}
+                onChange={(e) => setSelectedRole(e.target.value)}
+                style={{
+                  width: '100%',
+                  padding: '10px',
+                  borderRadius: '8px',
+                  border: '1px solid #e2e8f0',
+                  fontSize: '0.875rem'
+                }}
+              >
+                {ROLE_OPTIONS.map((opt) => (
+                  <option key={opt.value} value={opt.value}>
+                    {opt.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+
             <div className="modal-actions">
-              <button type="button" onClick={() => setIsConfirmingDelete(false)}>Cancel</button>
-              <button type="button" className="btn-danger-solid" onClick={confirmDelete}>Delete</button>
+              <button
+                type="button"
+                onClick={() => setRoleModalUser(null)}
+                disabled={isUpdatingRole}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="btn-danger-solid"
+                style={{ background: '#7c3aed' }}
+                onClick={handleSaveRole}
+                disabled={isUpdatingRole}
+              >
+                {isUpdatingRole ? 'Saving…' : 'Save Role'}
+              </button>
             </div>
           </div>
         </div>

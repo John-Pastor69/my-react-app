@@ -24,6 +24,7 @@ const ELEVATED_ROLES = [
   'mis', 
   'academic head', 
   'school admin'
+  
 ];
 
 // Roles with specific management tabs
