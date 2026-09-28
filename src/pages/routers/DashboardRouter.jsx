@@ -6,6 +6,7 @@ const EndorserDashboard = lazy(() => import('../endorser/EndorserDashboard'));
 const MisDashboard = lazy(() => import('../mis/MisDashboard'));
 const OsaDashboard = lazy(() => import('../osa/OsaDashboard'));
 const SchoolAdminDashboard = lazy(() => import('../school_admin/SchoolAdminDashboard'));
+const Schedule = lazy(() => import('../Schedule'));
 
 const DashboardRouter = ({ currentUserRole }) => {
   
@@ -13,9 +14,10 @@ const DashboardRouter = ({ currentUserRole }) => {
     'endorser': <EndorserDashboard />,
     'building admin': <BuildingDashboard />,
     'osa': <OsaDashboard />,
-    'mis': <MisDashboard />,
+    'mis': <Schedule />,
     'academic head': <AcadHeadDashboard />,
     'school admin': <SchoolAdminDashboard />,
+    'schedule': <Schedule />
 
   };
 

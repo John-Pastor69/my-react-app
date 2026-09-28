@@ -1,0 +1,271 @@
+// Variables
+$bg-main: #F1F5F9;
+$bg-card: #FFFFFF;
+$text-dark: #0F172A;
+$text-muted: #64748B;
+$border-color: #E2E8F0;
+$blue-main: #3B82F6;
+
+.schedule-container {
+  padding: 24px;
+  background-color: $bg-main;
+  font-family: 'Inter', sans-serif;
+  min-height: 100vh;
+  box-sizing: border-box;
+
+  * { box-sizing: border-box; }
+
+  .schedule-main-card {
+    background: $bg-card;
+    border: 1px solid $border-color;
+    border-radius: 8px;
+    overflow: hidden;
+
+    .card-header {
+      padding: 20px 24px;
+      border-bottom: 1px solid $border-color;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 16px;
+
+      .title-group {
+        h3 { margin: 0 0 4px 0; color: $text-dark; font-size: 18px; }
+        p { margin: 0; color: $text-muted; font-size: 13px; }
+      }
+
+      .controls-group {
+        display: flex;
+        gap: 12px;
+
+        .search-box {
+          position: relative;
+          display: flex;
+          align-items: center;
+
+          i { position: absolute; left: 12px; color: $text-muted; }
+          input {
+            padding: 8px 12px 8px 36px;
+            border: 1px solid $border-color;
+            border-radius: 6px;
+            font-size: 13px;
+            outline: none;
+            width: 250px;
+            &:focus { border-color: $blue-main; }
+          }
+        }
+      }
+    }
+
+    .table-container {
+      width: 100%;
+      overflow-x: auto;
+
+      .table-header {
+        display: grid;
+        grid-template-columns: 2.5fr 1.5fr 1.5fr 1fr;
+        padding: 12px 24px;
+        background: #F8FAFC;
+        border-bottom: 1px solid $border-color;
+        font-size: 12px;
+        font-weight: 700;
+        color: $text-muted;
+      }
+
+      .table-row {
+        display: grid;
+        grid-template-columns: 2.5fr 1.5fr 1.5fr 1fr;
+        padding: 16px 24px;
+        border-bottom: 1px solid $border-color;
+        align-items: center;
+        transition: background 0.2s;
+
+        &:hover { background: #F8FAFC; }
+        &:last-child { border-bottom: none; }
+
+        .col-event {
+          display: flex;
+          align-items: center;
+          gap: 16px;
+
+          .event-icon {
+            width: 40px; height: 40px; border-radius: 8px;
+            display: flex; align-items: center; justify-content: center; font-size: 20px; flex-shrink: 0;
+            &.icon-blue { background: #DBEAFE; color: #2563EB; }
+            &.icon-purple { background: #F3E8FF; color: #9333EA; }
+            &.icon-yellow { background: #FEF3C7; color: #D97706; }
+            &.icon-green { background: #D1FAE5; color: #059669; }
+            &.icon-pink { background: #FCE7F3; color: #DB2777; }
+          }
+
+          .event-details {
+            display: flex; flex-direction: column;
+            strong { color: $text-dark; font-size: 14px; margin-bottom: 2px; }
+            span { color: $text-muted; font-size: 12px; }
+          }
+        }
+
+        .col-requestor {
+          display: flex;
+          align-items: center;
+          gap: 12px;
+
+          .avatar {
+            width: 32px; height: 32px; border-radius: 50%;
+            background: #E2E8F0; color: #475569;
+            display: flex; align-items: center; justify-content: center;
+            font-weight: 600; font-size: 13px; flex-shrink: 0;
+          }
+
+          .requestor-details {
+            display: flex; flex-direction: column;
+            strong { color: $text-dark; font-size: 14px; margin-bottom: 2px; }
+            span { color: $text-muted; font-size: 12px; }
+          }
+        }
+
+        .col-date {
+          .date-details {
+            display: flex; flex-direction: column;
+            strong { color: $text-dark; font-size: 14px; margin-bottom: 2px; }
+            span { color: $text-muted; font-size: 12px; }
+          }
+        }
+
+        .col-action {
+          display: flex;
+          gap: 8px;
+
+          .btn-view {
+            display: flex; align-items: center; gap: 6px;
+            padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 600; cursor: pointer;
+            background: #EFF6FF; color: #2563EB; border: 1px solid #BFDBFE;
+            &:hover { background: #DBEAFE; }
+          }
+        }
+      }
+    }
+
+    .card-footer {
+      padding: 16px 24px;
+      border-top: 1px solid $border-color;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: #F8FAFC;
+
+      .showing-text {
+        font-size: 12px;
+        color: $text-muted;
+      }
+
+      .pagination {
+        display: flex;
+        gap: 4px;
+
+        button {
+          padding: 6px 12px;
+          border: 1px solid $border-color;
+          background: #FFFFFF;
+          border-radius: 4px;
+          font-size: 12px;
+          color: $text-dark;
+          cursor: pointer;
+
+          &:hover:not(:disabled) { background: #F1F5F9; }
+          &:disabled { color: #CBD5E1; cursor: not-allowed; }
+          &.active { background: $blue-main; color: #FFFFFF; border-color: $blue-main; }
+        }
+      }
+    }
+  }
+
+  /* --- MODAL POPUP STYLES --- */
+  .modal-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(15, 23, 42, 0.7); 
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    z-index: 9999; 
+    padding: 24px;
+    box-sizing: border-box;
+
+    .modal-wrapper {
+      position: relative;
+      width: 100%;
+      max-width: 1100px;
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      gap: 12px; /* Adds a nice gap between the button and the modal box */
+
+      .close-modal-btn {
+        background: #FFFFFF;
+        border: none;
+        width: 40px;
+        height: 40px;
+        border-radius: 50%;
+        font-size: 18px;
+        color: #0F172A;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+
+        &:hover {
+          background: #E2E8F0;
+          transform: scale(1.05); /* Slight pop effect on hover */
+        }
+      }
+
+      .modal-content {
+        background: #FFFFFF;
+        border-radius: 12px;
+        width: 100%;
+        max-height: calc(100vh - 120px); /* Leaves room so the button doesn't get pushed off screen */
+        overflow-y: auto; 
+        position: relative;
+        box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      }
+    }
+  }
+
+  // --- RESPONSIVE BREAKPOINTS ---
+  @media (max-width: 1024px) {
+    .schedule-main-card .table-container .table-header, 
+    .schedule-main-card .table-container .table-row {
+      grid-template-columns: 2fr 1.5fr 1.5fr 1fr;
+    }
+  }
+
+  @media (max-width: 768px) {
+    .schedule-main-card {
+      .table-container {
+        .table-header { display: none; }
+        .table-row {
+          grid-template-columns: 1fr;
+          gap: 16px;
+          position: relative;
+          padding-bottom: 24px;
+
+          .col-event, .col-requestor, .col-date, .col-action {
+            width: 100%;
+          }
+        }
+      }
+
+      .card-footer {
+        flex-direction: column;
+        gap: 16px;
+      }
+    }
+  }
+}
