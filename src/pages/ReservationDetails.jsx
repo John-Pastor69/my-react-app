@@ -10,7 +10,6 @@ const ReservationDetails = () => {
     eventDate: 'October 24, 2023',
     eventTime: '9:00 AM – 5:00 PM',
     expectedAttendees: '150 attendees',
-    organization: 'IT Department',
     description:
       'A full-day technology symposium featuring guest speakers, hands-on workshops, and networking sessions for students and faculty.',
     facilityName: 'Main Auditorium',
@@ -103,10 +102,6 @@ const ReservationDetails = () => {
               <div>
                 <label>EXPECTED ATTENDEES</label>
                 <div className="val">{reservation.expectedAttendees}</div>
-              </div>
-              <div>
-                <label>ORGANIZATION</label>
-                <div className="val">{reservation.organization}</div>
               </div>
             </div>
             <div className="full-width-field">
