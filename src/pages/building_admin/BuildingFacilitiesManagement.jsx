@@ -1,17 +1,65 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { db } from '../../Firebase';
 import '../../styles/buildingadmin/BuildingFacilitiesManagement.scss';
+
+// Helper function to get real-time date and time
+const getCurrentDateTime = () => {
+  return new Date().toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
 
 const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
 
 const BuildingFacilitiesManagement = () => {
-  // Initial local state for facility directory — starts empty
+  // --- FIRESTORE STATES ---
   const [facilitiesData, setFacilitiesData] = useState([]);
 
-  // Row selection (checkboxes)
+  // --- SEARCH & PAGINATION STATES ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
+
+  // --- MODAL STATES ---
+  const [editingItem, setEditingItem] = useState(null);
+  const [isAddingNew, setIsAddingNew] = useState(false);
+  const [newItem, setNewItem] = useState({
+    name: '',
+    code: '',
+    location: '',
+    capacity: '',
+    status: 'Available'
+  });
+  
   const [selectedIds, setSelectedIds] = useState([]);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
+  useEffect(() => {
+    const unsubFacilities = onSnapshot(collection(db, 'facilities'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setFacilitiesData(list);
+      setSelectedIds((prev) => prev.filter((id) => list.some((item) => item.id === id)));
+    }, (error) => console.error('Failed to load facilities:', error));
+
+    return () => {
+      unsubFacilities();
+    };
+  }, []);
+
+  // --- ACTION HANDLERS ---
+  const handleAddClick = () => {
+    setNewItem({ name: '', code: '', location: '', capacity: '', status: 'Available' });
+    setIsAddingNew(true);
+  };
 
   const toggleSelectAll = (e) => {
-    setSelectedIds(e.target.checked ? facilitiesData.map((f) => f.id) : []);
+    setSelectedIds(e.target.checked ? currentData.map((item) => item.id) : []);
   };
 
   const toggleSelectOne = (id) => {
@@ -20,92 +68,137 @@ const BuildingFacilitiesManagement = () => {
     );
   };
 
-  // Add Facility modal
-  const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newFacility, setNewFacility] = useState({
-    name: '',
-    location: '',
-    capacity: '',
-    status: 'Available'
-  });
-
-  const handleAddClick = () => {
-    setNewFacility({ name: '', location: '', capacity: '', status: 'Available' });
-    setIsAddingNew(true);
-  };
-
-  const statusClass = (status) => {
-    if (status === 'Available') return 'status-available';
-    if (status === 'Maintenance') return 'status-maintenance';
-    if (status === 'Unavailable') return 'status-unavailable';
-    return 'status-available';
-  };
-
-  const handleSaveNewFacility = (e) => {
-    e.preventDefault();
-
-    const nextId = facilitiesData.length > 0
-      ? Math.max(...facilitiesData.map((f) => f.id)) + 1
-      : 1;
-
-    const facilityToAdd = {
-      id: nextId,
-      code: `FAC-${String(nextId).padStart(3, '0')}`,
-      name: newFacility.name.trim() || 'Untitled Facility',
-      location: newFacility.location.trim() || 'Unassigned',
-      capacity: newFacility.capacity.trim() || '0 pax',
-      status: newFacility.status,
-      lastUpdated: 'Just now'
-    };
-
-    setFacilitiesData((prev) => [...prev, facilityToAdd]);
-    setIsAddingNew(false);
-  };
-
-  // Edit modal
-  const [editingFacility, setEditingFacility] = useState(null);
-
-  const handleEditClick = (facility) => {
-    setEditingFacility({ ...facility });
-  };
-
-  const handleSaveEdit = (e) => {
-    e.preventDefault();
-    setFacilitiesData((prev) =>
-      prev.map((f) =>
-        f.id === editingFacility.id ? { ...editingFacility, lastUpdated: 'Just now' } : f
-      )
-    );
-    setEditingFacility(null);
-  };
-
-  // Toggle status directly from the table (cycles Available -> Maintenance -> Unavailable -> Available)
-  const handleToggleStatus = (id) => {
-    setFacilitiesData((prev) =>
-      prev.map((f) => {
-        if (f.id !== id) return f;
-        const currentIndex = STATUS_CYCLE.indexOf(f.status);
-        const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length];
-        return { ...f, status: nextStatus, lastUpdated: 'Just now' };
-      })
-    );
-  };
-
-  // Delete (per-row or bulk), with confirmation modal
-  const [pendingDeleteIds, setPendingDeleteIds] = useState([]);
-
   const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
-    setPendingDeleteIds(selectedIds);
+    setIsConfirmingDelete(true);
   };
 
-  const confirmDelete = () => {
-    setFacilitiesData((prev) => prev.filter((f) => !pendingDeleteIds.includes(f.id)));
-    setSelectedIds((prev) => prev.filter((sid) => !pendingDeleteIds.includes(sid)));
-    setPendingDeleteIds([]);
+  const confirmDelete = async () => {
+    try {
+      const batch = writeBatch(db);
+      selectedIds.forEach((id) => batch.delete(doc(db, 'facilities', id)));
+      await batch.commit();
+      
+      setSelectedIds([]);
+      setIsConfirmingDelete(false);
+      
+      const newTotalItems = filteredData.length - selectedIds.length;
+      const newTotalPages = Math.max(1, Math.ceil(newTotalItems / itemsPerPage));
+      if (currentPage > newTotalPages) {
+        setCurrentPage(newTotalPages);
+      }
+    } catch (error) {
+      console.error('Failed to delete facilities:', error);
+    }
   };
 
-  // Dynamic summary metrics
+  const handleEditClick = (item) => {
+    setEditingItem({ ...item });
+  };
+
+  // Save changes to Firestore
+  const handleSaveEdit = async (e) => {
+    e.preventDefault();
+    if (!editingItem) return;
+    
+    let statusClass = editingItem.status === 'Unavailable' ? 'status-unavailable' : 
+                      editingItem.status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+
+    // Auto-generate ID if left blank
+    const finalCode = editingItem.code?.trim() ? editingItem.code.trim() : `FAC-${Date.now().toString().slice(-4)}`;
+
+    try {
+      await updateDoc(doc(db, 'facilities', editingItem.id), {
+        name: editingItem.name,
+        code: finalCode,
+        location: editingItem.location,
+        capacity: editingItem.capacity,
+        status: editingItem.status,
+        statusClass: statusClass,
+        lastUpdated: getCurrentDateTime()
+      });
+      setEditingItem(null); 
+    } catch (error) {
+      console.error('Failed to update facility:', error);
+    }
+  };
+
+  // Save new facility to Firestore
+  const handleSaveNewFacility = async (e) => {
+    e.preventDefault();
+    let status = newItem.status;
+    
+    let statusClass = status === 'Unavailable' ? 'status-unavailable' : 
+                      status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+
+    // Auto-generate ID if left blank
+    const finalCode = newItem.code.trim() ? newItem.code.trim() : `FAC-${Date.now().toString().slice(-4)}`;
+
+    try {
+      await addDoc(collection(db, 'facilities'), {
+        code: finalCode,
+        name: newItem.name.trim() || 'Untitled Facility',
+        location: newItem.location.trim() || 'Unassigned',
+        capacity: newItem.capacity.trim() || '0',
+        status: status,
+        statusClass,
+        lastUpdated: getCurrentDateTime()
+      });
+      setIsAddingNew(false);
+    } catch (error) {
+      console.error('Failed to add facility to Firestore:', error);
+    }
+  };
+
+  // Toggle status directly from the table
+  const handleToggleStatus = async (item) => {
+    const currentIndex = STATUS_CYCLE.indexOf(item.status);
+    const nextStatus = STATUS_CYCLE[(currentIndex + 1) % STATUS_CYCLE.length];
+    
+    let statusClass = nextStatus === 'Unavailable' ? 'status-unavailable' : 
+                      nextStatus === 'Maintenance' ? 'status-maintenance' : 'status-available';
+
+    try {
+      await updateDoc(doc(db, 'facilities', item.id), {
+        status: nextStatus,
+        statusClass: statusClass,
+        lastUpdated: getCurrentDateTime()
+      });
+    } catch (error) {
+      console.error('Failed to toggle status:', error);
+    }
+  };
+
+  // --- FILTERING & PAGINATION LOGIC ---
+  const filteredData = facilitiesData.filter((item) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (item.name && item.name.toLowerCase().includes(query)) || 
+      (item.code && item.code.toLowerCase().includes(query))
+    );
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentData = filteredData.slice(startIndex, startIndex + itemsPerPage); 
+
+  const getPageNumbers = () => {
+    const pages = [];
+    if (totalPages <= 5) {
+      for (let i = 1; i <= totalPages; i++) pages.push(i);
+    } else {
+      if (currentPage <= 3) {
+        pages.push(1, 2, 3, '...', totalPages);
+      } else if (currentPage >= totalPages - 2) {
+        pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages);
+      } else {
+        pages.push(1, '...', currentPage, '...', totalPages);
+      }
+    }
+    return pages;
+  };
+
+  // --- METRIC CALCULATIONS ---
   const totalFacilities = facilitiesData.length;
   const totalAvailable = facilitiesData.filter((f) => f.status === 'Available').length;
   const totalMaintenance = facilitiesData.filter((f) => f.status === 'Maintenance').length;
@@ -117,7 +210,6 @@ const BuildingFacilitiesManagement = () => {
       <div className="page-header">
         <div>
           <h1>All Facilities</h1>
-          
         </div>
         <button className="btn-primary" onClick={handleAddClick}>+ Add Facility</button>
       </div>
@@ -164,7 +256,15 @@ const BuildingFacilitiesManagement = () => {
           <div className="controls-right">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
-              <input type="text" placeholder="Search facilities..." />
+              <input 
+                type="text" 
+                placeholder="Search facilities..." 
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1);
+                }}
+              />
             </div>
             <button
               className="btn-danger"
@@ -186,7 +286,7 @@ const BuildingFacilitiesManagement = () => {
                 <th className="checkbox-col">
                   <input
                     type="checkbox"
-                    checked={facilitiesData.length > 0 && selectedIds.length === facilitiesData.length}
+                    checked={currentData.length > 0 && selectedIds.length === currentData.length}
                     onChange={toggleSelectAll}
                   />
                 </th>
@@ -199,18 +299,18 @@ const BuildingFacilitiesManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {facilitiesData.length === 0 ? (
+              {filteredData.length === 0 ? (
                 <tr>
-                  <td colSpan={8} className="empty-state-cell">
+                  <td colSpan={7} className="empty-state-cell">
                     <div className="empty-state">
                       <span className="empty-state-icon">🏢</span>
-                      <p className="empty-state-title">No facilities yet</p>
-                      <p className="empty-state-subtitle">Add your first facility to start managing bookings.</p>
+                      <p className="empty-state-title">No facilities found</p>
+                      <p className="empty-state-subtitle">Add your first facility or adjust your search.</p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                facilitiesData.map((facility) => (
+                currentData.map((facility) => (
                   <tr key={facility.id}>
                     <td className="checkbox-col">
                       <input
@@ -227,10 +327,10 @@ const BuildingFacilitiesManagement = () => {
                         </div>
                       </div>
                     </td>
-                    <td data-label="Location">📍 {facility.location}</td>
-                    <td data-label="Capacity">👥 {facility.capacity}</td>
+                    <td data-label="Location">{facility.location}</td>
+                    <td className="font-semibold" data-label="Capacity">{facility.capacity}</td>
                     <td data-label="Status">
-                      <span className={`status-badge ${statusClass(facility.status)}`}>
+                      <span className={`status-badge ${facility.statusClass}`}>
                         ● {facility.status}
                       </span>
                     </td>
@@ -240,7 +340,7 @@ const BuildingFacilitiesManagement = () => {
                         <button className="action-btn edit-btn" onClick={() => handleEditClick(facility)}>
                           ✏ Edit
                         </button>
-                        <button className="action-btn toggle-btn" onClick={() => handleToggleStatus(facility.id)}>
+                        <button className="action-btn toggle-btn" onClick={() => handleToggleStatus(facility)}>
                           ⟳ Toggle
                         </button>
                       </div>
@@ -252,20 +352,114 @@ const BuildingFacilitiesManagement = () => {
           </table>
         </div>
 
-        {/* Table Footer */}
+        {/* Table Footer & Pagination */}
         <div className="table-pagination">
           <span className="pagination-text">
-            {facilitiesData.length === 0
+            {filteredData.length === 0
               ? 'No facilities to show'
-              : `Showing 1 to ${facilitiesData.length} of ${facilitiesData.length} facilities${selectedIds.length > 0 ? ` · ${selectedIds.length} selected` : ''}`}
+              : `Showing ${startIndex + 1} to ${Math.min(startIndex + itemsPerPage, filteredData.length)} of ${filteredData.length} facilities`}
           </span>
           <div className="pagination-buttons">
-            <button className="page-btn" disabled>Prev</button>
-            <button className="page-btn active">1</button>
-            <button className="page-btn" disabled>Next</button>
+            <button 
+              className="page-btn" 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Prev
+            </button>
+            
+            {getPageNumbers().map((num, idx) => (
+              num === '...' ? (
+                <span key={`dots-${idx}`} className="dots">...</span>
+              ) : (
+                <button 
+                  key={idx}
+                  className={`page-btn ${currentPage === num ? 'active' : ''}`}
+                  onClick={() => setCurrentPage(num)}
+                >
+                  {num}
+                </button>
+              )
+            ))}
+
+            <button 
+              className="page-btn" 
+              disabled={currentPage === totalPages || filteredData.length === 0}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
+
+      {/* Local Edit Modal Popup */}
+      {editingItem && (
+        <div className="modal-overlay">
+          <div className="modal-content" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
+            <h3>Edit {editingItem.name}</h3>
+            <form onSubmit={handleSaveEdit}>
+              <div className="form-group">
+                <label>Facility Name</label>
+                <input
+                  type="text"
+                  value={editingItem.name}
+                  onChange={(e) => setEditingItem({ ...editingItem, name: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Facility ID / Code</label>
+                <input
+                  type="text"
+                  value={editingItem.code || ''}
+                  onChange={(e) => setEditingItem({ ...editingItem, code: e.target.value })}
+                  placeholder="Auto-generated if left blank"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Location</label>
+                <input
+                  type="text"
+                  value={editingItem.location}
+                  onChange={(e) => setEditingItem({ ...editingItem, location: e.target.value })}
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Capacity</label>
+                <input
+                  type="text"
+                  value={editingItem.capacity ? String(editingItem.capacity).replace(/\D/g, '') : ''}
+                  onChange={(e) => setEditingItem({ ...editingItem, capacity: e.target.value.replace(/\D/g, '') })}
+                  placeholder="e.g. 500"
+                  required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Status</label>
+                <select
+                  value={editingItem.status}
+                  onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value })}
+                >
+                  <option value="Available">Available</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Unavailable">Unavailable</option>
+                </select>
+              </div>
+
+              <div className="modal-actions">
+                <button type="button" onClick={() => setEditingItem(null)}>Cancel</button>
+                <button type="submit" className="btn-save">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Add Facility Modal */}
       {isAddingNew && (
@@ -277,10 +471,20 @@ const BuildingFacilitiesManagement = () => {
                 <label>Facility Name</label>
                 <input
                   type="text"
-                  value={newFacility.name}
-                  onChange={(e) => setNewFacility({ ...newFacility, name: e.target.value })}
+                  value={newItem.name}
+                  onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
                   placeholder="e.g. Main Auditorium"
                   required
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Facility ID / Code</label>
+                <input
+                  type="text"
+                  value={newItem.code}
+                  onChange={(e) => setNewItem({ ...newItem, code: e.target.value })}
+                  placeholder="Auto-generated if left blank"
                 />
               </div>
 
@@ -288,8 +492,8 @@ const BuildingFacilitiesManagement = () => {
                 <label>Location</label>
                 <input
                   type="text"
-                  value={newFacility.location}
-                  onChange={(e) => setNewFacility({ ...newFacility, location: e.target.value })}
+                  value={newItem.location}
+                  onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
                   placeholder="e.g. Block A, Floor 1"
                   required
                 />
@@ -299,9 +503,9 @@ const BuildingFacilitiesManagement = () => {
                 <label>Capacity</label>
                 <input
                   type="text"
-                  value={newFacility.capacity}
-                  onChange={(e) => setNewFacility({ ...newFacility, capacity: e.target.value })}
-                  placeholder="e.g. 500 pax"
+                  value={newItem.capacity ? String(newItem.capacity).replace(/\D/g, '') : ''}
+                  onChange={(e) => setNewItem({ ...newItem, capacity: e.target.value.replace(/\D/g, '') })}
+                  placeholder="e.g. 500"
                   required
                 />
               </div>
@@ -309,8 +513,8 @@ const BuildingFacilitiesManagement = () => {
               <div className="form-group">
                 <label>Status</label>
                 <select
-                  value={newFacility.status}
-                  onChange={(e) => setNewFacility({ ...newFacility, status: e.target.value })}
+                  value={newItem.status}
+                  onChange={(e) => setNewItem({ ...newItem, status: e.target.value })}
                 >
                   <option value="Available">Available</option>
                   <option value="Maintenance">Maintenance</option>
@@ -327,59 +531,14 @@ const BuildingFacilitiesManagement = () => {
         </div>
       )}
 
-      {/* Edit Facility Modal */}
-      {editingFacility && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Edit {editingFacility.name}</h3>
-            <form onSubmit={handleSaveEdit}>
-              <div className="form-group">
-                <label>Location</label>
-                <input
-                  type="text"
-                  value={editingFacility.location}
-                  onChange={(e) => setEditingFacility({ ...editingFacility, location: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Capacity</label>
-                <input
-                  type="text"
-                  value={editingFacility.capacity}
-                  onChange={(e) => setEditingFacility({ ...editingFacility, capacity: e.target.value })}
-                />
-              </div>
-
-              <div className="form-group">
-                <label>Status</label>
-                <select
-                  value={editingFacility.status}
-                  onChange={(e) => setEditingFacility({ ...editingFacility, status: e.target.value })}
-                >
-                  <option value="Available">Available</option>
-                  <option value="Maintenance">Maintenance</option>
-                  <option value="Unavailable">Unavailable</option>
-                </select>
-              </div>
-
-              <div className="modal-actions">
-                <button type="button" onClick={() => setEditingFacility(null)}>Cancel</button>
-                <button type="submit" className="btn-save">Save Changes</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
       {/* Delete Confirmation Modal */}
-      {pendingDeleteIds.length > 0 && (
+      {isConfirmingDelete && (
         <div className="modal-overlay">
           <div className="modal-content">
-            <h3>Delete {pendingDeleteIds.length} facilit{pendingDeleteIds.length > 1 ? 'ies' : 'y'}?</h3>
+            <h3>Delete {selectedIds.length} item{selectedIds.length > 1 ? 's' : ''}?</h3>
             <p className="confirm-text">This can't be undone.</p>
             <div className="modal-actions">
-              <button type="button" onClick={() => setPendingDeleteIds([])}>Cancel</button>
+              <button type="button" onClick={() => setIsConfirmingDelete(false)}>Cancel</button>
               <button type="button" className="btn-danger-solid" onClick={confirmDelete}>Delete</button>
             </div>
           </div>

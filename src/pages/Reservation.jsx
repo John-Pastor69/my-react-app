@@ -37,7 +37,10 @@ const Reservation = () => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [durationHours, setDurationHours] = useState(0);
+  
+  // DYNAMIC SELECTION CARTS
   const [selectedEquip, setSelectedEquip] = useState({});
+
   const [certified, setCertified] = useState(false);
   const [isDraftSaved, setIsDraftSaved] = useState(false);
   
@@ -47,6 +50,7 @@ const Reservation = () => {
 
   // --- UI STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
+  const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
   const [dateError, setDateError] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
@@ -103,12 +107,17 @@ const Reservation = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData, days, aircon, eventDate, startTime, endTime, selectedEquip]);
 
-  // --- LIVE LISTEN TO EQUIPMENTS & RESERVATIONS ---
+  // --- LIVE LISTEN TO FACILITIES, EQUIPMENTS & RESERVATIONS ---
   useEffect(() => {
     const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setInventoryEquipments(list);
     }, (error) => console.error('Failed to load equipment:', error));
+
+    const unsubFacilities = onSnapshot(collection(db, 'facilities'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setInventoryFacilities(list);
+    }, (error) => console.error('Failed to load facilities:', error));
 
     const unsubReservations = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -117,11 +126,12 @@ const Reservation = () => {
 
     return () => {
       unsubEquipments();
+      unsubFacilities();
       unsubReservations();
     };
   }, []);
 
-  // --- DYNAMICALLY CALCULATE AVAILABLE COUNTS FOR EQUIPMENT NEEDED ---
+  // --- DYNAMICALLY CALCULATE AVAILABLE COUNTS ---
   const mappedEquipmentList = inventoryEquipments.map(item => {
     let reservedCount = 0;
     reservationsData.forEach(res => {
@@ -131,15 +141,9 @@ const Reservation = () => {
         }
       }
     });
-
     const total = Number(item.totalCount) || 0;
     const availableCount = Math.max(0, total - reservedCount);
-
-    return {
-      ...item,
-      computedReserved: reservedCount,
-      computedAvailable: availableCount
-    };
+    return { ...item, computedReserved: reservedCount, computedAvailable: availableCount };
   });
 
   // --- CALCULATE DURATION ---
@@ -172,15 +176,11 @@ const Reservation = () => {
 
   const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount));
 
-  // Updates local cart based on computed available count
   const updateEquip = (item, delta) => {
-    if (item.status === 'Unavailable') return;
-
+    if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
     const currentSelected = selectedEquip[item.id] || 0;
     const newSelected = currentSelected + delta;
-
     if (newSelected < 0 || newSelected > item.computedAvailable) return;
-    
     setSelectedEquip(prev => ({ ...prev, [item.id]: newSelected }));
   };
 
@@ -316,7 +316,7 @@ const Reservation = () => {
         return;
       }
 
-      // 2. SUBMIT RESERVATION WITH USER ID
+      // 2. SUBMIT RESERVATION
       await addDoc(collection(db, 'reservations'), {
         ...formData,
         userId: currentUser.uid,        
@@ -332,17 +332,13 @@ const Reservation = () => {
         createdAt: new Date().toISOString()
       });
 
-      // 3. SYNC INVENTORY STATUS BACK TO DB
+      // 3. SYNC INVENTORY STATUS BACK TO DB (Only needed for equipments to ping the lastUpdated timestamp)
       const batch = writeBatch(db);
+      const updateTimestamp = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+      
       for (const [eqId, qty] of Object.entries(selectedEquip)) {
         if (qty > 0) {
-          const item = inventoryEquipments.find(i => i.id === eqId);
-          if (item) {
-            const eqRef = doc(db, 'equipments', eqId);
-            batch.update(eqRef, {
-              lastUpdated: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
-            });
-          }
+          batch.update(doc(db, 'equipments', eqId), { lastUpdated: updateTimestamp });
         }
       }
       await batch.commit();
@@ -528,18 +524,47 @@ const Reservation = () => {
       {/* SECTIONS 4 & 5 */}
       <div className="split-cards">
         
-        {/* SECTION 4: Facilities Needed */}
+        {/* SECTION 4: Facilities Needed (Dynamic DB List) */}
         <div className="form-card">
           <div className="section-header"><span className="step-badge">4</span> Facilities Needed</div>
-          <div className="checkbox-grid" style={{gridTemplateColumns: '1fr'}}>
-            {['Auditorium', 'Gymnasium', 'Conference Room', 'AVR (Audio Visual Room)', 'Covered Court', 'Function Hall'].map(facility => (
-              <label key={facility}>
-                <input type="checkbox" checked={formData.facilities.includes(facility)} onChange={() => handleCheckboxArrayChange('facilities', facility)} /> 
-                {facility}
-              </label>
-            ))}
+          
+          <div className="checkbox-grid" style={{ gridTemplateColumns: '1fr', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px', marginBottom: '16px' }}>
+            {inventoryFacilities.length === 0 ? (
+              <div style={{ textAlign: 'center', padding: '30px 16px', color: '#64748B', fontSize: '13px' }}>
+                No facilities currently listed.
+              </div>
+            ) : (
+              inventoryFacilities.map((item) => {
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
+                
+                let statusColor = '#10B981';
+                if (item.status === 'Maintenance') statusColor = '#F59E0B'; 
+                else if (isLocked) statusColor = '#EF4444'; 
+
+                return (
+                  <label key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '8px', cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.6 : 1, transition: 'all 0.2s', background: formData.facilities.includes(item.id) ? '#F0F9FF' : '#FFF', borderColor: formData.facilities.includes(item.id) ? '#38BDF8' : '#E2E8F0' }}>
+                    <input 
+                      type="checkbox" 
+                      style={{ marginRight: '16px', width: '18px', height: '18px', cursor: 'inherit' }}
+                      checked={formData.facilities.includes(item.id)} 
+                      onChange={() => handleCheckboxArrayChange('facilities', item.id)} 
+                      disabled={isLocked}
+                    /> 
+                    <div className="icon-box" style={{ marginRight: '12px', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', background: '#E0F2FE', color: '#0284C7', flexShrink: 0 }}>
+                      <i className="ph ph-buildings" style={{ fontSize: '20px' }}></i>
+                    </div>
+                    <div>
+                      <strong style={{ display: 'block', fontSize: '14px', color: '#1E293B', marginBottom: '2px' }}>{item.name}</strong>
+                      <span style={{ fontSize: '12px', color: '#64748B', display: 'block', marginBottom: '2px' }}>{item.location} | {item.capacity}</span>
+                      <span style={{ fontSize: '11px', color: statusColor, fontWeight: 500 }}>● {item.status}</span>
+                    </div>
+                  </label>
+                );
+              })
+            )}
           </div>
-          <div className="input-group">
+
+          <div className="input-group" style={{ marginTop: 'auto' }}>
             <label>Specific Room Number / Name</label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-door"></i>
@@ -549,11 +574,11 @@ const Reservation = () => {
           </div>
         </div>
 
-        {/* SECTION 5: Equipment Needed (Real-Time Computed Availability) */}
+        {/* SECTION 5: Equipment Needed */}
         <div className="form-card">
           <div className="section-header"><span className="step-badge">5</span> Equipment Needed</div>
           
-          <div className="equipment-list" style={{ maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
+          <div className="equipment-list" style={{ maxHeight: '500px', overflowY: 'auto', paddingRight: '4px' }}>
             {mappedEquipmentList.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 16px', color: '#64748B', fontSize: '13px' }}>
                 No equipment currently listed in inventory.
@@ -562,11 +587,12 @@ const Reservation = () => {
               mappedEquipmentList.map((item) => {
                 const count = selectedEquip[item.id] || 0;
                 
-                const isLocked = item.status === 'Unavailable';
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
                 const isAvailable = !isLocked && item.computedAvailable > 0;
                 
                 let statusColor = '#10B981';
-                if (isLocked || !isAvailable) statusColor = '#EF4444';
+                if (item.status === 'Maintenance') statusColor = '#F59E0B';
+                else if (isLocked || !isAvailable) statusColor = '#EF4444';
 
                 return (
                   <div className="equip-item" key={item.id} style={{ opacity: isLocked ? 0.6 : 1 }}>
@@ -665,7 +691,7 @@ const Reservation = () => {
             disabled={!certified}
             style={{ opacity: !certified ? 0.6 : 1, cursor: !certified ? 'not-allowed' : 'pointer' }}
           >
-            Submit Reservation`
+            Submit Reservation
           </button>
         </div>
       </div>
