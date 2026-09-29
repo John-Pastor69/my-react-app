@@ -1,87 +1,84 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { db, auth } from '../../Firebase';
+import { db } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
 
-// Role options kung saan direct na "requestor" ang value na ibabato sa DB
+// Values gamit ang Space sa halip na Underscore para direct itong ma-save sa Firestore
 const ROLE_OPTIONS = [
-  { value: 'mis', label: 'MIS Admin' },
-  { value: 'building_admin', label: 'Building Admin' },
-  { value: 'school_admin', label: 'School Admin' },
-  { value: 'academic_head', label: 'Academic Head' },
+  { value: 'mis admin', label: 'MIS Admin' },
+  { value: 'building admin', label: 'Building Admin' },
+  { value: 'school admin', label: 'School Admin' },
+  { value: 'academic head', label: 'Academic Head' },
   { value: 'endorser', label: 'Endorser' },
   { value: 'osa', label: 'OSA' },
   { value: 'requestor', label: 'Requestor' }
 ];
 
-// Display label mapping
+// Display label mapping para sa malinis na rendering
 const ROLE_LABELS = {
-  mis: 'MIS Admin',
-  building_admin: 'Building Admin',
-  school_admin: 'School Admin',
-  academic_head: 'Academic Head',
-  endorser: 'Endorser',
-  osa: 'OSA',
-  requestor: 'Requestor',
-  user: 'Requestor'
+  'mis admin': 'MIS Admin',
+  'building admin': 'Building Admin',
+  'school admin': 'School Admin',
+  'academic head': 'Academic Head',
+  'endorser': 'Endorser',
+  'osa': 'OSA',
+  'requestor': 'Requestor',
+  'mis': 'MIS Admin',
+  'building_admin': 'Building Admin',
+  'school_admin': 'School Admin',
+  'academic_head': 'Academic Head',
+  'user': 'Requestor'
 };
 
-const ADMIN_ROLES = ['mis', 'building_admin', 'school_admin'];
+const ADMIN_ROLES = ['mis', 'mis admin', 'building admin', 'school admin', 'building_admin', 'school_admin'];
 
-const roleLabel = (role) => ROLE_LABELS[role] || role || 'Unknown';
+// Helper function para tanggalin ang lumang underscore kung may natira pa sa Firestore
+const formatRole = (role) => {
+  if (!role) return 'Requestor';
+  
+  const cleanKey = role.toLowerCase().trim();
+  if (ROLE_LABELS[cleanKey]) return ROLE_LABELS[cleanKey];
+  
+  return role
+    .replace(/_/g, ' ')
+    .toLowerCase()
+    .split(' ')
+    .map(word => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(' ');
+};
 
 const roleBadgeClass = (role) => {
-  if (role === 'mis') return 'role-admin';
-  if (!role || role === 'requestor' || role === 'user') return 'role-requestor';
+  const cleanRole = (role || '').toLowerCase();
+  if (cleanRole === 'mis' || cleanRole.includes('admin')) return 'role-admin';
+  if (!cleanRole || cleanRole === 'requestor' || cleanRole === 'user') return 'role-requestor';
   return 'role-approver';
 };
 
-// Safely format Firestore Timestamps, standard JS Dates, or ISO strings into readable exact times
+const getStatus = (user) => user.status || 'Active';
+
 const formatLastActive = (value) => {
-  if (!value) return '—';
-  
-  let dateObj;
-  if (typeof value.toDate === 'function') {
-    dateObj = value.toDate();
-  } else {
-    dateObj = new Date(value);
+  if (value && typeof value.toDate === 'function') {
+    return value.toDate().toLocaleString([], {
+      month: 'short',
+      day: 'numeric',
+      year: 'numeric',
+      hour: 'numeric',
+      minute: '2-digit'
+    });
   }
-
-  if (isNaN(dateObj.getTime())) return '—';
-
-  return dateObj.toLocaleString('en-US', {
-    month: 'short',
-    day: 'numeric',
-    year: 'numeric',
-    hour: 'numeric',
-    minute: '2-digit'
-  });
+  return '—';
 };
 
 const MisUserManagement = () => {
   const [usersData, setUsersData] = useState([]);
-  const [currentAuthUser, setCurrentAuthUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
-
-  // --- SEARCH & PAGINATION STATES ---
-  const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
 
   // Role Modal State
   const [roleModalUser, setRoleModalUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState('requestor');
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
-
-  // Track currently logged-in auth user
-  useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      setCurrentAuthUser(user);
-    });
-    return () => unsubscribeAuth();
-  }, []);
 
   // Snapshot listener para sa live updates ng users collection
   useEffect(() => {
@@ -112,7 +109,12 @@ const MisUserManagement = () => {
 
   const handleOpenRoleModal = (user) => {
     setRoleModalUser(user);
-    const currentRole = user.role === 'user' ? 'requestor' : (user.role || 'requestor');
+    
+    // Convert current role value to space format for modal selector
+    let currentRole = user.role ? user.role.replace(/_/g, ' ').toLowerCase() : 'requestor';
+    if (currentRole === 'user') currentRole = 'requestor';
+    if (currentRole === 'mis') currentRole = 'mis admin';
+
     setSelectedRole(currentRole);
   };
 
@@ -123,6 +125,7 @@ const MisUserManagement = () => {
       setIsUpdatingRole(true);
       setActionError('');
 
+      // Isave sa Firestore ang value na MAY SPACE sa halip na underscore
       await updateDoc(doc(db, 'users', roleModalUser.id), {
         role: selectedRole
       });
@@ -136,21 +139,9 @@ const MisUserManagement = () => {
     }
   };
 
-  // --- FILTERING & PAGINATION LOGIC ---
-  const filteredUsers = usersData.filter((user) => {
-    const query = searchQuery.toLowerCase();
-    const name = (user.name || '').toLowerCase();
-    const email = (user.email || '').toLowerCase();
-    return name.includes(query) || email.includes(query);
-  });
-
-  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
-
   const totalUsers = usersData.length;
-  const activeUsers = usersData.filter((u) => currentAuthUser && u.id === currentAuthUser.uid).length;
-  const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role)).length;
+  const activeUsers = usersData.filter((u) => getStatus(u) === 'Active').length;
+  const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase())).length;
 
   return (
     <div className="user-management-content">
@@ -196,15 +187,7 @@ const MisUserManagement = () => {
           <div className="controls-right">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
-              <input 
-                type="text" 
-                placeholder="Search users..." 
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                  setCurrentPage(1); // Reset to first page on search
-                }}
-              />
+              <input type="text" placeholder="Search users..." />
             </div>
           </div>
         </div>
@@ -225,27 +208,25 @@ const MisUserManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {isLoading || loadError || currentUsers.length === 0 ? (
+              {isLoading || loadError || usersData.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="empty-state-cell">
                     <div className="empty-state">
                       <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
                       <p className="empty-state-title">
-                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : searchQuery ? 'No matching users found' : 'No users yet'}
+                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users yet'}
                       </p>
                       <p className="empty-state-subtitle">
                         {isLoading
                           ? 'Fetching the latest users from the database.'
-                          : loadError || (searchQuery ? 'Try adjusting your search query.' : 'Users will appear here once they are registered.')}
+                          : loadError || 'Users will appear here once they are registered.'}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                currentUsers.map((user) => {
-                  const isActive = currentAuthUser && user.id === currentAuthUser.uid;
-                  const statusLabel = isActive ? 'Active' : 'Inactive';
-                  
+                usersData.map((user) => {
+                  const status = getStatus(user);
                   return (
                     <tr key={user.id}>
                       <td>
@@ -263,16 +244,13 @@ const MisUserManagement = () => {
                       </td>
                       <td>
                         <span className={`role-badge ${roleBadgeClass(user.role)}`}>
-                          {roleLabel(user.role)}
+                          {formatRole(user.role)}
                         </span>
                       </td>
                       <td>{user.officeLocation || '—'}</td>
                       <td>
-                        <span 
-                          className="status-dot"
-                          style={{ color: isActive ? '#16a34a' : '#dc2626', fontWeight: 600 }}
-                        >
-                          {statusLabel}
+                        <span className={`status-dot ${status === 'Active' ? 'status-active' : 'status-inactive'}`}>
+                          {status}
                         </span>
                       </td>
                       <td className="text-muted">{formatLastActive(user.lastActive)}</td>
@@ -294,29 +272,17 @@ const MisUserManagement = () => {
           </table>
         </div>
 
-        {/* Table Footer & Pagination */}
+        {/* Table Footer */}
         <div className="table-pagination">
           <span className="pagination-text">
-            {filteredUsers.length === 0
+            {usersData.length === 0
               ? 'No users to show'
-              : `Showing ${startIndex + 1} to ${Math.min(startIndex + itemsPerPage, filteredUsers.length)} of ${filteredUsers.length} users`}
+              : `Showing 1 to ${usersData.length} of ${usersData.length} users`}
           </span>
           <div className="pagination-buttons">
-            <button 
-              className="page-btn" 
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            >
-              Prev
-            </button>
-            <button className="page-btn active">{currentPage}</button>
-            <button 
-              className="page-btn" 
-              disabled={currentPage === totalPages || filteredUsers.length === 0}
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            >
-              Next
-            </button>
+            <button className="page-btn" disabled>Prev</button>
+            <button className="page-btn active">1</button>
+            <button className="page-btn" disabled>Next</button>
           </div>
         </div>
       </div>

@@ -278,6 +278,13 @@ main,
           font-weight: 600;
           cursor: pointer;
 
+          /* Pinipigilan ang multi-line vertical stacking at dynamic size warp */
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          gap: 6px;
+          white-space: nowrap;
+
           &:hover:not(:disabled) {
             background: color.adjust($red-bg, $lightness: -3%);
           }
@@ -311,7 +318,7 @@ main,
       text-align: left;
 
       @media (min-width: $bp-tablet) {
-        min-width: 720px;
+        min-width: 640px;
 
         th {
           padding: 12px 16px;
@@ -362,9 +369,9 @@ main,
           background-color: $amber-bg;
         }
 
-        &.status-booked {
-          color: $purple-fg;
-          background-color: $purple-bg;
+        &.status-unavailable {
+          color: $red-fg;
+          background-color: $red-bg;
         }
       }
 
@@ -398,16 +405,6 @@ main,
 
           &:hover {
             background: color.adjust($amber-bg, $lightness: -4%);
-          }
-        }
-
-        &.delete-btn {
-          background: $red-bg;
-          color: $red-fg;
-          padding: 6px 9px;
-
-          &:hover {
-            background: color.adjust($red-bg, $lightness: -4%);
           }
         }
       }

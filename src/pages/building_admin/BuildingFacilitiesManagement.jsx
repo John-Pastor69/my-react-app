@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import '../../styles/buildingadmin/BuildingFacilitiesManagement.scss';
 
-const STATUS_CYCLE = ['Available', 'Maintenance', 'Booked'];
+const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
 
 const BuildingFacilitiesManagement = () => {
   // Initial local state for facility directory — starts empty
@@ -24,21 +24,20 @@ const BuildingFacilitiesManagement = () => {
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newFacility, setNewFacility] = useState({
     name: '',
-    type: '',
     location: '',
     capacity: '',
     status: 'Available'
   });
 
   const handleAddClick = () => {
-    setNewFacility({ name: '', type: '', location: '', capacity: '', status: 'Available' });
+    setNewFacility({ name: '', location: '', capacity: '', status: 'Available' });
     setIsAddingNew(true);
   };
 
   const statusClass = (status) => {
     if (status === 'Available') return 'status-available';
     if (status === 'Maintenance') return 'status-maintenance';
-    if (status === 'Booked') return 'status-booked';
+    if (status === 'Unavailable') return 'status-unavailable';
     return 'status-available';
   };
 
@@ -53,7 +52,6 @@ const BuildingFacilitiesManagement = () => {
       id: nextId,
       code: `FAC-${String(nextId).padStart(3, '0')}`,
       name: newFacility.name.trim() || 'Untitled Facility',
-      type: newFacility.type.trim() || 'Uncategorized',
       location: newFacility.location.trim() || 'Unassigned',
       capacity: newFacility.capacity.trim() || '0 pax',
       status: newFacility.status,
@@ -81,7 +79,7 @@ const BuildingFacilitiesManagement = () => {
     setEditingFacility(null);
   };
 
-  // Toggle status directly from the table (cycles Available -> Maintenance -> Booked -> Available)
+  // Toggle status directly from the table (cycles Available -> Maintenance -> Unavailable -> Available)
   const handleToggleStatus = (id) => {
     setFacilitiesData((prev) =>
       prev.map((f) => {
@@ -93,13 +91,8 @@ const BuildingFacilitiesManagement = () => {
     );
   };
 
-  // Delete (per-row or bulk), with confirmation modal (not window.confirm — some
-  // embedded/dev environments silently block it)
+  // Delete (per-row or bulk), with confirmation modal
   const [pendingDeleteIds, setPendingDeleteIds] = useState([]);
-
-  const handleDeleteClick = (id) => {
-    setPendingDeleteIds([id]);
-  };
 
   const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
@@ -116,7 +109,7 @@ const BuildingFacilitiesManagement = () => {
   const totalFacilities = facilitiesData.length;
   const totalAvailable = facilitiesData.filter((f) => f.status === 'Available').length;
   const totalMaintenance = facilitiesData.filter((f) => f.status === 'Maintenance').length;
-  const totalBooked = facilitiesData.filter((f) => f.status === 'Booked').length;
+  const totalUnavailable = facilitiesData.filter((f) => f.status === 'Unavailable').length;
 
   return (
     <div className="building-facilities-management-content">
@@ -124,7 +117,7 @@ const BuildingFacilitiesManagement = () => {
       <div className="page-header">
         <div>
           <h1>All Facilities</h1>
-          <p>{totalFacilities} facilities registered across all buildings</p>
+          
         </div>
         <button className="btn-primary" onClick={handleAddClick}>+ Add Facility</button>
       </div>
@@ -154,8 +147,8 @@ const BuildingFacilitiesManagement = () => {
 
         <div className="metric-card">
           <div className="metric-info">
-            <span className="label">Booked</span>
-            <span className="count">{totalBooked}</span>
+            <span className="label">Unavailable</span>
+            <span className="count">{totalUnavailable}</span>
           </div>
         </div>
       </div>
@@ -173,94 +166,90 @@ const BuildingFacilitiesManagement = () => {
               <span className="search-icon">🔍</span>
               <input type="text" placeholder="Search facilities..." />
             </div>
-            <button className="btn-secondary">⚙ Filter</button>
             <button
               className="btn-danger"
               onClick={handleDeleteSelected}
               disabled={selectedIds.length === 0}
             >
-              🗑 Delete{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+              <span>🗑</span>
+              <span>Delete</span>
+              {selectedIds.length > 0 && <span>({selectedIds.length})</span>}
             </button>
           </div>
         </div>
 
         {/* Facilities Table */}
         <div className="table-scroll-wrapper">
-        <table className="facility-table">
-          <thead>
-            <tr>
-              <th className="checkbox-col">
-                <input
-                  type="checkbox"
-                  checked={facilitiesData.length > 0 && selectedIds.length === facilitiesData.length}
-                  onChange={toggleSelectAll}
-                />
-              </th>
-              <th>FACILITY NAME</th>
-              <th>TYPE</th>
-              <th>LOCATION</th>
-              <th>CAPACITY</th>
-              <th>STATUS</th>
-              <th>LAST UPDATED</th>
-              <th>ACTIONS</th>
-            </tr>
-          </thead>
-          <tbody>
-            {facilitiesData.length === 0 ? (
+          <table className="facility-table">
+            <thead>
               <tr>
-                <td colSpan={8} className="empty-state-cell">
-                  <div className="empty-state">
-                    <span className="empty-state-icon">🏢</span>
-                    <p className="empty-state-title">No facilities yet</p>
-                    <p className="empty-state-subtitle">Add your first facility to start managing bookings.</p>
-                  </div>
-                </td>
+                <th className="checkbox-col">
+                  <input
+                    type="checkbox"
+                    checked={facilitiesData.length > 0 && selectedIds.length === facilitiesData.length}
+                    onChange={toggleSelectAll}
+                  />
+                </th>
+                <th>FACILITY NAME</th>
+                <th>LOCATION</th>
+                <th>CAPACITY</th>
+                <th>STATUS</th>
+                <th>LAST UPDATED</th>
+                <th>ACTIONS</th>
               </tr>
-            ) : (
-              facilitiesData.map((facility) => (
-                <tr key={facility.id}>
-                  <td className="checkbox-col">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(facility.id)}
-                      onChange={() => toggleSelectOne(facility.id)}
-                    />
-                  </td>
-                  <td data-label="Facility Name">
-                    <div className="facility-name-cell">
-                      <div>
-                        <div className="facility-title">{facility.name}</div>
-                        <div className="facility-code">ID: {facility.code}</div>
-                      </div>
-                    </div>
-                  </td>
-                  <td data-label="Type">{facility.type}</td>
-                  <td data-label="Location">📍 {facility.location}</td>
-                  <td data-label="Capacity">👥 {facility.capacity}</td>
-                  <td data-label="Status">
-                    <span className={`status-badge ${statusClass(facility.status)}`}>
-                      ● {facility.status}
-                    </span>
-                  </td>
-                  <td className="text-muted" data-label="Last Updated">{facility.lastUpdated}</td>
-                  <td data-label="Actions">
-                    <div className="action-buttons">
-                      <button className="action-btn edit-btn" onClick={() => handleEditClick(facility)}>
-                        ✏ Edit
-                      </button>
-                      <button className="action-btn toggle-btn" onClick={() => handleToggleStatus(facility.id)}>
-                        ⟳ Toggle
-                      </button>
-                      <button className="action-btn delete-btn" onClick={() => handleDeleteClick(facility.id)}>
-                        🗑
-                      </button>
+            </thead>
+            <tbody>
+              {facilitiesData.length === 0 ? (
+                <tr>
+                  <td colSpan={8} className="empty-state-cell">
+                    <div className="empty-state">
+                      <span className="empty-state-icon">🏢</span>
+                      <p className="empty-state-title">No facilities yet</p>
+                      <p className="empty-state-subtitle">Add your first facility to start managing bookings.</p>
                     </div>
                   </td>
                 </tr>
-              ))
-            )}
-          </tbody>
-        </table>
+              ) : (
+                facilitiesData.map((facility) => (
+                  <tr key={facility.id}>
+                    <td className="checkbox-col">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(facility.id)}
+                        onChange={() => toggleSelectOne(facility.id)}
+                      />
+                    </td>
+                    <td data-label="Facility Name">
+                      <div className="facility-name-cell">
+                        <div>
+                          <div className="facility-title">{facility.name}</div>
+                          <div className="facility-code">ID: {facility.code}</div>
+                        </div>
+                      </div>
+                    </td>
+                    <td data-label="Location">📍 {facility.location}</td>
+                    <td data-label="Capacity">👥 {facility.capacity}</td>
+                    <td data-label="Status">
+                      <span className={`status-badge ${statusClass(facility.status)}`}>
+                        ● {facility.status}
+                      </span>
+                    </td>
+                    <td className="text-muted" data-label="Last Updated">{facility.lastUpdated}</td>
+                    <td data-label="Actions">
+                      <div className="action-buttons">
+                        <button className="action-btn edit-btn" onClick={() => handleEditClick(facility)}>
+                          ✏ Edit
+                        </button>
+                        <button className="action-btn toggle-btn" onClick={() => handleToggleStatus(facility.id)}>
+                          ⟳ Toggle
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
 
         {/* Table Footer */}
@@ -296,17 +285,6 @@ const BuildingFacilitiesManagement = () => {
               </div>
 
               <div className="form-group">
-                <label>Type</label>
-                <input
-                  type="text"
-                  value={newFacility.type}
-                  onChange={(e) => setNewFacility({ ...newFacility, type: e.target.value })}
-                  placeholder="e.g. Auditorium"
-                  required
-                />
-              </div>
-
-              <div className="form-group">
                 <label>Location</label>
                 <input
                   type="text"
@@ -336,7 +314,7 @@ const BuildingFacilitiesManagement = () => {
                 >
                   <option value="Available">Available</option>
                   <option value="Maintenance">Maintenance</option>
-                  <option value="Booked">Booked</option>
+                  <option value="Unavailable">Unavailable</option>
                 </select>
               </div>
 
@@ -355,15 +333,6 @@ const BuildingFacilitiesManagement = () => {
           <div className="modal-content">
             <h3>Edit {editingFacility.name}</h3>
             <form onSubmit={handleSaveEdit}>
-              <div className="form-group">
-                <label>Type</label>
-                <input
-                  type="text"
-                  value={editingFacility.type}
-                  onChange={(e) => setEditingFacility({ ...editingFacility, type: e.target.value })}
-                />
-              </div>
-
               <div className="form-group">
                 <label>Location</label>
                 <input
@@ -390,7 +359,7 @@ const BuildingFacilitiesManagement = () => {
                 >
                   <option value="Available">Available</option>
                   <option value="Maintenance">Maintenance</option>
-                  <option value="Booked">Booked</option>
+                  <option value="Unavailable">Unavailable</option>
                 </select>
               </div>
 
@@ -420,5 +389,4 @@ const BuildingFacilitiesManagement = () => {
   );
 };
 
-// This exact line is required for React.lazy() to work
 export default BuildingFacilitiesManagement;
