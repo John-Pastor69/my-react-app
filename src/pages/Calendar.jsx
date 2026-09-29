@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { db } from "../../Firebase";
+import { db } from "../Firebase";
 import { collection, query, onSnapshot } from "firebase/firestore";
-import "../../styles/mis/MisCalendar.scss";
+import "../styles/Calendar.scss";
 
 const MisCalendar = () => {
   // 1. NEW STATE: Tracks the currently viewed month (defaults to today's date)

@@ -14,6 +14,7 @@ import EquipmentManagementRouter from './pages/routers/EquipmentRouter';
 import ProfileRouter from './pages/routers/ProfileRouter';
 import ReservationRouter from './pages/routers/ReservationRouter'
 import ScheduleRouter from './pages/routers/ScheduleRouter';
+import FacilityRouter from './pages/routers/FacilityRouter';
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -87,6 +88,10 @@ export default function App() {
             <Route 
               path="/user" 
               element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />}
+            />
+            <Route 
+              path="/facility" 
+              element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
               path="/calendar" 

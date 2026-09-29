@@ -1,11 +1,17 @@
 import { Suspense, lazy } from 'react';
 
-const MisCalendar = lazy(() => import('../mis/MisCalendar'));
+const Calendar = lazy(() => import('../Calendar'));
 
 const CalendarRouter = ({currentUserRole}) => {
 
     const calendarComponents = {
-        'mis': <MisCalendar />
+        'requestor': <Calendar currentUserRole={currentUserRole} />,
+        'endorser': <Calendar currentUserRole={currentUserRole} />,
+        'building admin': <Calendar currentUserRole={currentUserRole} />,
+        'osa': <Calendar currentUserRole={currentUserRole} />,
+        'mis': <Calendar currentUserRole={currentUserRole} />,
+        'academic head': <Calendar currentUserRole={currentUserRole} />,
+        'school admin': <Calendar currentUserRole={currentUserRole} />,
     };
 
     const CurrentDashboard = calendarComponents[currentUserRole] || null;
