@@ -47,6 +47,7 @@ const Reservation = () => {
 
   // --- UI STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
+  const [reservationsData, setReservationsData] = useState([]);
   const [dateError, setDateError] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarView, setCalendarView] = useState(new Date());
@@ -56,7 +57,6 @@ const Reservation = () => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
         setCurrentUser(user);
-        // Automatically fetch profile data to pre-fill the Requestor form
         try {
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
@@ -64,7 +64,6 @@ const Reservation = () => {
             const userData = userSnap.data();
             setFormData(prev => ({
               ...prev,
-              // Only overwrite if currently empty so it doesn't erase local drafts
               fullName: prev.fullName || userData.name || '',
               contactNumber: prev.contactNumber || userData.phone || ''
             }));
@@ -104,18 +103,44 @@ const Reservation = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData, days, aircon, eventDate, startTime, endTime, selectedEquip]);
 
-  // --- LOAD EQUIPMENTS ---
+  // --- LIVE LISTEN TO EQUIPMENTS & RESERVATIONS ---
   useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'equipments'),
-      (snapshot) => {
-        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setInventoryEquipments(list);
-      },
-      (error) => console.error('Failed to load equipment:', error)
-    );
-    return () => unsubscribe();
+    const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setInventoryEquipments(list);
+    }, (error) => console.error('Failed to load equipment:', error));
+
+    const unsubReservations = onSnapshot(collection(db, 'reservations'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setReservationsData(list);
+    }, (error) => console.error('Failed to load reservations:', error));
+
+    return () => {
+      unsubEquipments();
+      unsubReservations();
+    };
   }, []);
+
+  // --- DYNAMICALLY CALCULATE AVAILABLE COUNTS FOR EQUIPMENT NEEDED ---
+  const mappedEquipmentList = inventoryEquipments.map(item => {
+    let reservedCount = 0;
+    reservationsData.forEach(res => {
+      if (res.status !== 'Rejected' && res.status !== 'Cancelled') {
+        if (res.selectedEquip && res.selectedEquip[item.id]) {
+          reservedCount += Number(res.selectedEquip[item.id]);
+        }
+      }
+    });
+
+    const total = Number(item.totalCount) || 0;
+    const availableCount = Math.max(0, total - reservedCount);
+
+    return {
+      ...item,
+      computedReserved: reservedCount,
+      computedAvailable: availableCount
+    };
+  });
 
   // --- CALCULATE DURATION ---
   useEffect(() => {
@@ -147,14 +172,14 @@ const Reservation = () => {
 
   const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount));
 
-  // ONLY updates local state. Prevents deduction upon leaving the page.
+  // Updates local cart based on computed available count
   const updateEquip = (item, delta) => {
     if (item.status === 'Unavailable') return;
 
     const currentSelected = selectedEquip[item.id] || 0;
     const newSelected = currentSelected + delta;
 
-    if (newSelected < 0 || newSelected > item.availableCount) return;
+    if (newSelected < 0 || newSelected > item.computedAvailable) return;
     
     setSelectedEquip(prev => ({ ...prev, [item.id]: newSelected }));
   };
@@ -183,7 +208,7 @@ const Reservation = () => {
         else if (h === 0) { h = 12; mod = 'AM'; }
         else { mod = 'AM'; }
       }
-      setter(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${mod}`);
+      setter(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}${mod}`);
     }
   };
 
@@ -294,8 +319,8 @@ const Reservation = () => {
       // 2. SUBMIT RESERVATION WITH USER ID
       await addDoc(collection(db, 'reservations'), {
         ...formData,
-        userId: currentUser.uid,        // Links to Profile/Account
-        userEmail: currentUser.email,   // Links to Profile/Account
+        userId: currentUser.uid,        
+        userEmail: currentUser.email,   
         eventDate,
         startTime,
         endTime,
@@ -307,18 +332,14 @@ const Reservation = () => {
         createdAt: new Date().toISOString()
       });
 
-      // 3. DEDUCT EQUIPMENT FROM INVENTORY
+      // 3. SYNC INVENTORY STATUS BACK TO DB
       const batch = writeBatch(db);
       for (const [eqId, qty] of Object.entries(selectedEquip)) {
         if (qty > 0) {
           const item = inventoryEquipments.find(i => i.id === eqId);
           if (item) {
-            const newAvailable = Math.max(0, item.availableCount - qty);
             const eqRef = doc(db, 'equipments', eqId);
             batch.update(eqRef, {
-              availableCount: newAvailable,
-              status: newAvailable === 0 ? 'Unavailable' : item.status,
-              statusClass: newAvailable === 0 ? 'status-unavailable' : item.statusClass,
               lastUpdated: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
             });
           }
@@ -326,7 +347,7 @@ const Reservation = () => {
       }
       await batch.commit();
 
-      handleDiscard(); // Clear form on success
+      handleDiscard(); 
       setCustomAlert({
         title: 'Success',
         message: 'Reservation submitted successfully!',
@@ -351,7 +372,7 @@ const Reservation = () => {
         <div className="required-note">All fields marked <span style={{color: '#EF4444'}}>*</span> are required</div>
       </div>
 
-      {/* SECTION 1: Requestor Information (Cleaned up Roles) */}
+      {/* SECTION 1: Requestor Information */}
       <div className="form-card">
         <div className="section-header"><span className="step-badge">1</span> Requestor Information</div>
 
@@ -528,22 +549,21 @@ const Reservation = () => {
           </div>
         </div>
 
-        {/* SECTION 5: Equipment Needed (Local Cart Only) */}
+        {/* SECTION 5: Equipment Needed (Real-Time Computed Availability) */}
         <div className="form-card">
           <div className="section-header"><span className="step-badge">5</span> Equipment Needed</div>
           
           <div className="equipment-list" style={{ maxHeight: '340px', overflowY: 'auto', paddingRight: '4px' }}>
-            {inventoryEquipments.length === 0 ? (
+            {mappedEquipmentList.length === 0 ? (
               <div style={{ textAlign: 'center', padding: '30px 16px', color: '#64748B', fontSize: '13px' }}>
                 No equipment currently listed in inventory.
               </div>
             ) : (
-              inventoryEquipments.map((item) => {
+              mappedEquipmentList.map((item) => {
                 const count = selectedEquip[item.id] || 0;
                 
-                // Blocks interactions visually if marked unavailable manually by admin
                 const isLocked = item.status === 'Unavailable';
-                const isAvailable = !isLocked && item.availableCount > 0;
+                const isAvailable = !isLocked && item.computedAvailable > 0;
                 
                 let statusColor = '#10B981';
                 if (isLocked || !isAvailable) statusColor = '#EF4444';
@@ -556,7 +576,7 @@ const Reservation = () => {
                         <strong>{item.name}</strong>
                         <span>{item.sku}</span>
                         <span style={{ fontSize: '11px', color: statusColor, fontWeight: 500, marginTop: '2px', display: 'block' }}>
-                          ● {item.status} ({item.availableCount} / {item.totalCount} units available)
+                          ● {item.status} ({item.computedAvailable} / {item.totalCount} units)
                         </span>
                       </div>
                     </div>
@@ -570,7 +590,7 @@ const Reservation = () => {
                       <button 
                         type="button" 
                         onClick={() => updateEquip(item, 1)}
-                        disabled={isLocked || !isAvailable || item.availableCount <= count}
+                        disabled={isLocked || !isAvailable || item.computedAvailable <= count}
                       >+</button>
                     </div>
                   </div>
@@ -645,7 +665,7 @@ const Reservation = () => {
             disabled={!certified}
             style={{ opacity: !certified ? 0.6 : 1, cursor: !certified ? 'not-allowed' : 'pointer' }}
           >
-            Submit Reservation
+            Submit Reservation`
           </button>
         </div>
       </div>

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../../Firebase';
+import { db, auth } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
 
 // Role options kung saan direct na "requestor" ang value na ibabato sa DB
@@ -36,8 +36,6 @@ const roleBadgeClass = (role) => {
   return 'role-approver';
 };
 
-const getStatus = (user) => user.status || 'Active';
-
 // Safely format Firestore Timestamps, standard JS Dates, or ISO strings into readable exact times
 const formatLastActive = (value) => {
   if (!value) return '—';
@@ -62,14 +60,28 @@ const formatLastActive = (value) => {
 
 const MisUserManagement = () => {
   const [usersData, setUsersData] = useState([]);
+  const [currentAuthUser, setCurrentAuthUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
+
+  // --- SEARCH & PAGINATION STATES ---
+  const [searchQuery, setSearchQuery] = useState('');
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 5;
 
   // Role Modal State
   const [roleModalUser, setRoleModalUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState('requestor');
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
+
+  // Track currently logged-in auth user
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      setCurrentAuthUser(user);
+    });
+    return () => unsubscribeAuth();
+  }, []);
 
   // Snapshot listener para sa live updates ng users collection
   useEffect(() => {
@@ -124,8 +136,20 @@ const MisUserManagement = () => {
     }
   };
 
+  // --- FILTERING & PAGINATION LOGIC ---
+  const filteredUsers = usersData.filter((user) => {
+    const query = searchQuery.toLowerCase();
+    const name = (user.name || '').toLowerCase();
+    const email = (user.email || '').toLowerCase();
+    return name.includes(query) || email.includes(query);
+  });
+
+  const totalPages = Math.max(1, Math.ceil(filteredUsers.length / itemsPerPage));
+  const startIndex = (currentPage - 1) * itemsPerPage;
+  const currentUsers = filteredUsers.slice(startIndex, startIndex + itemsPerPage);
+
   const totalUsers = usersData.length;
-  const activeUsers = usersData.filter((u) => getStatus(u) === 'Active').length;
+  const activeUsers = usersData.filter((u) => currentAuthUser && u.id === currentAuthUser.uid).length;
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role)).length;
 
   return (
@@ -172,7 +196,15 @@ const MisUserManagement = () => {
           <div className="controls-right">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
-              <input type="text" placeholder="Search users..." />
+              <input 
+                type="text" 
+                placeholder="Search users..." 
+                value={searchQuery}
+                onChange={(e) => {
+                  setSearchQuery(e.target.value);
+                  setCurrentPage(1); // Reset to first page on search
+                }}
+              />
             </div>
           </div>
         </div>
@@ -193,25 +225,27 @@ const MisUserManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {isLoading || loadError || usersData.length === 0 ? (
+              {isLoading || loadError || currentUsers.length === 0 ? (
                 <tr>
                   <td colSpan={6} className="empty-state-cell">
                     <div className="empty-state">
                       <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
                       <p className="empty-state-title">
-                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users yet'}
+                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : searchQuery ? 'No matching users found' : 'No users yet'}
                       </p>
                       <p className="empty-state-subtitle">
                         {isLoading
                           ? 'Fetching the latest users from the database.'
-                          : loadError || 'Users will appear here once they are registered.'}
+                          : loadError || (searchQuery ? 'Try adjusting your search query.' : 'Users will appear here once they are registered.')}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                usersData.map((user) => {
-                  const status = getStatus(user);
+                currentUsers.map((user) => {
+                  const isActive = currentAuthUser && user.id === currentAuthUser.uid;
+                  const statusLabel = isActive ? 'Active' : 'Inactive';
+                  
                   return (
                     <tr key={user.id}>
                       <td>
@@ -234,8 +268,11 @@ const MisUserManagement = () => {
                       </td>
                       <td>{user.officeLocation || '—'}</td>
                       <td>
-                        <span className={`status-dot ${status === 'Active' ? 'status-active' : 'status-inactive'}`}>
-                          {status}
+                        <span 
+                          className="status-dot"
+                          style={{ color: isActive ? '#16a34a' : '#dc2626', fontWeight: 600 }}
+                        >
+                          {statusLabel}
                         </span>
                       </td>
                       <td className="text-muted">{formatLastActive(user.lastActive)}</td>
@@ -257,17 +294,29 @@ const MisUserManagement = () => {
           </table>
         </div>
 
-        {/* Table Footer */}
+        {/* Table Footer & Pagination */}
         <div className="table-pagination">
           <span className="pagination-text">
-            {usersData.length === 0
+            {filteredUsers.length === 0
               ? 'No users to show'
-              : `Showing 1 to ${usersData.length} of ${usersData.length} users`}
+              : `Showing ${startIndex + 1} to ${Math.min(startIndex + itemsPerPage, filteredUsers.length)} of ${filteredUsers.length} users`}
           </span>
           <div className="pagination-buttons">
-            <button className="page-btn" disabled>Prev</button>
-            <button className="page-btn active">1</button>
-            <button className="page-btn" disabled>Next</button>
+            <button 
+              className="page-btn" 
+              disabled={currentPage === 1}
+              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
+            >
+              Prev
+            </button>
+            <button className="page-btn active">{currentPage}</button>
+            <button 
+              className="page-btn" 
+              disabled={currentPage === totalPages || filteredUsers.length === 0}
+              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
+            >
+              Next
+            </button>
           </div>
         </div>
       </div>
