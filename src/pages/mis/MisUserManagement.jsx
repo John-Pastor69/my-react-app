@@ -41,7 +41,26 @@ const roleBadgeClass = (role) => {
   return 'role-approver';
 };
 
-const getStatus = (user) => user.status || 'Active';
+// --- DYNAMIC HEARTBEAT STATUS CHECKER ---
+const getDynamicStatus = (user) => {
+  if (!user.lastActive) return 'Inactive';
+  
+  let lastActiveDate;
+  if (typeof user.lastActive.toDate === 'function') {
+    lastActiveDate = user.lastActive.toDate();
+  } else {
+    lastActiveDate = new Date(user.lastActive);
+  }
+
+  const now = new Date();
+  const diffInMs = now - lastActiveDate;
+  const twoMinutesInMs = 2 * 60 * 1000;
+
+  if (diffInMs < twoMinutesInMs && user.status !== 'Inactive') {
+    return 'Active';
+  }
+  return 'Inactive';
+};
 
 const formatLastActive = (value) => {
   if (value && typeof value.toDate === 'function') {
@@ -113,13 +132,10 @@ const MisUserManagement = () => {
       setIsUpdatingRole(true);
       setActionError('');
 
-      // GAGAWING 'mis' ANG VALUE DITO:
       let roleToSave = selectedRole.toLowerCase().trim();
       if (roleToSave === 'mis admin' || roleToSave.includes('mis')) {
         roleToSave = 'mis';
       }
-
-      console.log("Saving exact role to Firestore:", roleToSave);
 
       await updateDoc(doc(db, 'users', roleModalUser.id), {
         role: roleToSave
@@ -135,7 +151,7 @@ const MisUserManagement = () => {
   };
 
   const totalUsers = usersData.length;
-  const activeUsers = usersData.filter((u) => getStatus(u) === 'Active').length;
+  const activeUsers = usersData.filter((u) => getDynamicStatus(u) === 'Active').length;
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase())).length;
 
   return (
@@ -217,7 +233,9 @@ const MisUserManagement = () => {
                 </tr>
               ) : (
                 usersData.map((user) => {
-                  const status = getStatus(user);
+                  const status = getDynamicStatus(user);
+                  const isActive = status === 'Active';
+                  
                   return (
                     <tr key={user.id}>
                       <td>
@@ -240,7 +258,13 @@ const MisUserManagement = () => {
                       </td>
                       <td>{user.officeLocation || '—'}</td>
                       <td>
-                        <span className={`status-dot ${status === 'Active' ? 'status-active' : 'status-inactive'}`}>
+                        <span 
+                          className="status-dot"
+                          style={{ 
+                            color: isActive ? '#16a34a' : '#dc2626', 
+                            fontWeight: 600 
+                          }}
+                        >
                           {status}
                         </span>
                       </td>

@@ -29,13 +29,13 @@ export default function App() {
   // NEW: Loading state to pause the app while Firebase checks the session
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // --- GLOBAL PRESENCE & SESSION RESTORE ---
+  // --- GLOBAL PRESENCE & HEARTBEAT ---
   useEffect(() => {
-    // 1. Detect existing Firebase session on load/refresh
+    let heartbeatInterval = null;
+
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
         try {
-          // Fetch the user's role from the database to restore the session properly
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
 
@@ -44,11 +44,22 @@ export default function App() {
             setUserRole(userData.role || 'requestor');
             setIsAuthenticated(true);
 
-            // Update presence back to Active
-            updateDoc(userRef, {
+            // Initial Active ping on load/refresh
+            await updateDoc(userRef, {
               status: 'Active',
               lastActive: new Date().toISOString()
-            }).catch(err => console.error("Failed to set active status:", err));
+            });
+
+            // Heartbeat: Ping Firestore every 30 seconds to keep lastActive fresh
+            heartbeatInterval = setInterval(async () => {
+              if (auth.currentUser) {
+                await updateDoc(doc(db, 'users', auth.currentUser.uid), {
+                  status: 'Active',
+                  lastActive: new Date().toISOString()
+                }).catch(err => console.error("Heartbeat failed:", err));
+              }
+            }, 30000); // 30 seconds
+
           } else {
             setIsAuthenticated(false);
           }
@@ -60,25 +71,13 @@ export default function App() {
         setIsAuthenticated(false);
       }
       
-      // Stop the loading screen once Firebase is done checking
       setIsAuthLoading(false);
     });
 
-    // 2. Set to Inactive immediately before the user closes the tab, refreshes, or leaves the site
-    const handleTabClose = () => {
-      if (auth.currentUser) {
-        updateDoc(doc(db, 'users', auth.currentUser.uid), {
-          status: 'Inactive',
-          lastActive: new Date().toISOString()
-        }).catch(err => console.error("Failed to set inactive status:", err));
-      }
-    };
-
-    window.addEventListener('beforeunload', handleTabClose);
-
+    // Cleanup interval and listener on unmount
     return () => {
       unsubscribe();
-      window.removeEventListener('beforeunload', handleTabClose);
+      if (heartbeatInterval) clearInterval(heartbeatInterval);
     };
   }, []);
 
