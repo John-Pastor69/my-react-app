@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { auth, db, microsoftProvider } from '../Firebase';
 import '../styles/Login.scss';
 
@@ -43,9 +43,17 @@ export default function Login({ onLogin }) {
       const userDoc = await getDoc(userDocRef);
 
       let assignedRole = 'Requestor'; // Set default to 'requestor'
+      const nowIso = new Date().toISOString(); // Get current timestamp for lastActive
 
       if (userDoc.exists()) {
         assignedRole = userDoc.data().role; 
+        
+        // --- SET STATUS TO ACTIVE ON LOGIN ---
+        await updateDoc(userDocRef, {
+          status: 'Active',
+          lastActive: nowIso
+        });
+
       } else {
         // Format live date as MM/DD/YYYY (e.g., 09/26/2026)
         const d = new Date();
@@ -53,7 +61,7 @@ export default function Login({ onLogin }) {
         const day = String(d.getDate()).padStart(2, '0');
         const liveDate = `${month}/${day}/${d.getFullYear()}`;
 
-        // Add the new user to Firestore
+        // Add the new user to Firestore WITH active status
         await setDoc(userDocRef, {
           email: user.email,
           name: user.displayName || "Unknown User",
@@ -61,13 +69,15 @@ export default function Login({ onLogin }) {
           uid: user.uid,
           dateJoined: liveDate,
           officeLocation: '',
-          phone: ''
+          phone: '',
+          status: 'Active',
+          lastActive: nowIso
         });
       }
 
       console.log(`Successfully logged in as ${user.email} with role: ${assignedRole}`);
       
-      // 4. THIS IS THE FIX: Pass the role to App.jsx!
+      // 4. Pass the role to App.jsx!
       onLogin(assignedRole); 
       
     } catch (error) {

@@ -30,6 +30,7 @@ const MisProfile = () => {
     officeLocation: '',
     phone: '',
     role: '',
+    status: 'Active', // Added status tracking
     dateJoined: '',
     avatarUrl: '',
     bannerUrl: ''
@@ -73,6 +74,7 @@ const MisProfile = () => {
               lastName: parsedLastName,
               email: data.email || user.email || '',
               role: data.role ? data.role.toUpperCase() : '',
+              status: data.status || 'Active', // Pulls dynamic status
               dateJoined: joinedDate || 'N/A', 
               officeLocation: data.officeLocation || '',
               phone: data.phone || '',
@@ -202,7 +204,10 @@ const MisProfile = () => {
     try {
       const user = auth.currentUser;
       if (user) {
+        // Set inactive before deleting just to be safe
         const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
+        
         await deleteDoc(userDocRef);
         await deleteUser(user);
         window.location.href = '/'; 
@@ -278,7 +283,12 @@ const MisProfile = () => {
                   <i className="ph-fill ph-camera"></i>
                 </label>
               )}
-              <div className="status-indicator" style={{ background: '#10B981' }}></div> 
+              {/* Dynamic Status Indicator */}
+              <div 
+                className="status-indicator" 
+                style={{ background: formData.status === 'Active' ? '#10B981' : '#DC2626' }}
+                title={formData.status}
+              ></div> 
             </div>
             
             <div className="user-titles">

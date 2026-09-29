@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { signOut } from 'firebase/auth'; 
-import { auth } from '../Firebase';
+import { doc, updateDoc } from 'firebase/firestore'; 
+import { auth, db } from '../Firebase';
 import { 
   LayoutDashboard, 
   PlusCircle, 
@@ -24,7 +25,6 @@ const ELEVATED_ROLES = [
   'mis', 
   'academic head', 
   'school admin'
-  
 ];
 
 // Roles with specific management tabs
@@ -35,6 +35,16 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
 
   const handleSignOut = async () => {
     try {
+      if (auth.currentUser) {
+        // --- SET STATUS TO INACTIVE BEFORE LOGGING OUT ---
+        const userRef = doc(db, 'users', auth.currentUser.uid);
+        await updateDoc(userRef, {
+          status: 'Inactive',
+          lastActive: new Date().toISOString()
+        });
+      }
+      
+      // Now perform the actual logout
       await signOut(auth); 
       onLogout();          
     } catch (error) {
