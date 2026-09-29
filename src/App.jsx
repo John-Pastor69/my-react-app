@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react'; 
 import { Routes, Route, Navigate } from 'react-router-dom';
-import { doc, updateDoc, getDoc } from 'firebase/firestore'; // Added getDoc
+import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
 
 import SideBar from './pages/SideBar';
@@ -26,13 +26,14 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
   const [userRole, setUserRole] = useState('requestor');
   
-  // NEW: Loading state to pause the app while Firebase checks the session
+  // Loading state to pause the app while Firebase checks the session
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-  // --- GLOBAL PRESENCE & HEARTBEAT ---
+  // --- GLOBAL PRESENCE, HEARTBEAT & DB STATUS WRITER ---
   useEffect(() => {
     let heartbeatInterval = null;
 
+    // 1. Detect existing Firebase session on load/refresh
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
         try {
@@ -44,13 +45,13 @@ export default function App() {
             setUserRole(userData.role || 'requestor');
             setIsAuthenticated(true);
 
-            // Initial Active ping on load/refresh
+            // Set status to Active in Firestore on session load
             await updateDoc(userRef, {
               status: 'Active',
               lastActive: new Date().toISOString()
             });
 
-            // Heartbeat: Ping Firestore every 30 seconds to keep lastActive fresh
+            // Heartbeat: Ping Firestore every 30 seconds to keep Active fresh
             heartbeatInterval = setInterval(async () => {
               if (auth.currentUser) {
                 await updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -58,7 +59,7 @@ export default function App() {
                   lastActive: new Date().toISOString()
                 }).catch(err => console.error("Heartbeat failed:", err));
               }
-            }, 30000); // 30 seconds
+            }, 30000);
 
           } else {
             setIsAuthenticated(false);
@@ -74,15 +75,26 @@ export default function App() {
       setIsAuthLoading(false);
     });
 
-    // Cleanup interval and listener on unmount
+    // 2. Write "Inactive" directly to Firestore when closing tab, refreshing, or leaving
+    const handleTabClose = () => {
+      if (auth.currentUser) {
+        updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          status: 'Inactive',
+          lastActive: new Date().toISOString()
+        }).catch(err => console.error("Failed to set inactive status:", err));
+      }
+    };
+
+    window.addEventListener('beforeunload', handleTabClose);
+
     return () => {
       unsubscribe();
       if (heartbeatInterval) clearInterval(heartbeatInterval);
+      window.removeEventListener('beforeunload', handleTabClose);
     };
   }, []);
 
   // --- LOADING SCREEN ---
-  // Prevents the Login screen from flashing while checking the session
   if (isAuthLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#F8FAFC', color: '#64748B', fontFamily: 'system-ui, sans-serif' }}>
