@@ -38,17 +38,26 @@ const roleBadgeClass = (role) => {
 
 const getStatus = (user) => user.status || 'Active';
 
+// Safely format Firestore Timestamps, standard JS Dates, or ISO strings into readable exact times
 const formatLastActive = (value) => {
-  if (value && typeof value.toDate === 'function') {
-    return value.toDate().toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
+  if (!value) return '—';
+  
+  let dateObj;
+  if (typeof value.toDate === 'function') {
+    dateObj = value.toDate();
+  } else {
+    dateObj = new Date(value);
   }
-  return '—';
+
+  if (isNaN(dateObj.getTime())) return '—';
+
+  return dateObj.toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
 };
 
 const MisUserManagement = () => {

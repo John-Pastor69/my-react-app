@@ -1,18 +1,110 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
-import { db } from '../Firebase';
+import { collection, onSnapshot, doc, addDoc, getDocs, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { db, auth } from '../Firebase';
 import '../styles/Reservation.scss';
 
-const Reservation = ({ currentUserRole = 'requestor' }) => {
+const initialFormState = {
+  fullName: '', contactNumber: '', 
+  eventName: '', expectedParticipants: '', eventType: [], purpose: '',
+  facilities: [], specificRoom: '', airconOnTime: '', airconOffTime: ''
+};
+
+// Extracted to be reused outside useEffect
+const parseTimeToDecimal = (timeStr) => {
+  if (!timeStr) return null;
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s(AM|PM)$/i);
+  if (!match) return null;
+  
+  let [ , hours, minutes, modifier ] = match;
+  hours = parseInt(hours, 10);
+  minutes = parseInt(minutes, 10);
+
+  if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
+  if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
+
+  return hours + (minutes / 60);
+};
+
+const Reservation = () => {
+  // --- AUTH & USER STATE ---
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // --- FORM STATES ---
+  const [formData, setFormData] = useState(initialFormState);
   const [days, setDays] = useState(0);
   const [aircon, setAircon] = useState(true);
-  const isRequestor = currentUserRole === 'requestor';
+  const [eventDate, setEventDate] = useState('');
+  const [startTime, setStartTime] = useState('');
+  const [endTime, setEndTime] = useState('');
+  const [durationHours, setDurationHours] = useState(0);
+  const [selectedEquip, setSelectedEquip] = useState({});
+  const [certified, setCertified] = useState(false);
+  const [isDraftSaved, setIsDraftSaved] = useState(false);
+  
+  // --- MODAL STATES ---
+  const [showOverlapWarning, setShowOverlapWarning] = useState(false);
+  const [customAlert, setCustomAlert] = useState(null); 
 
-  // --- DYNAMIC EQUIPMENT STATES ---
+  // --- UI STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
-  const [selectedEquip, setSelectedEquip] = useState({}); // Stores { [equipmentId]: quantitySelected }
+  const [dateError, setDateError] = useState('');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarView, setCalendarView] = useState(new Date());
 
-  // --- LIVE LISTEN TO FIRESTORE "equipments" COLLECTION ---
+  // --- CONNECT TO ACCOUNT (Profile Auto-Fill) ---
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        // Automatically fetch profile data to pre-fill the Requestor form
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            setFormData(prev => ({
+              ...prev,
+              // Only overwrite if currently empty so it doesn't erase local drafts
+              fullName: prev.fullName || userData.name || '',
+              contactNumber: prev.contactNumber || userData.phone || ''
+            }));
+          }
+        } catch (err) {
+          console.error("Failed to fetch user data for auto-fill", err);
+        }
+      } else {
+        setCurrentUser(null);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
+  // --- LOAD DRAFT ON MOUNT ---
+  useEffect(() => {
+    const draft = localStorage.getItem('reservationDraft');
+    if (draft) {
+      try {
+        const parsed = JSON.parse(draft);
+        if (parsed.formData) setFormData(prev => ({ ...prev, ...parsed.formData }));
+        if (parsed.days !== undefined) setDays(parsed.days);
+        if (parsed.aircon !== undefined) setAircon(parsed.aircon);
+        if (parsed.eventDate) setEventDate(parsed.eventDate);
+        if (parsed.startTime) setStartTime(parsed.startTime);
+        if (parsed.endTime) setEndTime(parsed.endTime);
+        if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
+      } catch (e) {
+        console.error("Failed to parse draft", e);
+      }
+    }
+  }, []);
+
+  // Reset Draft toggle when form changes
+  useEffect(() => {
+    if (isDraftSaved) setIsDraftSaved(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData, days, aircon, eventDate, startTime, endTime, selectedEquip]);
+
+  // --- LOAD EQUIPMENTS ---
   useEffect(() => {
     const unsubscribe = onSnapshot(
       collection(db, 'equipments'),
@@ -20,45 +112,13 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
         const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
         setInventoryEquipments(list);
       },
-      (error) => {
-        console.error('Failed to load equipment for reservation:', error);
-      }
+      (error) => console.error('Failed to load equipment:', error)
     );
     return () => unsubscribe();
   }, []);
 
-  // --- DATE & CALENDAR STATES ---
-  const [eventDate, setEventDate] = useState('');
-  const [dateError, setDateError] = useState('');
-  const [showCalendar, setShowCalendar] = useState(false);
-  const [calendarView, setCalendarView] = useState(new Date());
-
-  // --- TIME STATES ---
-  const [startTime, setStartTime] = useState('');
-  const [endTime, setEndTime] = useState('');
-  const [durationHours, setDurationHours] = useState(0);
-
-  // --- CALCULATE DURATION EFFECT ---
+  // --- CALCULATE DURATION ---
   useEffect(() => {
-    if (!startTime || !endTime) {
-      setDurationHours(0);
-      return;
-    }
-
-    const parseTimeToDecimal = (timeStr) => {
-      const match = timeStr.trim().match(/^(\d{2}):(\d{2})\s(AM|PM)$/i);
-      if (!match) return null;
-      
-      let [ , hours, minutes, modifier ] = match;
-      hours = parseInt(hours, 10);
-      minutes = parseInt(minutes, 10);
-
-      if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
-      if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
-
-      return hours + (minutes / 60);
-    };
-
     const startDecimal = parseTimeToDecimal(startTime);
     const endDecimal = parseTimeToDecimal(endTime);
 
@@ -72,86 +132,67 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
   }, [startTime, endTime]);
 
   // --- HANDLERS ---
+  const handleInputChange = (field, value) => {
+    setFormData(prev => ({ ...prev, [field]: value }));
+  };
+
+  const handleCheckboxArrayChange = (field, value) => {
+    setFormData(prev => ({
+      ...prev,
+      [field]: prev[field].includes(value)
+        ? prev[field].filter(item => item !== value)
+        : [...prev[field], value]
+    }));
+  };
+
   const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount));
 
-  // Real-time Firestore Equipment Counter Handler
-  const updateEquip = async (item, delta) => {
+  // ONLY updates local state. Prevents deduction upon leaving the page.
+  const updateEquip = (item, delta) => {
+    if (item.status === 'Unavailable') return;
+
     const currentSelected = selectedEquip[item.id] || 0;
     const newSelected = currentSelected + delta;
 
-    // Validation: Cannot go below 0 selected, and cannot exceed total inventory stock
-    if (newSelected < 0 || newSelected > item.totalCount) return;
-
-    // Validation: Cannot increase if no more units are available in Firestore
-    if (delta > 0 && item.availableCount < delta) return;
-
-    // Update local selection state
+    if (newSelected < 0 || newSelected > item.availableCount) return;
+    
     setSelectedEquip(prev => ({ ...prev, [item.id]: newSelected }));
-
-    // Calculate new available count in Firestore
-    const newAvailableCount = item.availableCount - delta;
-    const newStatus = newAvailableCount === 0 ? 'Unavailable' : 'Available';
-    const newStatusClass = newStatus === 'Unavailable' ? 'status-unavailable' : 'status-available';
-
-    try {
-      // Instantly update Firestore so MIS Management & Overview update in real time
-      await updateDoc(doc(db, 'equipments', item.id), {
-        availableCount: newAvailableCount,
-        status: newStatus,
-        statusClass: newStatusClass,
-        lastUpdated: 'Just now'
-      });
-    } catch (error) {
-      console.error('Failed to update equipment inventory in real-time:', error);
-    }
   };
 
   const handleDateChange = (e) => {
-    let val = e.target.value;
-    val = val.replace(/\D/g, '');
+    let val = e.target.value.replace(/\D/g, '');
     if (val.length >= 3 && val.length <= 4) val = val.slice(0, 2) + '/' + val.slice(2);
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
     setEventDate(val);
-
     const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
-    if (val.length > 0 && !isValid) {
-      setDateError('Invalid format. Use MM/DD/YYYY');
-    } else {
-      setDateError('');
-    }
+    setDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
   };
 
   const handleTimeBlur = (e, setter) => {
     let val = e.target.value.trim().toUpperCase();
     if (!val) return;
-    
     const match = val.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/);
     if (match) {
       let [ , h, m, mod ] = match;
       h = parseInt(h, 10);
       m = m || '00';
-      
       if (!mod) {
         if (h > 12) { mod = 'PM'; h -= 12; }
         else if (h === 12) { mod = 'PM'; }
         else if (h === 0) { h = 12; mod = 'AM'; }
         else { mod = 'AM'; }
       }
-      
-      const formatted = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${mod}`;
-      setter(formatted);
+      setter(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${mod}`);
     }
   };
 
   const handlePrevMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() - 1, 1));
   const handleNextMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() + 1, 1));
-  
   const selectDate = (day) => {
     const month = String(calendarView.getMonth() + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
-    const year = calendarView.getFullYear();
-    setEventDate(`${month}/${formattedDay}/${year}`);
+    setEventDate(`${month}/${formattedDay}/${calendarView.getFullYear()}`);
     setDateError('');
     setShowCalendar(false); 
   };
@@ -161,15 +202,145 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
     const month = calendarView.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
-
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => <div key={`blank-${i}`} className="calendar-day empty"></div>);
     const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
-      <div key={day} className="calendar-day" onClick={() => selectDate(day)}>
-        {day}
-      </div>
+      <div key={day} className="calendar-day" onClick={() => selectDate(day)}>{day}</div>
     ));
-
     return [...blanks, ...renderDays];
+  };
+
+  // --- ACTION HANDLERS ---
+  const handleDiscard = () => {
+    setFormData(initialFormState);
+    setDays(0);
+    setAircon(true);
+    setEventDate('');
+    setStartTime('');
+    setEndTime('');
+    setSelectedEquip({});
+    setCertified(false);
+    setIsDraftSaved(false);
+    localStorage.removeItem('reservationDraft');
+  };
+
+  const handleSaveDraft = () => {
+    const draftData = { formData, days, aircon, eventDate, startTime, endTime, selectedEquip };
+    localStorage.setItem('reservationDraft', JSON.stringify(draftData));
+    setIsDraftSaved(true);
+  };
+
+  const handleSubmit = async () => {
+    if (!certified) return;
+    
+    if (!currentUser) {
+      setCustomAlert({
+        title: 'Authentication Required',
+        message: 'You must be logged in to submit a reservation.',
+        isSuccess: false
+      });
+      return;
+    }
+
+    const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
+    const hasFacility = formData.facilities.length > 0;
+
+    if (!formData.fullName || !eventDate || !startTime || !endTime) {
+      setCustomAlert({
+        title: 'Missing Fields',
+        message: 'Please fill in all required fields including Full Name, Event Date, and Time.',
+        isSuccess: false
+      });
+      return;
+    }
+
+    if (!hasFacility && !hasEquipment) {
+      setCustomAlert({
+        title: 'Selection Required',
+        message: 'Please select at least one facility or equipment to reserve.',
+        isSuccess: false
+      });
+      return;
+    }
+
+    try {
+      // 1. OVERLAP CHECK
+      const q = query(collection(db, 'reservations'), where('eventDate', '==', eventDate));
+      const snap = await getDocs(q);
+      
+      const isOverlapping = snap.docs.some(d => {
+        const res = d.data();
+        if (res.status === 'Rejected' || res.status === 'Cancelled') return false;
+
+        const startA = parseTimeToDecimal(startTime);
+        const endA = parseTimeToDecimal(endTime);
+        const startB = parseTimeToDecimal(res.startTime);
+        const endB = parseTimeToDecimal(res.endTime);
+        if (startA === null || endA === null || startB === null || endB === null) return false;
+        
+        const timeOverlap = startA < endB && endA > startB;
+
+        const hasFacilityOverlap = formData.facilities.length > 0 && res.facilities && formData.facilities.some(f => res.facilities.includes(f));
+        const hasRoomOverlap = formData.specificRoom && res.specificRoom && 
+                               formData.specificRoom.toLowerCase().trim() === res.specificRoom.toLowerCase().trim();
+
+        return timeOverlap && (hasFacilityOverlap || hasRoomOverlap);
+      });
+
+      if (isOverlapping) {
+        setShowOverlapWarning(true);
+        return;
+      }
+
+      // 2. SUBMIT RESERVATION WITH USER ID
+      await addDoc(collection(db, 'reservations'), {
+        ...formData,
+        userId: currentUser.uid,        // Links to Profile/Account
+        userEmail: currentUser.email,   // Links to Profile/Account
+        eventDate,
+        startTime,
+        endTime,
+        durationHours,
+        days,
+        aircon,
+        selectedEquip,
+        status: 'Pending',
+        createdAt: new Date().toISOString()
+      });
+
+      // 3. DEDUCT EQUIPMENT FROM INVENTORY
+      const batch = writeBatch(db);
+      for (const [eqId, qty] of Object.entries(selectedEquip)) {
+        if (qty > 0) {
+          const item = inventoryEquipments.find(i => i.id === eqId);
+          if (item) {
+            const newAvailable = Math.max(0, item.availableCount - qty);
+            const eqRef = doc(db, 'equipments', eqId);
+            batch.update(eqRef, {
+              availableCount: newAvailable,
+              status: newAvailable === 0 ? 'Unavailable' : item.status,
+              statusClass: newAvailable === 0 ? 'status-unavailable' : item.statusClass,
+              lastUpdated: new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })
+            });
+          }
+        }
+      }
+      await batch.commit();
+
+      handleDiscard(); // Clear form on success
+      setCustomAlert({
+        title: 'Success',
+        message: 'Reservation submitted successfully!',
+        isSuccess: true
+      });
+
+    } catch (error) {
+      console.error("Error submitting reservation: ", error);
+      setCustomAlert({
+        title: 'Error',
+        message: 'Failed to submit reservation.',
+        isSuccess: false
+      });
+    }
   };
 
   return (
@@ -180,7 +351,7 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
         <div className="required-note">All fields marked <span style={{color: '#EF4444'}}>*</span> are required</div>
       </div>
 
-      {/* SECTION 1: Requestor Information */}
+      {/* SECTION 1: Requestor Information (Cleaned up Roles) */}
       <div className="form-card">
         <div className="section-header"><span className="step-badge">1</span> Requestor Information</div>
 
@@ -188,56 +359,22 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
           <div className="input-group">
             <label>Full Name <span>*</span></label>
             <div className="input-with-icon right-icon">
-              <input type="text" defaultValue="" placeholder="Enter your full name" />
+              <input type="text" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} placeholder="Enter your full name" />
             </div>
           </div>
           <div className="input-group">
             <label>Contact Number <span>*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-phone"></i>
-              <input type="text" defaultValue="" placeholder="+63 9XX XXX XXXX" />
+              <input 
+                type="text" 
+                value={formData.contactNumber} 
+                onChange={(e) => handleInputChange('contactNumber', e.target.value.replace(/\D/g, ''))} 
+                placeholder="09XX XXX XXXX" 
+              />
             </div>
           </div>
-          
-          <div className="input-group">
-            <label>Role <span>*</span></label>
-            <div className="radio-group">
-              <label><input type="radio" name="role" /> Student</label>
-              <label><input type="radio" name="role" /> Endorser</label>
-              <label><input type="radio" name="role" /> Admin Staff</label>
-            </div>
-          </div>
-          {isRequestor && (
-            <div className="input-group">
-              <label>Course & Section <span>*</span></label>
-              <input type="text" defaultValue="" placeholder="e.g. BS Computer Science 3-A" />
-            </div>
-          )}
         </div>
-
-        {isRequestor && (
-          <>
-            <div className="divider"><span>Endorser Information</span></div>
-
-            <div className="form-grid col-2">
-              <div className="input-group">
-                <label>Endorser's Full Name <span>*</span></label>
-                <input type="text" defaultValue="" placeholder="Faculty/Adviser name" />
-              </div>
-              <div className="input-group">
-                <label>Endorser's Designation <span>*</span></label>
-                <input type="text" defaultValue="" placeholder="e.g. Dean, Faculty Adviser" />
-              </div>
-              <div className="input-group" style={{gridColumn: '1 / -1'}}>
-                <label>Endorser's Contact Email <span>*</span></label>
-                <div className="input-with-icon left-icon">
-                  <i className="ph ph-envelope-simple"></i>
-                  <input type="email" defaultValue="" placeholder="endorser@university.edu.ph" />
-                </div>
-              </div>
-            </div>
-          </>
-        )}
       </div>
 
       {/* SECTION 2: Event Information */}
@@ -246,7 +383,7 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
         <div className="form-grid col-2">
           <div className="input-group">
             <label>Event Name <span>*</span></label>
-            <input type="text" defaultValue="" placeholder="e.g. Annual General Assembly" />
+            <input type="text" value={formData.eventName} onChange={(e) => handleInputChange('eventName', e.target.value)} placeholder="e.g. Annual General Assembly" />
           </div>
           
           <div className="input-group">
@@ -295,23 +432,27 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
             <label>Expected Number of Participants <span>*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-users"></i>
-              <input type="number" defaultValue="" placeholder="e.g. 150" />
+              <input 
+                type="text" 
+                value={formData.expectedParticipants} 
+                onChange={(e) => handleInputChange('expectedParticipants', e.target.value.replace(/\D/g, ''))} 
+                placeholder="e.g. 150" 
+              />
             </div>
           </div>
           <div className="input-group">
             <label>Event Type <span>*</span></label>
             <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px'}}>
-              <label style={{fontWeight: 400}}><input type="checkbox"/> Academic</label>
-              <label style={{fontWeight: 400}}><input type="checkbox"/> Cultural</label>
-              <label style={{fontWeight: 400}}><input type="checkbox"/> Sports</label>
-              <label style={{fontWeight: 400}}><input type="checkbox"/> Seminar</label>
-              <label style={{fontWeight: 400}}><input type="checkbox"/> Training</label>
-              <label style={{fontWeight: 400}}><input type="checkbox"/> Other <span className="helper-text">specify below</span></label>
+              {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map(type => (
+                <label key={type} style={{fontWeight: 400}}>
+                  <input type="checkbox" checked={formData.eventType.includes(type)} onChange={() => handleCheckboxArrayChange('eventType', type)} /> {type}
+                </label>
+              ))}
             </div>
           </div>
           <div className="input-group" style={{gridColumn: '1 / -1'}}>
             <label>Purpose / Description <span>*</span></label>
-            <textarea defaultValue="" placeholder="Briefly describe the purpose and objectives of your event..."></textarea>
+            <textarea value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="Briefly describe the purpose and objectives of your event..."></textarea>
           </div>
         </div>
       </div>
@@ -363,31 +504,31 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
         </div>
       </div>
 
-      {/* SECTIONS 4 & 5 (Side by side on PC) */}
+      {/* SECTIONS 4 & 5 */}
       <div className="split-cards">
         
         {/* SECTION 4: Facilities Needed */}
         <div className="form-card">
           <div className="section-header"><span className="step-badge">4</span> Facilities Needed</div>
           <div className="checkbox-grid" style={{gridTemplateColumns: '1fr'}}>
-            <label><input type="checkbox" /> <i className="ph ph-buildings"></i> Auditorium</label>
-            <label><input type="checkbox" /> <i className="ph ph-barbell"></i> Gymnasium</label>
-            <label><input type="checkbox" /> <i className="ph ph-chalkboard-teacher"></i> Conference Room</label>
-            <label><input type="checkbox" /> <i className="ph ph-monitor-play"></i> AVR (Audio Visual Room)</label>
-            <label><input type="checkbox" /> <i className="ph ph-court-basketball"></i> Covered Court</label>
-            <label><input type="checkbox" /> <i className="ph ph-star"></i> Function Hall</label>
+            {['Auditorium', 'Gymnasium', 'Conference Room', 'AVR (Audio Visual Room)', 'Covered Court', 'Function Hall'].map(facility => (
+              <label key={facility}>
+                <input type="checkbox" checked={formData.facilities.includes(facility)} onChange={() => handleCheckboxArrayChange('facilities', facility)} /> 
+                {facility}
+              </label>
+            ))}
           </div>
           <div className="input-group">
             <label>Specific Room Number / Name</label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-door"></i>
-              <input type="text" defaultValue="" placeholder="e.g. Room 301, Annex B" />
+              <input type="text" value={formData.specificRoom} onChange={(e) => handleInputChange('specificRoom', e.target.value)} placeholder="e.g. Room 301, Annex B" />
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
           </div>
         </div>
 
-        {/* SECTION 5: Equipment Needed (Real-Time Firestore Sync & Scroll) */}
+        {/* SECTION 5: Equipment Needed (Local Cart Only) */}
         <div className="form-card">
           <div className="section-header"><span className="step-badge">5</span> Equipment Needed</div>
           
@@ -399,11 +540,16 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
             ) : (
               inventoryEquipments.map((item) => {
                 const count = selectedEquip[item.id] || 0;
-                const isAvailable = item.status === 'Available' && item.availableCount > 0;
-                const statusColor = isAvailable ? '#10B981' : '#EF4444';
+                
+                // Blocks interactions visually if marked unavailable manually by admin
+                const isLocked = item.status === 'Unavailable';
+                const isAvailable = !isLocked && item.availableCount > 0;
+                
+                let statusColor = '#10B981';
+                if (isLocked || !isAvailable) statusColor = '#EF4444';
 
                 return (
-                  <div className="equip-item" key={item.id}>
+                  <div className="equip-item" key={item.id} style={{ opacity: isLocked ? 0.6 : 1 }}>
                     <div className="equip-info">
                       <div className="icon-box bg-blue"><i className="ph ph-package"></i></div>
                       <div>
@@ -415,18 +561,16 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
                       </div>
                     </div>
                     <div className="counter">
-                      {/* Decrement: returns stock back to Firestore inventory */}
                       <button 
                         type="button" 
                         onClick={() => updateEquip(item, -1)}
-                        disabled={count <= 0}
+                        disabled={count <= 0 || isLocked}
                       >-</button>
                       <input type="text" value={count} readOnly />
-                      {/* Increment: takes stock from Firestore inventory in real time */}
                       <button 
                         type="button" 
                         onClick={() => updateEquip(item, 1)}
-                        disabled={!isAvailable || item.availableCount <= 0}
+                        disabled={isLocked || !isAvailable || item.availableCount <= count}
                       >+</button>
                     </div>
                   </div>
@@ -459,7 +603,7 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
                 <label>Aircon ON Time</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
-                  <input type="text" defaultValue="" placeholder="08:00 AM" disabled={!aircon} style={{ background: !aircon ? '#F1F5F9' : '#F8FAFC' }} />
+                  <input type="text" value={formData.airconOnTime} onChange={(e) => handleInputChange('airconOnTime', e.target.value)} placeholder="08:00 AM" disabled={!aircon} style={{ background: !aircon ? '#F1F5F9' : '#F8FAFC' }} />
                 </div>
               </div>
               
@@ -469,7 +613,7 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
                 <label>Aircon OFF Time</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
-                  <input type="text" defaultValue="" placeholder="05:00 PM" disabled={!aircon} style={{ background: !aircon ? '#F1F5F9' : '#F8FAFC' }} />
+                  <input type="text" value={formData.airconOffTime} onChange={(e) => handleInputChange('airconOffTime', e.target.value)} placeholder="05:00 PM" disabled={!aircon} style={{ background: !aircon ? '#F1F5F9' : '#F8FAFC' }} />
                 </div>
               </div>
             </div>
@@ -485,17 +629,68 @@ const Reservation = ({ currentUserRole = 'requestor' }) => {
 
       {/* CERTIFICATION & ACTIONS */}
       <div className="certification">
-        <input type="checkbox" />
+        <input type="checkbox" checked={certified} onChange={(e) => setCertified(e.target.checked)} />
         <p>I hereby certify that all information provided in this RASA form is true and correct. I agree to abide by the facility use policies and regulations of the institution. I understand that any misuse of the facility may result in the revocation of this reservation and/or other sanctions.</p>
       </div>
 
       <div className="form-actions">
-        <button className="btn-outline"><i className="ph ph-trash"></i> Discard Form</button>
+        <button className="btn-outline" onClick={handleDiscard}><i className="ph ph-trash"></i> Discard Form</button>
         <div className="right-actions">
-          <button className="btn-outline"><i className="ph ph-floppy-disk"></i> Save Draft</button>
-          <button className="btn-primary">Submit Reservation</button>
+          <button className="btn-outline" onClick={handleSaveDraft}>
+            <i className="ph ph-floppy-disk"></i> {isDraftSaved ? '✓ Draft Saved' : 'Save Draft'}
+          </button>
+          <button 
+            className="btn-primary" 
+            onClick={handleSubmit} 
+            disabled={!certified}
+            style={{ opacity: !certified ? 0.6 : 1, cursor: !certified ? 'not-allowed' : 'pointer' }}
+          >
+            Submit Reservation
+          </button>
         </div>
       </div>
+
+      {/* Custom React Modal for General Alerts */}
+      {customAlert && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '360px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)' }}>
+            <h3 style={{ marginTop: 0, color: customAlert.isSuccess ? '#10B981' : '#DC2626', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              {customAlert.title}
+            </h3>
+            <p style={{ fontSize: '0.875rem', color: '#64748B', lineHeight: 1.5, marginBottom: '20px' }}>
+              {customAlert.message}
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => setCustomAlert(null)}
+                style={{ background: '#3B82F6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                OK
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Overlap Warning Modal */}
+      {showOverlapWarning && (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
+          <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '360px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)' }}>
+            <h3 style={{ marginTop: 0, color: '#DC2626', display: 'flex', alignItems: 'center', gap: '8px' }}>Schedule Conflict</h3>
+            <p style={{ fontSize: '0.875rem', color: '#64748B', lineHeight: 1.5, marginBottom: '20px' }}>
+              The selected facility or room is already reserved on <strong>{eventDate}</strong> during an overlapping time window. Please adjust your <strong>Start/End Time</strong> or select a different facility.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <button 
+                onClick={() => setShowOverlapWarning(false)}
+                style={{ background: '#3B82F6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
+              >
+                Understood
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

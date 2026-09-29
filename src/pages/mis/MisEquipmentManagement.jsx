@@ -3,19 +3,29 @@ import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'fire
 import { db } from '../../Firebase';
 import "../../styles/mis/MisEquipmentManagement.scss";
 
+// Helper function to get real-time date and time
+const getCurrentDateTime = () => {
+  return new Date().toLocaleString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+};
+
 const MisEquipmentManagement = () => {
-  // Equipment state loaded from Firestore
+  // --- FIRESTORE STATES ---
   const [equipmentData, setEquipmentData] = useState([]);
+  const [reservationsData, setReservationsData] = useState([]);
 
   // --- SEARCH & PAGINATION STATES ---
   const [searchQuery, setSearchQuery] = useState('');
   const [currentPage, setCurrentPage] = useState(1);
   const itemsPerPage = 5;
 
-  // Modal State for Editing
+  // --- MODAL STATES ---
   const [editingItem, setEditingItem] = useState(null);
-
-  // Modal state + form fields for adding new equipment
   const [isAddingNew, setIsAddingNew] = useState(false);
   const [newItem, setNewItem] = useState({
     name: '',
@@ -23,31 +33,58 @@ const MisEquipmentManagement = () => {
     quantity: '',
     status: 'Available'
   });
+  const [selectedIds, setSelectedIds] = useState([]);
+  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
+  // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
+  useEffect(() => {
+    // 1. Listen to Equipments
+    const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setEquipmentData(list);
+      setSelectedIds((prev) => prev.filter((id) => list.some((item) => item.id === id)));
+    }, (error) => console.error('Failed to load equipment:', error));
+
+    // 2. Listen to Reservations for real-time dynamic reserved counts
+    const unsubReservations = onSnapshot(collection(db, 'reservations'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setReservationsData(list);
+    }, (error) => console.error('Failed to load reservations:', error));
+
+    return () => {
+      unsubEquipments();
+      unsubReservations();
+    };
+  }, []);
+
+  // --- DYNAMICALLY CALCULATE RESERVED AND AVAILABLE COUNTS ---
+  const mappedEquipmentData = equipmentData.map(item => {
+    let reservedCount = 0;
+    
+    // Sum all active reservations for this specific equipment ID
+    reservationsData.forEach(res => {
+      if (res.status !== 'Rejected' && res.status !== 'Cancelled') {
+        if (res.selectedEquip && res.selectedEquip[item.id]) {
+          reservedCount += Number(res.selectedEquip[item.id]);
+        }
+      }
+    });
+
+    const total = Number(item.totalCount) || 0;
+    const availableCount = Math.max(0, total - reservedCount);
+
+    return {
+      ...item,
+      computedReserved: reservedCount,
+      computedAvailable: availableCount
+    };
+  });
+
+  // --- ACTION HANDLERS ---
   const handleAddClick = () => {
     setNewItem({ name: '', sku: '', quantity: '', status: 'Available' });
     setIsAddingNew(true);
   };
-
-  // --- LIVE LISTEN TO FIRESTORE "equipments" COLLECTION ---
-  useEffect(() => {
-    const unsubscribe = onSnapshot(
-      collection(db, 'equipments'),
-      (snapshot) => {
-        const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-        setEquipmentData(list);
-        setSelectedIds((prev) => prev.filter((id) => list.some((item) => item.id === id)));
-      },
-      (error) => {
-        console.error('Failed to load equipment from Firestore:', error);
-      }
-    );
-
-    return () => unsubscribe();
-  }, []);
-
-  // Row selection for bulk delete
-  const [selectedIds, setSelectedIds] = useState([]);
 
   const toggleSelectAll = (e) => {
     setSelectedIds(e.target.checked ? currentData.map((item) => item.id) : []);
@@ -58,9 +95,6 @@ const MisEquipmentManagement = () => {
       prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
     );
   };
-
-  // Confirmation modal state
-  const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
   const handleDeleteSelected = () => {
     if (selectedIds.length === 0) return;
@@ -89,41 +123,40 @@ const MisEquipmentManagement = () => {
   const handleEditClick = (item) => {
     setEditingItem({ 
       ...item, 
-      adjustment: 0 // starts at 0 for adding/subtracting
+      adjustment: 0 
     });
   };
 
-  // Save changes to Firestore on Save Changes click (Base Available + Adjustment)
+  // Save changes to Firestore
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingItem) return;
     
-    const baseAvailable = Number(editingItem.availableCount) || 0;
-    const currentInUse = (Number(editingItem.totalCount) || 0) - baseAvailable;
-    const adjustment = Number(editingItem.adjustment) || 0;
+    // The adjustment applies to the BASE inventory (totalCount)
+    const adjTotal = parseInt(editingItem.adjustment, 10) || 0;
+    const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal);
     
-    const newAvailable = Math.max(0, baseAvailable + adjustment);
-    const newTotal = newAvailable + currentInUse;
-    
+    // Automatically re-compute available based on the true real-time reservations
+    let newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
     let status = editingItem.status;
-    let available = newAvailable;
 
-    if (status === 'Maintenance' || status === 'Unavailable' || newTotal === 0) {
-      available = 0;
-      if (newTotal === 0 && status !== 'Maintenance') status = 'Unavailable';
+    // Auto-switch to Unavailable if stock drops to 0 naturally
+    if (newAvailable === 0 && status !== 'Maintenance') {
+      status = 'Unavailable';
+    } else if (newAvailable > 0 && status === 'Unavailable') {
+      status = 'Available';
     }
 
-    let statusClass = 'status-available';
-    if (status === 'Unavailable') statusClass = 'status-unavailable';
-    if (status === 'Maintenance') statusClass = 'status-maintenance';
+    let statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     try {
+      // Sync the true availableCount back to DB so other files (like Reservation.jsx) see the correct number
       await updateDoc(doc(db, 'equipments', editingItem.id), {
-        availableCount: available,
         totalCount: newTotal,
+        availableCount: newAvailable,
         status: status,
         statusClass: statusClass,
-        lastUpdated: 'Just now'
+        lastUpdated: getCurrentDateTime()
       });
       setEditingItem(null); 
     } catch (error) {
@@ -131,32 +164,29 @@ const MisEquipmentManagement = () => {
     }
   };
 
-  // Save new equipment to Firestore with Maintenance support
+  // Save new equipment to Firestore
   const handleSaveNewEquipment = async (e) => {
     e.preventDefault();
-    const total = Number(newItem.quantity) || 0;
-
+    let newAvailable = Number(newItem.quantity) || 0;
     let status = newItem.status;
-    let available = total;
+    let newReserved = 0;
 
-    if (status === 'Maintenance' || status === 'Unavailable' || total === 0) {
-      available = 0;
-      if (total === 0 && status !== 'Maintenance') status = 'Unavailable';
+    if (newAvailable === 0) {
+      status = 'Unavailable';
     }
 
-    let statusClass = 'status-available';
-    if (status === 'Unavailable') statusClass = 'status-unavailable';
-    if (status === 'Maintenance') statusClass = 'status-maintenance';
+    const newTotal = newAvailable + newReserved;
+    let statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     try {
       await addDoc(collection(db, 'equipments'), {
         name: newItem.name.trim() || 'Untitled Equipment',
         sku: newItem.sku.trim() || `SKU: NEW-${Date.now().toString().slice(-4)}`,
-        availableCount: available,
-        totalCount: total,
+        availableCount: newAvailable,
+        totalCount: newTotal,
         status: status,
         statusClass,
-        lastUpdated: 'Just now'
+        lastUpdated: getCurrentDateTime()
       });
       setIsAddingNew(false);
     } catch (error) {
@@ -164,8 +194,8 @@ const MisEquipmentManagement = () => {
     }
   };
 
-  // --- FILTERING & PAGINATION LOGIC ---
-  const filteredData = equipmentData.filter((item) => {
+  // --- FILTERING & PAGINATION LOGIC (Uses Mapped Data) ---
+  const filteredData = mappedEquipmentData.filter((item) => {
     const query = searchQuery.toLowerCase();
     return (
       (item.name && item.name.toLowerCase().includes(query)) || 
@@ -194,17 +224,8 @@ const MisEquipmentManagement = () => {
   };
 
   // --- METRIC CALCULATIONS ---
-  const totalAvailableUnits = equipmentData
-    .filter(item => item.status === 'Available')
-    .reduce((acc, curr) => acc + (curr.availableCount || 0), 0);
-
-  const totalInUseUnits = equipmentData
-    .filter(item => item.status === 'Available')
-    .reduce((acc, curr) => acc + ((curr.totalCount || 0) - (curr.availableCount || 0)), 0);
-
-  const totalMaintenanceUnits = equipmentData
-    .filter(item => item.status === 'Maintenance')
-    .reduce((acc, curr) => acc + (curr.totalCount || 0), 0);
+  const totalAvailableUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedAvailable, 0);
+  const totalReservedUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedReserved, 0);
 
   return (
     <div className="equipment-management-content">
@@ -218,14 +239,8 @@ const MisEquipmentManagement = () => {
         </div>
         <div className="metric-card">
           <div className="metric-info">
-            <span className="label">In-Use</span>
-            <span className="count">{totalInUseUnits}</span>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Maintenance</span>
-            <span className="count">{totalMaintenanceUnits}</span>
+            <span className="label">Reserved</span>
+            <span className="count">{totalReservedUnits}</span>
           </div>
         </div>
       </div>
@@ -276,7 +291,7 @@ const MisEquipmentManagement = () => {
               </th>
               <th>EQUIPMENT NAME</th>
               <th>AVAILABLE</th>
-              <th>IN-USE</th>
+              <th>RESERVED</th>
               <th>STATUS</th>
               <th>LAST UPDATED</th>
               <th>ACTIONS</th>
@@ -294,41 +309,38 @@ const MisEquipmentManagement = () => {
                 </td>
               </tr>
             ) : (
-              currentData.map((item) => {
-                const inUseCount = item.status === 'Available' ? (item.totalCount - item.availableCount) : 0;
-                return (
-                  <tr key={item.id}>
-                    <td className="checkbox-col">
-                      <input
-                        type="checkbox"
-                        checked={selectedIds.includes(item.id)}
-                        onChange={() => toggleSelectOne(item.id)}
-                      />
-                    </td>
-                    <td>
-                      <div className="item-name-cell">
-                        <div>
-                          <div className="item-title">{item.name}</div>
-                          <div className="item-sku">{item.sku}</div>
-                        </div>
+              currentData.map((item) => (
+                <tr key={item.id}>
+                  <td className="checkbox-col">
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.includes(item.id)}
+                      onChange={() => toggleSelectOne(item.id)}
+                    />
+                  </td>
+                  <td>
+                    <div className="item-name-cell">
+                      <div>
+                        <div className="item-title">{item.name}</div>
+                        <div className="item-sku">{item.sku}</div>
                       </div>
-                    </td>
-                    <td className="font-semibold">{item.availableCount}</td>
-                    <td className="font-semibold">{inUseCount}</td>
-                    <td>
-                      <span className={`status-badge ${item.statusClass}`}>{item.status}</span>
-                    </td>
-                    <td className="text-muted">{item.lastUpdated}</td>
-                    <td>
-                      <div className="action-buttons">
-                        <button className="action-btn" onClick={() => handleEditClick(item)}>
-                          ✏ Edit
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })
+                    </div>
+                  </td>
+                  <td className="font-semibold">{item.computedAvailable}</td>
+                  <td className="font-semibold">{item.computedReserved}</td>
+                  <td>
+                    <span className={`status-badge ${item.statusClass}`}>{item.status}</span>
+                  </td>
+                  <td className="text-muted">{item.lastUpdated}</td>
+                  <td>
+                    <div className="action-buttons">
+                      <button className="action-btn" onClick={() => handleEditClick(item)}>
+                        ✏ Edit
+                      </button>
+                    </div>
+                  </td>
+                </tr>
+              ))
             )}
           </tbody>
         </table>
@@ -378,7 +390,7 @@ const MisEquipmentManagement = () => {
       {/* Local Edit Modal Popup */}
       {editingItem && (
         <div className="modal-overlay">
-          <div className="modal-content">
+          <div className="modal-content" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
             <h3>Edit {editingItem.name}</h3>
             <form onSubmit={handleSaveEdit}>
               <div className="form-group">
@@ -389,7 +401,6 @@ const MisEquipmentManagement = () => {
                 >
                   <option value="Available">Available</option>
                   <option value="Unavailable">Unavailable</option>
-                  <option value="Maintenance">Maintenance</option>
                 </select>
               </div>
 
@@ -398,7 +409,7 @@ const MisEquipmentManagement = () => {
                 <label>Current Available</label>
                 <input
                   type="number"
-                  value={editingItem.availableCount}
+                  value={editingItem.computedAvailable}
                   readOnly
                   style={{
                     border: '1px solid #E2E8F0', 
@@ -416,16 +427,13 @@ const MisEquipmentManagement = () => {
                 />
               </div>
 
-              {/* 2nd Field: Add / Deduct Quantity starting at 0 */}
+              {/* 2nd Field: Add / Deduct Quantity (Adjusts Base Total Inventory) */}
               <div className="form-group">
-                <label>Add / Deduct Quantity</label>
+                <label>Add / Deduct Total Inventory</label>
                 <input
                   type="number"
                   value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0}
-                  onChange={(e) => {
-                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10) || 0;
-                    setEditingItem({ ...editingItem, adjustment: val });
-                  }}
+                  onChange={(e) => setEditingItem({ ...editingItem, adjustment: e.target.value })}
                   style={{
                     border: '1px solid #E2E8F0', 
                     borderRadius: '6px', 
@@ -434,6 +442,29 @@ const MisEquipmentManagement = () => {
                     fontWeight: 600, 
                     fontSize: '15px',
                     background: '#FFFFFF',
+                    color: '#1E293B',
+                    width: '100%',
+                    outline: 'none',
+                    boxSizing: 'border-box'
+                  }}
+                />
+              </div>
+
+              {/* 3rd Field: Current Reserved Display */}
+              <div className="form-group">
+                <label>Current Reserved (Automated)</label>
+                <input
+                  type="number"
+                  value={editingItem.computedReserved}
+                  readOnly
+                  style={{
+                    border: '1px solid #E2E8F0', 
+                    borderRadius: '6px', 
+                    padding: '9px 12px', 
+                    textAlign: 'center', 
+                    fontWeight: 600, 
+                    fontSize: '15px',
+                    background: '#F8FAFC',
                     color: '#1E293B',
                     width: '100%',
                     outline: 'none',
@@ -497,7 +528,6 @@ const MisEquipmentManagement = () => {
                 >
                   <option value="Available">Available</option>
                   <option value="Unavailable">Unavailable</option>
-                  <option value="Maintenance">Maintenance</option>
                 </select>
               </div>
 

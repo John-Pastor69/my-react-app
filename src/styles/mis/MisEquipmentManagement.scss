@@ -46,7 +46,7 @@ main,
     box-sizing: border-box;
 
     @media (min-width: $bp-tablet) {
-      grid-template-columns: repeat(3, 1fr);
+      grid-template-columns: repeat(2, 1fr);
       gap: 16px;
     }
 
