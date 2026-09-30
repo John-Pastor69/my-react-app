@@ -1,13 +1,8 @@
 import React, { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
-import "../../styles/mis/MisApproval.scss";
-
-import ReservationDetails from '../ReservationDetails';
+import "../styles/Approval.scss";
+import PendingRequest from './PendingRequest';
 
 const MisApproval = () => {
-    const navigate = useNavigate();
-    
-    // Expanded dummy data to test pagination (12 items total)
     const [requests, setRequests] = useState([
         { id: 1, event: 'Annual Tech Symposium', submitted: 'Oct 20, 2023', equipment: 'Projector, Laptop, Mic', requestor: 'Alex Johnson', department: 'IT Department', date: 'Oct 24, 2023', time: '09:00 AM - 05:00 PM', type: 'laptop', status: 'pending' },
         { id: 2, event: 'Team Offsite Workshop', submitted: 'Oct 22, 2023', equipment: 'Monitor, Webcam', requestor: 'Sarah Lee', department: 'HR Department', date: 'Oct 28, 2023', time: '10:00 AM - 02:00 PM', type: 'monitor', status: 'pending' },
@@ -15,7 +10,6 @@ const MisApproval = () => {
         { id: 4, event: 'Client Pitch Presentation', submitted: 'Oct 24, 2023', equipment: 'Projector, Clicker, HDMI', requestor: 'Nina Reyes', department: 'Sales', date: 'Nov 05, 2023', time: '11:00 AM - 12:30 PM', type: 'wifi', status: 'pending' },
         { id: 5, event: 'Department All-Hands', submitted: 'Oct 25, 2023', equipment: 'Wireless Mic, PA System', requestor: 'Marco Tan', department: 'Operations', date: 'Nov 10, 2023', time: '03:00 PM - 04:30 PM', type: 'mic', status: 'pending' },
         { id: 6, event: 'Leadership Summit 2023', submitted: 'Oct 26, 2023', equipment: 'LED Wall, Switcher, Cables', requestor: 'David Kim', department: 'Executive Office', date: 'Nov 15, 2023', time: '08:00 AM - 06:00 PM', type: 'cable', status: 'pending' },
-        // NEW VARIABLES ADDED BELOW
         { id: 7, event: 'Q1 Budget Planning', submitted: 'Oct 27, 2023', equipment: 'Projector, Whiteboard', requestor: 'Diana Prince', department: 'Finance', date: 'Nov 18, 2023', time: '10:00 AM - 12:00 PM', type: 'laptop', status: 'pending' },
         { id: 8, event: 'New Hire Orientation', submitted: 'Oct 28, 2023', equipment: 'Laptops, Welcome Kits', requestor: 'Clark Kent', department: 'HR Department', date: 'Nov 20, 2023', time: '09:00 AM - 04:00 PM', type: 'laptop', status: 'pending' },
         { id: 9, event: 'Product Launch Webinar', submitted: 'Oct 29, 2023', equipment: 'HD Camera, Ring Light, Mic', requestor: 'Bruce Wayne', department: 'Marketing', date: 'Nov 22, 2023', time: '02:00 PM - 04:00 PM', type: 'camera', status: 'pending' },
@@ -25,17 +19,14 @@ const MisApproval = () => {
     ]);
 
     const [search, setSearch] = useState('');
-    
-    // --- NEW PAGINATION STATE ---
     const [currentPage, setCurrentPage] = useState(1);
-    const itemsPerPage = 5;
-
     const [selectedRequest, setSelectedRequest] = useState(null);
 
-    // Reset pagination to page 1 whenever the user types in the search box
+    const itemsPerPage = 5;
+
     const handleSearch = (e) => {
         setSearch(e.target.value);
-        setCurrentPage(1); 
+        setCurrentPage(1);
     };
 
     const approveRequest = (id) => {
@@ -56,36 +47,29 @@ const MisApproval = () => {
         ));
     };
 
-    // Filter requests based on search
     const filteredRequests = requests.filter((request) =>
         request.event.toLowerCase().includes(search.toLowerCase()) ||
         request.requestor.toLowerCase().includes(search.toLowerCase()) ||
         request.department.toLowerCase().includes(search.toLowerCase())
     );
 
-    // --- NEW PAGINATION LOGIC ---
-    const totalPages = Math.ceil(filteredRequests.length / itemsPerPage);
+    const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage));
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    // We slice the array so the table only maps over the items for the current page
     const currentItems = filteredRequests.slice(indexOfFirstItem, indexOfLastItem);
 
-    // Calculate Dashboard Status Counts
     const pendingCount = requests.filter((req) => req.status === 'pending').length;
     const approvedCount = requests.filter((req) => req.status === 'approved').length;
     const rejectedCount = requests.filter((req) => req.status === 'rejected').length;
 
     return (
         <div className="mis-approval">
-            {/* HEADER */}
             <div className="approval-header">
                 <div className="header-title">
-                    <h1>MIS Equipment Requests</h1>
+                    <h1>Approval Overview</h1>
                 </div>
-                <span className="current-month">October 2023</span>
             </div>
 
-            {/* SUMMARY CARDS */}
             <div className="approval-summary">
                 <div className="summary-card">
                     <div className="summary-icon pending">◷</div>
@@ -108,125 +92,147 @@ const MisApproval = () => {
                     <div className="summary-info">
                         <span>Rejected</span>
                         <strong>{rejectedCount}</strong>
-                    </div>  
+                    </div>
                 </div>
             </div>
 
-            {/* REQUEST TABLE */}
             <div className="requests-container">
                 <div className="requests-header">
-                    <div>
-                        <h2>Pending MIS Equipment Requests</h2>
-                        <p>Approve or reject MIS equipment requests submitted for events</p>
+                    <div className="requests-title">
+                        <h2>Pending Request</h2>
+                        <p>Review and manage facility reservation requests.</p>
                     </div>
 
                     <div className="request-tools">
-                        <input
-                            type="text"
-                            placeholder="⌕  Search requests..."
-                            value={search}
-                            onChange={handleSearch}
-                        />
-                        <button>⚑ Filter</button>
-                        <button>↕ Sort</button>
+                        <div className="search-field">
+                            <span className="search-icon" aria-hidden="true">⌕</span>
+                            <input
+                                type="text"
+                                placeholder="Search requests..."
+                                value={search}
+                                onChange={handleSearch}
+                            />
+                        </div>
+                        <button type="button" className="tool-btn">⚑ <span>Filter</span></button>
+                        <button type="button" className="tool-btn">↕ <span>Sort</span></button>
                     </div>
                 </div>
 
                 <div className="request-table">
-                    <div className="table-head">
-                        <span>EVENT NAME</span>
-                        <span>REQUESTOR</span>
-                        <span>DATE</span>
-                        <span>ACTION</span>
-                    </div>
-
-                    {/* Maps over currentItems instead of filteredRequests */}
-                    {currentItems.map((request) => (
-                        <div className={`request-row ${request.status}`} key={request.id}>
-                            <div className="event-info">
-                                <div className={`event-icon ${request.type}`}>
-                                    {request.type === 'laptop' && '▱'}
-                                    {request.type === 'monitor' && '▣'}
-                                    {request.type === 'camera' && '▰'}
-                                    {request.type === 'wifi' && '⌁'}
-                                    {request.type === 'mic' && '♟'}
-                                    {request.type === 'cable' && '♜'}
-                                </div>
-                                <div>
-                                    <strong>{request.event}</strong>
-                                    <p>Submitted {request.submitted} · {request.equipment}</p>
-                                </div>
-                            </div>
-
-                            <div className="requestor-info">
-                                <div className="avatar">{request.requestor.charAt(0)}</div>
-                                <div>
-                                    <strong>{request.requestor}</strong>
-                                    <p>{request.department}</p>
-                                </div>
-                            </div>
-
-                            <div className="date-info">
-                                <strong>{request.date}</strong>
-                                <p>{request.time}</p>
-                            </div>
-
-                            <div className="request-actions">
-                                {request.status === 'pending' ? (
-                                    <>
-                                        <button className="approve-btn" onClick={() => approveRequest(request.id)}>
-                                            ✓ Approve
-                                        </button>
-                                        <button className="reject-btn" onClick={() => rejectRequest(request.id)}>
-                                            × Reject
-                                        </button>
-                                    </>
-                                ) : (
-                                    <>
-                                        <span className={`status-label ${request.status}`}>
-                                            {request.status}
-                                        </span>
-                                        
-                                        <button className="undo-btn" onClick={() => undoRequest(request.id)}>
-                                            ⟲ Undo
-                                        </button>
-                                    </>
-                                )}
-                                <button className="details-btn" onClick={() => setSelectedRequest(request)}>
-                                    ◉ View<br />Details
-                                </button>
-                            </div>
+                    <div className="table-scroll-content">
+                        <div className="table-head">
+                            <span>EVENT NAME</span>
+                            <span>REQUESTOR</span>
+                            <span>DATE</span>
+                            <span>ACTION</span>
                         </div>
-                    ))}
+
+                        {currentItems.length > 0 ? (
+                            currentItems.map((request) => (
+                                <div className={`request-row ${request.status}`} key={request.id}>
+                                    <div className="event-info">
+                                        <div className={`event-icon ${request.type}`} aria-hidden="true">
+                                            <span className="icon-glyph">{request.type}</span>
+                                        </div>
+                                        <div className="event-text">
+                                            <strong>{request.event}</strong>
+                                            <p>Submitted {request.submitted} · {request.equipment}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="requestor-info">
+                                        <div className="avatar">{request.requestor.charAt(0)}</div>
+                                        <div className="requestor-text">
+                                            <strong>{request.requestor}</strong>
+                                            <p>{request.department}</p>
+                                        </div>
+                                    </div>
+
+                                    <div className="date-info">
+                                        <strong>{request.date}</strong>
+                                        <p>{request.time}</p>
+                                    </div>
+
+                                    <div className="request-actions">
+                                        {request.status === 'pending' ? (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    className="approve-btn"
+                                                    onClick={() => approveRequest(request.id)}
+                                                >
+                                                    ✓ Approve
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="reject-btn"
+                                                    onClick={() => rejectRequest(request.id)}
+                                                >
+                                                    × Reject
+                                                </button>
+                                            </>
+                                        ) : (
+                                            <>
+                                                <span className={`status-label ${request.status}`}>
+                                                    {request.status}
+                                                </span>
+                                                <button
+                                                    type="button"
+                                                    className="undo-btn"
+                                                    onClick={() => undoRequest(request.id)}
+                                                >
+                                                    ⟲ Undo
+                                                </button>
+                                            </>
+                                        )}
+
+                                        <button
+                                            type="button"
+                                            className="details-btn"
+                                            onClick={() => setSelectedRequest(request)}
+                                        >
+                                            ◉ View Details
+                                        </button>
+                                    </div>
+                                </div>
+                            ))
+                        ) : (
+                            <div className="empty-state">
+                                No matching requests found.
+                            </div>
+                        )}
+                    </div>
                 </div>
 
-                {/* DYNAMIC PAGINATION FOOTER */}
                 <div className="table-footer">
                     <span>
-                        Showing {filteredRequests.length === 0 ? 0 : indexOfFirstItem + 1} to {Math.min(indexOfLastItem, filteredRequests.length)} of {filteredRequests.length} pending requests
+                        Showing {filteredRequests.length === 0 ? 0 : indexOfFirstItem + 1} to{' '}
+                        {Math.min(indexOfLastItem, filteredRequests.length)} of {filteredRequests.length} requests
                     </span>
 
                     <div className="pagination">
-                        <button 
-                            disabled={currentPage === 1} 
+                        <button
+                            type="button"
+                            disabled={currentPage === 1}
                             onClick={() => setCurrentPage((prev) => prev - 1)}
                         >
                             Prev
                         </button>
 
-                        {/* Dynamically generates page numbers based on the data length */}
                         {Array.from({ length: totalPages }, (_, index) => (
                             <button
+                                type="button"
                                 key={index + 1}
-                                className={currentPage === index + 1 ? "active" : ""}
+                                className={currentPage === index + 1 ? 'active' : ''}
                                 onClick={() => setCurrentPage(index + 1)}
                             >
                                 {index + 1}
                             </button>
                         ))}
 
-                        <button 
-                            disabled={currentPage === totalPages || totalPages === 0} 
+                        <button
+                            type="button"
+                            disabled={currentPage === totalPages}
                             onClick={() => setCurrentPage((prev) => prev + 1)}
                         >
                             Next
@@ -234,17 +240,20 @@ const MisApproval = () => {
                     </div>
                 </div>
             </div>
-            {/* screen popup */}
+
             {selectedRequest && (
                 <div className="modal-overlay" onClick={() => setSelectedRequest(null)}>
-                    {/* e.stopPropagation() prevents clicks inside the white box from closing the modal */}
                     <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                        
-                        <button className="close-modal-btn" onClick={() => setSelectedRequest(null)}>
+                        <button
+                            type="button"
+                            className="close-modal-btn"
+                            onClick={() => setSelectedRequest(null)}
+                            aria-label="Close"
+                        >
                             ✕
                         </button>
-                        <ReservationDetails data={selectedRequest}/>
 
+                        <PendingRequest data={selectedRequest} />
                     </div>
                 </div>
             )}

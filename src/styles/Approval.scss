@@ -1,0 +1,997 @@
+
+$bg-main: #f1f5f9;
+$white: #ffffff;
+$text-dark: #1e293b;
+$text-muted: #64748b;
+$border: #e2e8f0;
+$blue: #3b82f6;
+
+.mis-approval {
+  width: 100%;
+  min-height: 100vh;
+  padding: 12px;
+  background: $bg-main;
+  color: $text-dark;
+  font-family: 'Inter', system-ui, sans-serif;
+  overflow-x: hidden;
+  box-sizing: border-box;
+
+  *,
+  *::before,
+  *::after {
+    box-sizing: border-box;
+  }
+
+  // Header
+  .approval-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 14px;
+  }
+
+  .header-title {
+    h1 {
+      margin: 0;
+      color: #172033;
+      font-size: 20px;
+      font-weight: 700;
+      line-height: 1.25;
+    }
+  }
+
+  // Summary
+  .approval-summary {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
+
+  .summary-card {
+    min-height: 64px;
+    display: flex;
+    align-items: center;
+    padding: 12px 14px;
+    background: $white;
+    border: 1px solid $border;
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .summary-icon {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin-right: 10px;
+    border-radius: 7px;
+    font-size: 16px;
+
+    &.pending {
+      background: #fff2c7;
+      color: #f59e0b;
+    }
+
+    &.approved {
+      background: #d9f8ec;
+      color: #10b981;
+    }
+
+    &.rejected {
+      background: #ffe2e2;
+      color: #ef4444;
+    }
+  }
+
+  .summary-info {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+
+    span {
+      color: $text-muted;
+      font-size: 11px;
+    }
+
+    strong {
+      color: $text-dark;
+      font-size: 22px;
+      line-height: 1.1;
+    }
+  }
+
+  // Main request card
+  .requests-container {
+    width: 100%;
+    max-width: 1400px;
+    margin: 0 auto;
+    overflow: hidden;
+    background: $white;
+    border: 1px solid $border;
+    border-radius: 9px;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+
+  .requests-header {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 16px;
+    border-bottom: 1px solid #e8edf2;
+  }
+
+  .requests-title {
+    h2 {
+      margin: 0;
+      color: $text-dark;
+      font-size: 17px;
+      font-weight: 700;
+    }
+
+    p {
+      margin: 4px 0 0;
+      color: $text-muted;
+      font-size: 11px;
+      line-height: 1.4;
+    }
+  }
+
+  .request-tools {
+    width: 100%;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto auto;
+    gap: 6px;
+  }
+
+  .search-field {
+    position: relative;
+    min-width: 0;
+
+    .search-icon {
+      position: absolute;
+      top: 50%;
+      left: 11px;
+      transform: translateY(-50%);
+      color: #94a3b8;
+      font-size: 14px;
+      pointer-events: none;
+    }
+
+    input {
+      display: block;
+      width: 100%;
+      height: 38px;
+      min-width: 0;
+      padding: 0 11px 0 29px;
+      border: 1px solid $border;
+      border-radius: 6px;
+      outline: none;
+      background: $white;
+      color: #475569;
+      font-family: inherit;
+      font-size: 12px;
+
+      &::placeholder {
+        color: #94a3b8;
+      }
+
+      &:focus {
+        border-color: #93c5fd;
+        box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.08);
+      }
+    }
+  }
+
+  .tool-btn {
+    height: 38px;
+    padding: 0 11px;
+    border: 1px solid $border;
+    border-radius: 6px;
+    background: $white;
+    color: #475569;
+    font-family: inherit;
+    font-size: 12px;
+    cursor: pointer;
+    white-space: nowrap;
+    transition: background 0.2s, border-color 0.2s;
+
+    &:hover {
+      background: #f8fafc;
+      border-color: #cbd5e1;
+    }
+  }
+
+  // ==========================================================
+  // Table
+  // The scroll wrapper contains the full-width table content.
+  // This keeps the gray header background expanded to the
+  // exact same width as the rows when horizontally scrolled.
+  // ==========================================================
+
+  .request-table {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+
+  .table-scroll-content {
+    width: 100%;
+    min-width: 0;
+  }
+
+  .table-head,
+  .request-row {
+    display: grid;
+    grid-template-columns:
+      minmax(280px, 2.2fr)
+      minmax(210px, 1.4fr)
+      minmax(180px, 1.2fr)
+      minmax(280px, 1.8fr);
+
+    column-gap: 16px;
+
+    // Critical for horizontal scrolling:
+    // both header and rows use the exact same content width.
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .table-head {
+    min-height: 44px;
+    align-items: center;
+    padding: 0 26px;
+    background: #f8fafc;
+    border-bottom: 1px solid #edf1f5;
+
+    span {
+      color: $text-muted;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+    }
+  }
+
+  .request-row {
+    align-items: center;
+    padding: 18px 26px;
+    border-bottom: 1px solid #edf1f5;
+    background: $white;
+    transition: background 0.2s;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    &:hover {
+      background: #fafcff;
+    }
+  }
+
+  // Event
+  .event-info {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .event-icon {
+    width: 38px;
+    height: 38px;
+    flex: 0 0 38px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 7px;
+    font-size: 0;
+
+    .icon-glyph {
+      display: block;
+      width: 18px;
+      height: 18px;
+      position: relative;
+      font-size: 0;
+
+      &::before {
+        content: '';
+        position: absolute;
+        inset: 2px;
+        border: 2px solid currentColor;
+        border-radius: 4px;
+      }
+    }
+
+    &.laptop {
+      background: #e4efff;
+      color: #3b82f6;
+
+      .icon-glyph::after {
+        content: '';
+        position: absolute;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        height: 2px;
+        background: currentColor;
+      }
+    }
+
+    &.monitor {
+      background: #eee8ff;
+      color: #8b5cf6;
+    }
+
+    &.camera {
+      background: #fff1cc;
+      color: #f59e0b;
+
+      .icon-glyph::after {
+        content: '';
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        top: 6px;
+        left: 6px;
+        border: 2px solid currentColor;
+        border-radius: 50%;
+      }
+    }
+
+    &.wifi {
+      background: #e1f7ee;
+      color: #10b981;
+
+      .icon-glyph::before {
+        border: none;
+        border-top: 2px solid currentColor;
+        border-radius: 50%;
+        transform: scaleX(1.15);
+      }
+
+      .icon-glyph::after {
+        content: '';
+        position: absolute;
+        left: 7px;
+        top: 11px;
+        width: 4px;
+        height: 4px;
+        border-radius: 50%;
+        background: currentColor;
+      }
+    }
+
+    &.mic {
+      background: #ffe7f1;
+      color: #ec4899;
+
+      .icon-glyph::before {
+        inset: 3px 5px 4px;
+        border-radius: 8px;
+      }
+    }
+
+    &.cable {
+      background: #e2f2ff;
+      color: #0ea5e9;
+    }
+  }
+
+  .event-text,
+  .requestor-text {
+    min-width: 0;
+  }
+
+  .event-info strong,
+  .requestor-info strong,
+  .date-info strong {
+    display: block;
+    overflow: hidden;
+    color: $text-dark;
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1.35;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .event-info p,
+  .requestor-info p,
+  .date-info p {
+    margin: 3px 0 0;
+    color: $text-muted;
+    font-size: 11px;
+    line-height: 1.4;
+  }
+
+  // Requestor
+  .requestor-info {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .avatar {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: #cbd5e1;
+    color: #475569;
+    font-size: 13px;
+    font-weight: 600;
+  }
+
+  // Date
+  .date-info {
+    min-width: 0;
+  }
+
+  // Actions
+  .request-actions {
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    justify-content: flex-start;
+    gap: 7px;
+  }
+
+  .request-actions button,
+  .status-label {
+    min-height: 36px;
+    height: 36px;
+    padding: 0 11px;
+    border-radius: 6px;
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+  }
+
+  .request-actions button {
+    cursor: pointer;
+    transition: background 0.2s, border-color 0.2s, transform 0.1s;
+
+    &:active {
+      transform: translateY(1px);
+    }
+  }
+
+  .approve-btn {
+    border: 1px solid #10b981;
+    background: #10b981;
+    color: $white;
+
+    &:hover {
+      background: #059669;
+      border-color: #059669;
+    }
+  }
+
+  .reject-btn {
+    border: 1px solid #ef4444;
+    background: #ef4444;
+    color: $white;
+
+    &:hover {
+      background: #dc2626;
+      border-color: #dc2626;
+    }
+  }
+
+  .undo-btn {
+    border: 1px solid #cbd5e1;
+    background: $white;
+    color: $text-muted;
+
+    &:hover {
+      background: #f1f5f9;
+    }
+  }
+
+  .details-btn {
+    border: 1px solid #bfdbfe;
+    background: #f8fbff;
+    color: #2563eb;
+
+    &:hover {
+      background: #eff6ff;
+      border-color: #93c5fd;
+    }
+  }
+
+  .status-label {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: default;
+
+    &.approved {
+      border: 1px solid #bbf7d0;
+      background: #dcfce7;
+      color: #16a34a;
+    }
+
+    &.rejected {
+      border: 1px solid #fecaca;
+      background: #fee2e2;
+      color: #dc2626;
+    }
+  }
+
+  // Empty state
+  .empty-state {
+    min-height: 130px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 30px;
+    color: $text-muted;
+    font-size: 13px;
+    text-align: center;
+  }
+
+  // Footer
+  .table-footer {
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 13px 16px;
+    background: #f8fafc;
+    border-top: 1px solid #e5eaf0;
+
+    > span {
+      color: $text-muted;
+      font-size: 11px;
+      line-height: 1.4;
+      text-align: center;
+    }
+  }
+
+  .pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px;
+
+    button {
+      min-width: 32px;
+      min-height: 32px;
+      padding: 5px 8px;
+      border: 1px solid $border;
+      border-radius: 5px;
+      background: $white;
+      color: $text-muted;
+      font-family: inherit;
+      font-size: 11px;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: #f1f5f9;
+      }
+
+      &.active {
+        border-color: $blue;
+        background: $blue;
+        color: $white;
+      }
+
+      &:disabled {
+        color: #cbd5e1;
+        cursor: not-allowed;
+      }
+    }
+  }
+
+  // Modal
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 10px;
+    background: rgba(15, 23, 42, 0.62);
+    backdrop-filter: blur(3px);
+  }
+
+  .modal-content {
+    position: relative;
+    width: 100%;
+    max-width: 1100px;
+    max-height: calc(100vh - 20px);
+    padding: 46px 12px 12px;
+    overflow-x: hidden;
+    overflow-y: auto;
+    border-radius: 10px;
+    background: #f4f6f9;
+    box-shadow:
+      0 20px 25px -5px rgba(0, 0, 0, 0.1),
+      0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  }
+
+  .close-modal-btn {
+    position: absolute;
+    top: 8px;
+    right: 9px;
+    z-index: 10;
+    width: 32px;
+    height: 32px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    border: none;
+    border-radius: 50%;
+    background: $white;
+    color: #94a3b8;
+    font-size: 16px;
+    cursor: pointer;
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.08);
+
+    &:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+  }
+
+  // Larger phones
+  // Keep the full table structure horizontal.
+  // The table scrolls horizontally instead of stacking columns.
+  @media (min-width: 480px) and (max-width: 699px) {
+    padding: 16px;
+
+    .approval-summary {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-bottom: 14px;
+    }
+
+    .summary-card {
+      min-height: 64px;
+      padding: 11px 12px;
+    }
+
+    .summary-icon {
+      width: 31px;
+      height: 31px;
+      flex-basis: 31px;
+      margin-right: 8px;
+    }
+
+    .summary-info {
+      span {
+        font-size: 10px;
+      }
+
+      strong {
+        font-size: 21px;
+      }
+    }
+
+    .requests-header {
+      padding: 16px;
+    }
+
+    .request-tools {
+      width: 100%;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+    }
+
+    // All four columns remain horizontal.
+    // Users can swipe/scroll left and right on the table.
+    .request-table {
+      width: 100%;
+      overflow-x: auto;
+      overflow-y: hidden;
+      -webkit-overflow-scrolling: touch;
+    }
+
+    .table-scroll-content {
+      width: max-content;
+      min-width: 100%;
+    }
+
+    .table-head,
+    .request-row {
+      width: max-content;
+      min-width: 930px;
+      grid-template-columns:
+        minmax(280px, 2fr)
+        minmax(200px, 1.35fr)
+        minmax(175px, 1.15fr)
+        minmax(245px, 1.55fr);
+    }
+
+    .table-head {
+      padding: 0 22px;
+    }
+
+    .request-row {
+      padding: 16px 22px;
+    }
+
+    // Keep Approve, Reject and View Details together horizontally.
+    .request-actions {
+      flex-wrap: nowrap;
+      white-space: nowrap;
+      gap: 7px;
+    }
+
+    .request-actions button,
+    .status-label {
+      flex: 0 0 auto;
+    }
+
+    .table-footer {
+      padding: 13px 16px;
+    }
+  }
+
+  // Tablet
+  @media (min-width: 700px) {
+    padding: 24px;
+
+    .approval-summary {
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .summary-card {
+      min-height: 70px;
+      padding: 13px 15px;
+    }
+
+    .requests-header {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      gap: 20px;
+      padding: 18px 22px;
+    }
+
+    .request-tools {
+      width: auto;
+      min-width: 340px;
+    }
+
+    .table-head,
+    .request-row {
+      // Deliberately wider than a tablet when needed.
+      // The scroll wrapper handles the overflow.
+      width: max-content;
+      min-width: 900px;
+      grid-template-columns:
+        minmax(240px, 2fr)
+        minmax(180px, 1.35fr)
+        minmax(160px, 1.15fr)
+        minmax(270px, 1.8fr);
+    }
+
+    .table-head {
+      padding: 0 22px;
+    }
+
+    .request-row {
+      padding: 16px 22px;
+    }
+
+    .table-footer {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      padding: 14px 22px;
+
+      > span {
+        text-align: left;
+      }
+
+      .pagination {
+        justify-content: flex-end;
+      }
+    }
+
+    .modal-overlay {
+      padding: 20px;
+    }
+
+    .modal-content {
+      max-height: calc(100vh - 40px);
+      padding: 50px 20px 20px;
+      border-radius: 12px;
+    }
+  }
+
+  // Laptop
+  @media (min-width: 1024px) {
+    .header-title h1 {
+      font-size: 22px;
+    }
+
+    .approval-summary {
+      gap: 14px;
+      margin-bottom: 18px;
+    }
+
+    .summary-card {
+      min-height: 74px;
+      padding: 14px 16px;
+    }
+
+    .summary-info {
+      span {
+        font-size: 12px;
+      }
+
+      strong {
+        font-size: 24px;
+      }
+    }
+
+    .requests-header {
+      padding: 20px 26px;
+    }
+
+    .request-tools {
+      min-width: 380px;
+    }
+
+    .table-head,
+    .request-row {
+      width: max-content;
+      min-width: 100%;
+      grid-template-columns:
+        minmax(280px, 2.2fr)
+        minmax(210px, 1.4fr)
+        minmax(180px, 1.2fr)
+        minmax(350px, 2.2fr);
+    }
+
+    .table-head {
+      padding: 0 26px;
+    }
+
+    .request-row {
+      padding: 18px 26px;
+    }
+
+    // Keep all action buttons on one line at laptop widths.
+    .request-actions {
+      flex-wrap: nowrap;
+      white-space: nowrap;
+    }
+
+    .request-actions button,
+    .status-label {
+      flex: 0 0 auto;
+    }
+
+    .table-footer {
+      padding: 15px 26px;
+    }
+
+    .modal-overlay {
+      padding: 28px;
+    }
+
+    .modal-content {
+      max-height: calc(100vh - 56px);
+      padding: 54px 24px 24px;
+    }
+  }
+
+  // Small phones
+  @media (max-width: 359px) {
+    padding: 8px;
+
+    .header-title h1 {
+      font-size: 18px;
+    }
+
+    .approval-summary {
+      gap: 8px;
+    }
+
+    .summary-card {
+      min-height: 58px;
+      padding: 10px 12px;
+    }
+
+    .summary-icon {
+      width: 29px;
+      height: 29px;
+      flex-basis: 29px;
+      margin-right: 8px;
+    }
+
+    .summary-info {
+      span {
+        font-size: 10px;
+      }
+
+      strong {
+        font-size: 20px;
+      }
+    }
+
+    .requests-header {
+      padding: 13px;
+    }
+
+    .request-tools {
+      grid-template-columns: 1fr 1fr;
+
+      .search-field {
+        grid-column: 1 / -1;
+      }
+
+      .tool-btn {
+        width: 100%;
+      }
+    }
+
+    .request-table {
+      overflow-x: visible;
+    }
+
+    .table-scroll-content {
+      width: 100%;
+    }
+
+    .table-head {
+      display: none;
+    }
+
+    .request-row {
+      width: 100%;
+      min-width: 0;
+      grid-template-columns: 1fr;
+      gap: 13px;
+      padding: 14px;
+    }
+
+    .event-info strong,
+    .requestor-info strong,
+    .date-info strong {
+      font-size: 13px;
+    }
+
+    .request-actions {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      width: 100%;
+    }
+
+    .request-actions button,
+    .status-label {
+      width: 100%;
+    }
+
+    .details-btn {
+      grid-column: 1 / -1;
+    }
+
+    .table-footer {
+      padding: 12px;
+    }
+
+    .pagination button {
+      min-width: 29px;
+      min-height: 29px;
+      font-size: 10px;
+    }
+  }
+}

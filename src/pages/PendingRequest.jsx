@@ -1,99 +1,71 @@
-import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../Firebase';
-import '../styles/ReservationDetails.scss';
+import React, { useState } from 'react';
+import '../styles/PendingRequest.scss';
 
-const ReservationDetails = ({ data }) => {
-  const [facilitiesMap, setFacilitiesMap] = useState({});
-  const [equipmentMap, setEquipmentMap] = useState({});
-  const [remarks, setRemarks] = useState('');
+const ReservationDetails = () => {
+  // Sample reservation data — replace with real data (props, route param, or fetch)
+  const [reservation] = useState({
+    refNo: 'RES-2023-1042',
+    eventName: 'Annual Tech Symposium',
+    eventType: 'Academic Conference',
+    eventDate: 'October 24, 2023',
+    eventTime: '9:00 AM – 5:00 PM',
+    expectedAttendees: '150 attendees',
+    description:
+      'A full-day technology symposium featuring guest speakers, hands-on workshops, and networking sessions for students and faculty.',
+    facilityName: 'Main Auditorium',
+    roomCapacity: '200 seats',
+    floorLocation: '2nd Floor, Building A',
+    equipmentRequested: 'Projector, Laptop, Microphone',
+    
+    // Requestor details
+    requestorName: 'Alex Johnson',
+    contactNumber: '+63 912 345 6789',
+    email: 'alex.johnson@facilityres.com',
+    dateSubmitted: 'Oct 20, 2023',
+    
+    // Role logic tracker
+    userRole: 'requestor', // Simulated role: triggers Endorser visibility if 'requestor' or 'user'
+    
+    // Endorser details
+    endorserName: 'Sarah Lee',
+    endorserDesignation: 'Faculty Adviser',
+    endorserEmail: 'sarah.lee@university.edu.ph',
+    endorsedBy: 'Sarah Lee, HR Department' // For summary tracking
+  });
 
-  // Fetch facilities and equipments to map Firestore IDs back to readable Names
-  useEffect(() => {
-    const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
-      const fMap = {};
-      snapshot.forEach(doc => { fMap[doc.id] = doc.data(); });
-      setFacilitiesMap(fMap);
-    });
-
-    const unsubEq = onSnapshot(collection(db, 'equipments'), (snapshot) => {
-      const eMap = {};
-      snapshot.forEach(doc => { eMap[doc.id] = doc.data(); });
-      setEquipmentMap(eMap);
-    });
-
-    return () => { unsubFac(); unsubEq(); };
-  }, []);
-
-  if (!data) return <div style={{ padding: '24px' }}>Loading reservation details...</div>;
-
-  // --- DYNAMIC DATA MAPPING ---
-  const refNo = data.refNo || 'N/A';
-  const eventName = data.eventName || 'Untitled Event';
-  const eventType = Array.isArray(data.eventType) ? data.eventType.join(', ') : (data.eventType || 'N/A');
-  const eventDate = data.eventDate || 'N/A';
-  const eventTime = `${data.startTime || ''} – ${data.endTime || ''}`;
-  const expectedAttendees = data.expectedParticipants ? `${data.expectedParticipants} attendees` : 'N/A';
-  const description = data.purpose || 'No description provided.';
-  
-  // Map Facility IDs to Names
-  const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
-  const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'None';
-  
-  // Aggregate Room Capacity
-  const roomCapacities = (data.facilities || []).map(id => facilitiesMap[id]?.capacity).filter(Boolean);
-  const capacityDisplay = roomCapacities.length > 0 ? roomCapacities.join(', ') + ' seats' : 'N/A';
-
-  // Aggregate Locations
-  const floorLocations = (data.facilities || []).map(id => facilitiesMap[id]?.location).filter(Boolean);
-  const locationDisplay = data.specificRoom 
-    ? `${data.specificRoom}` 
-    : (floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A');
-
-  // Map Equipment IDs to Names with Quantities
-  const equipArray = Object.entries(data.selectedEquip || {})
-    .filter(([id, qty]) => Number(qty) > 0)
-    .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
-  const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
-
-  // Requestor info
-  const requestorName = data.fullName || 'Unknown';
-  const contactNumber = data.contactNumber || 'N/A';
-  const email = data.emailAddress || data.userEmail || 'N/A';
-  
-  // Format Date Submitted
-  let dateSubmitted = 'Unknown';
-  if (data.createdAt) {
-    dateSubmitted = new Date(data.createdAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }
-
-  // Endorser Logic
-  const hasEndorser = !!data.endorserName;
-  const endorserName = data.endorserName || 'N/A';
-  const endorserDesignation = data.endorserDesignation || 'N/A';
-  const endorserEmail = data.endorserEmail || 'N/A';
-  const endorsedBy = data.endorserName ? `${data.endorserName} (${data.endorserDesignation})` : 'N/A';
-
-
-  // --- VISUAL TRACKER (Scaffolded for future approval logic) ---
-  const trackerSteps = [
-    { label: 'Requestor Submitted', status: 'Completed', date: dateSubmitted, sub: '', state: 'approved' },
-    { label: 'Endorser Review', status: hasEndorser ? 'Approved' : 'Skipped', date: hasEndorser ? dateSubmitted : '—', sub: '', state: 'approved' },
-    { label: 'MIS Equipment Check', status: 'Approved', date: 'Pending', sub: '', state: 'approved' },
-    { label: 'OSA Review', status: 'Approved', date: 'Pending', sub: '', state: 'approved' },
-    { label: 'Academic Head Review', status: 'Approved', date: 'Pending', sub: '', state: 'approved' },
+  const [trackerSteps] = useState([
+    { label: 'Requestor Submitted', status: 'Completed', date: 'Oct 20, 2023', sub: '', state: 'approved' },
+    { label: 'Endorser Review', status: 'Approved', date: 'Oct 21, 2023', sub: '', state: 'approved' },
+    { label: 'MIS Equipment Check', status: 'Approved', date: 'Oct 22, 2023', sub: '', state: 'approved' },
+    { label: 'OSA Review', status: 'Approved', date: 'Oct 23, 2023', sub: '', state: 'approved' },
+    { label: 'Academic Head Review', status: 'Approved', date: 'Oct 23, 2023', sub: '', state: 'approved' },
     { label: 'Building Admin', status: 'Your Turn', date: 'Pending', sub: '', state: 'your-turn' },
     { label: 'School Admin Final', status: 'Queued', date: '—', sub: '', state: 'queued' }
-  ];
+  ]);
 
-  const historyLogs = [
-    { role: 'Requestor', badge: 'Submitted', date: dateSubmitted, text: `Reservation request submitted for ${eventName}.`, state: 'approved' },
+  const [historyLogs] = useState([
+    { role: 'Requestor', badge: 'Submitted', date: 'Oct 20, 2023', text: 'Reservation request submitted for Annual Tech Symposium.', state: 'approved' },
+    { role: 'Endorser – Sarah Lee', badge: 'Approved', date: 'Oct 21, 2023', text: 'Endorsed for department event, all details verified.', state: 'approved' },
+    { role: 'MIS Admin', badge: 'Approved', date: 'Oct 22, 2023', text: 'Equipment availability confirmed and reserved.', state: 'approved' },
     { role: 'Building Admin', badge: 'Pending', date: 'Awaiting', text: 'Reviewing facility booking and final approval.', state: 'pending' }
-  ];
+  ]);
 
-  const handleApprove = () => console.log('Approved with remarks:', remarks);
-  const handleReject = () => console.log('Rejected with remarks:', remarks);
-  const handleDownloadPdf = () => console.log('Download PDF requested for', refNo);
+  const [remarks, setRemarks] = useState('');
+
+  const handleApprove = () => {
+    // TODO: wire up to real approval logic (API call, state update, etc.)
+    console.log('Approved with remarks:', remarks);
+  };
+
+  const handleReject = () => {
+    // TODO: wire up to real rejection logic
+    console.log('Rejected with remarks:', remarks);
+  };
+
+  const handleDownloadPdf = () => {
+    // TODO: wire up to real PDF export logic
+    console.log('Download PDF requested for', reservation.refNo);
+  };
 
   return (
     <div className="mis-reservation-details-content">
@@ -102,7 +74,8 @@ const ReservationDetails = ({ data }) => {
         <div className="banner-info">
           <span className="icon">🛡️</span>
           <div>
-            <strong>Reservation Pending for Approval</strong>
+            <strong>Reservation Pending Your Approval</strong>
+            <p>This reservation is currently waiting on your decision as Building Admin.</p>
           </div>
         </div>
         <span className="banner-badge">Step 6 of 7</span>
@@ -118,28 +91,28 @@ const ReservationDetails = ({ data }) => {
             <div className="info-grid">
               <div>
                 <label>EVENT NAME</label>
-                <div className="val font-bold">{eventName}</div>
+                <div className="val font-bold">{reservation.eventName}</div>
               </div>
               <div>
                 <label>EVENT TYPE</label>
-                <div className="val font-bold">{eventType}</div>
+                <div className="val font-bold">{reservation.eventType}</div>
               </div>
               <div>
                 <label>EVENT DATE</label>
-                <div className="val">{eventDate}</div>
+                <div className="val">{reservation.eventDate}</div>
               </div>
               <div>
                 <label>TIME</label>
-                <div className="val">{eventTime}</div>
+                <div className="val">{reservation.eventTime}</div>
               </div>
               <div>
                 <label>EXPECTED ATTENDEES</label>
-                <div className="val">{expectedAttendees}</div>
+                <div className="val">{reservation.expectedAttendees}</div>
               </div>
             </div>
             <div className="full-width-field">
-              <label>EVENT DESCRIPTION / PURPOSE</label>
-              <div className="val desc-text">{description}</div>
+              <label>EVENT DESCRIPTION</label>
+              <div className="val desc-text">{reservation.description}</div>
             </div>
           </div>
 
@@ -149,23 +122,19 @@ const ReservationDetails = ({ data }) => {
             <div className="info-grid">
               <div>
                 <label>FACILITY NAME</label>
-                <div className="val font-bold">{facilityDisplay}</div>
+                <div className="val font-bold">{reservation.facilityName}</div>
               </div>
               <div>
                 <label>ROOM CAPACITY</label>
-                <div className="val">{capacityDisplay}</div>
+                <div className="val">{reservation.roomCapacity}</div>
               </div>
               <div>
                 <label>FLOOR / LOCATION</label>
-                <div className="val">{locationDisplay}</div>
+                <div className="val">{reservation.floorLocation}</div>
               </div>
               <div>
-                <label>AIRCON SCHEDULE</label>
-                <div className="val">{data.aircon ? `${data.airconOnTime} - ${data.airconOffTime}` : 'Not Requested'}</div>
-              </div>
-              <div style={{ gridColumn: '1 / -1' }}>
                 <label>EQUIPMENT REQUESTED</label>
-                <div className="val">{equipmentRequested}</div>
+                <div className="val">{reservation.equipmentRequested}</div>
               </div>
             </div>
           </div>
@@ -176,25 +145,25 @@ const ReservationDetails = ({ data }) => {
             <div className="info-grid">
               <div>
                 <label>FULL NAME</label>
-                <div className="val font-bold">{requestorName}</div>
+                <div className="val font-bold">{reservation.requestorName}</div>
               </div>
               <div>
                 <label>CONTACT NUMBER</label>
-                <div className="val">{contactNumber}</div>
+                <div className="val">{reservation.contactNumber}</div>
               </div>
               <div>
                 <label>EMAIL ADDRESS</label>
-                <div className="val">{email}</div>
+                <div className="val">{reservation.email}</div>
               </div>
               <div>
                 <label>DATE SUBMITTED</label>
-                <div className="val">{dateSubmitted}</div>
+                <div className="val">{reservation.dateSubmitted}</div>
               </div>
             </div>
           </div>
 
           {/* Card 4: Endorser Information (Conditional) */}
-          {hasEndorser && (
+          {(reservation.userRole === 'requestor' || reservation.userRole === 'user') && (
             <div className="card">
               <div className="endorser-header-row">
                 <h3><span className="card-icon">🤵</span> Endorser Information</h3>
@@ -203,15 +172,15 @@ const ReservationDetails = ({ data }) => {
               <div className="info-grid col-2">
                 <div>
                   <label>ENDORSER'S FULL NAME</label>
-                  <div className="val font-bold">{endorserName}</div>
+                  <div className="val font-bold">{reservation.endorserName}</div>
                 </div>
                 <div>
                   <label>DESIGNATION</label>
-                  <div className="val">{endorserDesignation}</div>
+                  <div className="val">{reservation.endorserDesignation}</div>
                 </div>
                 <div className="full-width-field endorser-full-width">
                   <label>CONTACT EMAIL</label>
-                  <div className="val">{endorserEmail}</div>
+                  <div className="val">{reservation.endorserEmail}</div>
                 </div>
               </div>
             </div>
@@ -227,35 +196,76 @@ const ReservationDetails = ({ data }) => {
             <div className="summary-list">
               <div className="summary-item">
                 <span className="label">Reference No.</span>
-                <span className="val ref-no">{refNo}</span>
+                <span className="val ref-no">{reservation.refNo}</span>
               </div>
               <div className="summary-item">
                 <span className="label">Facility</span>
-                <span className="val">{facilityDisplay}</span>
+                <span className="val">{reservation.facilityName}</span>
               </div>
               <div className="summary-item">
                 <span className="label">Equipment</span>
-                <span className="val">{equipmentRequested}</span>
+                <span className="val">{reservation.equipmentRequested}</span>
               </div>
               <div className="summary-item">
                 <span className="label">Event Date</span>
-                <span className="val">{eventDate}</span>
+                <span className="val">{reservation.eventDate}</span>
               </div>
               <div className="summary-item">
                 <span className="label">Duration</span>
-                <span className="val">{eventTime}</span>
+                <span className="val">{reservation.eventTime}</span>
               </div>
               <div className="summary-item">
                 <span className="label">Attendees</span>
-                <span className="val">{expectedAttendees}</span>
+                <span className="val">{reservation.expectedAttendees}</span>
               </div>
               
-              {hasEndorser && (
+              {/* Display Endorser in Summary only if Requestor */}
+              {(reservation.userRole === 'requestor' || reservation.userRole === 'user') && (
                 <div className="summary-item">
                   <span className="label">Endorsed By</span>
-                  <span className="val">{endorsedBy}</span>
+                  <span className="val">{reservation.endorsedBy}</span>
                 </div>
               )}
+            </div>
+          </div>
+
+          {/* Admin Approval Decision Card */}
+          <div className="card">
+            <div className="card-header-small">
+              <h3>🛡️ Admin Approval</h3>
+              <p>Your administrative decision</p>
+            </div>
+
+            <div className="user-profile-box">
+              <div className="user-details">
+                <div className="avatar">MR</div>
+                <div>
+                  <span className="sub-text">Approving as</span>
+                  <strong>Marcus Reid</strong>
+                </div>
+              </div>
+              <span className="role-tag">Building Admin</span>
+            </div>
+
+            <div className="form-group">
+              <label>REMARKS <span>(optional)</span></label>
+              <textarea
+                value={remarks}
+                onChange={(e) => setRemarks(e.target.value)}
+                placeholder="Add your administrative remarks or conditions here..."
+                rows={3}
+              />
+              <span className="hint-text">Remarks will be recorded in the approval history and visible to all stakeholders.</span>
+            </div>
+
+            <div className="action-buttons">
+              <button className="btn-approve" onClick={handleApprove}>✓ Approve Reservation</button>
+              <button className="btn-reject" onClick={handleReject}>✕ Reject Reservation</button>
+              <button className="btn-pdf" onClick={handleDownloadPdf}>📄 Download PDF</button>
+            </div>
+
+            <div className="warning-box">
+              ⚠️ This is a final administrative decision. Approval will confirm the reservation and notify all parties. Rejection will terminate the workflow.
             </div>
           </div>
         </div>

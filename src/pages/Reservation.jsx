@@ -1,15 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, addDoc, getDocs, query, where, writeBatch, getDoc } from 'firebase/firestore';
+import { 
+  collection, 
+  onSnapshot, 
+  doc, 
+  addDoc, 
+  getDocs, 
+  query, 
+  where, 
+  writeBatch, 
+  getDoc 
+} from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import '../styles/Reservation.scss';
 
 const initialFormState = {
-  fullName: '', contactNumber: '', 
-  eventName: '', expectedParticipants: '', eventType: [], purpose: '',
-  facilities: [], specificRoom: '', airconOnTime: '', airconOffTime: ''
+  fullName: '', 
+  contactNumber: '', 
+  emailAddress: '', 
+  eventName: '', 
+  expectedParticipants: '', 
+  eventType: [], 
+  purpose: '',
+  facilities: [], 
+  specificRoom: '', 
+  airconOnTime: '', 
+  airconOffTime: '',
+  endorserName: '', 
+  endorserDesignation: '', 
+  endorserEmail: ''
 };
 
-// Extracted to be reused outside useEffect
+// Helper function extracted outside component
 const parseTimeToDecimal = (timeStr) => {
   if (!timeStr) return null;
   const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s(AM|PM)$/i);
@@ -28,6 +49,7 @@ const parseTimeToDecimal = (timeStr) => {
 const Reservation = () => {
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
+  const [userRole, setUserRole] = useState('requestor');
 
   // --- FORM STATES ---
   const [formData, setFormData] = useState(initialFormState);
@@ -56,7 +78,7 @@ const Reservation = () => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarView, setCalendarView] = useState(new Date());
 
-  // --- CONNECT TO ACCOUNT (Profile Auto-Fill) ---
+  // --- CONNECT TO ACCOUNT (Profile Auto-Fill & Role Check) ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
@@ -66,10 +88,17 @@ const Reservation = () => {
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const userData = userSnap.data();
+            setUserRole(userData.role?.toLowerCase() || 'requestor');
+            
+            // Clean up name by removing "(Student)"
+            let cleanName = userData.name || '';
+            cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+
             setFormData(prev => ({
               ...prev,
-              fullName: prev.fullName || userData.name || '',
-              contactNumber: prev.contactNumber || userData.phone || ''
+              fullName: prev.fullName || cleanName,
+              contactNumber: prev.contactNumber || userData.phone || '',
+              emailAddress: prev.emailAddress || userData.email || user.email || '' 
             }));
           }
         } catch (err) {
@@ -104,7 +133,6 @@ const Reservation = () => {
   // Reset Draft toggle when form changes
   useEffect(() => {
     if (isDraftSaved) setIsDraftSaved(false);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [formData, days, aircon, eventDate, startTime, endTime, selectedEquip]);
 
   // --- LIVE LISTEN TO FACILITIES, EQUIPMENTS & RESERVATIONS ---
@@ -214,6 +242,7 @@ const Reservation = () => {
 
   const handlePrevMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() - 1, 1));
   const handleNextMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() + 1, 1));
+  
   const selectDate = (day) => {
     const month = String(calendarView.getMonth() + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
@@ -227,10 +256,15 @@ const Reservation = () => {
     const month = calendarView.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
-    const blanks = Array.from({ length: firstDayIndex }, (_, i) => <div key={`blank-${i}`} className="calendar-day empty"></div>);
+    
+    const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
+      <div key={`blank-${i}`} className="calendar-day empty"></div>
+    ));
+    
     const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
       <div key={day} className="calendar-day" onClick={() => selectDate(day)}>{day}</div>
     ));
+    
     return [...blanks, ...renderDays];
   };
 
@@ -269,15 +303,29 @@ const Reservation = () => {
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
     const hasFacility = formData.facilities.length > 0;
 
-    if (!formData.fullName || !eventDate || !startTime || !endTime) {
+    // Required Fields Validation
+    if (!formData.fullName || !formData.emailAddress || !eventDate || !startTime || !endTime) {
       setCustomAlert({
         title: 'Missing Fields',
-        message: 'Please fill in all required fields including Full Name, Event Date, and Time.',
+        message: 'Please fill in all required fields including Full Name, Email, Event Date, and Time.',
         isSuccess: false
       });
       return;
     }
 
+    // Endorser Validation for Requestors
+    if (userRole === 'requestor' || userRole === 'user') {
+      if (!formData.endorserName || !formData.endorserDesignation || !formData.endorserEmail) {
+        setCustomAlert({
+          title: 'Endorser Required',
+          message: 'Please complete all Endorser Information fields to proceed with your reservation.',
+          isSuccess: false
+        });
+        return;
+      }
+    }
+
+    // Selection Validation
     if (!hasFacility && !hasEquipment) {
       setCustomAlert({
         title: 'Selection Required',
@@ -316,8 +364,12 @@ const Reservation = () => {
         return;
       }
 
-      // 2. SUBMIT RESERVATION
+      // Generate a Unique Reference Number (e.g. RES-2026-0814)
+      const generatedRefNo = `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+
+      // 2. SUBMIT RESERVATION WITH REFERENCE NUMBER
       await addDoc(collection(db, 'reservations'), {
+        refNo: generatedRefNo,
         ...formData,
         userId: currentUser.uid,        
         userEmail: currentUser.email,   
@@ -332,7 +384,7 @@ const Reservation = () => {
         createdAt: new Date().toISOString()
       });
 
-      // 3. SYNC INVENTORY STATUS BACK TO DB (Only needed for equipments to ping the lastUpdated timestamp)
+      // 3. SYNC INVENTORY STATUS BACK TO DB
       const batch = writeBatch(db);
       const updateTimestamp = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
       
@@ -346,7 +398,7 @@ const Reservation = () => {
       handleDiscard(); 
       setCustomAlert({
         title: 'Success',
-        message: 'Reservation submitted successfully!',
+        message: `Reservation submitted successfully! Your Reference No. is ${generatedRefNo}.`,
         isSuccess: true
       });
 
@@ -364,19 +416,30 @@ const Reservation = () => {
     <div className="reservation-container">
       
       <div className="form-header">
-        <div className="title"><i className="ph"></i> Reservation Form</div>
-        <div className="required-note">All fields marked <span style={{color: '#EF4444'}}>*</span> are required</div>
+        <div className="title">
+          <i className="ph"></i> Reservation Form
+        </div>
+        <div className="required-note">
+          All fields marked <span className="req">*</span> are required
+        </div>
       </div>
 
-      {/* SECTION 1: Requestor Information */}
+      {/* SECTION 1: Requestor & Endorser Information */}
       <div className="form-card">
-        <div className="section-header"><span className="step-badge">1</span> Requestor Information</div>
+        <div className="section-header">
+          <span className="step-badge">1</span> Requestor Information
+        </div>
 
         <div className="form-grid col-2">
           <div className="input-group">
             <label>Full Name <span>*</span></label>
             <div className="input-with-icon right-icon">
-              <input type="text" value={formData.fullName} onChange={(e) => handleInputChange('fullName', e.target.value)} placeholder="Enter your full name" />
+              <input 
+                type="text" 
+                value={formData.fullName} 
+                onChange={(e) => handleInputChange('fullName', e.target.value)} 
+                placeholder="Enter your full name" 
+              />
             </div>
           </div>
           <div className="input-group">
@@ -391,23 +454,84 @@ const Reservation = () => {
               />
             </div>
           </div>
+          <div className="input-group full-width">
+            <label>Email Address <span>*</span></label>
+            <div className="input-with-icon left-icon">
+              <i className="ph-fill ph-envelope-simple"></i>
+              <input 
+                type="email" 
+                value={formData.emailAddress} 
+                onChange={(e) => handleInputChange('emailAddress', e.target.value)} 
+                placeholder="your.email@domain.com" 
+              />
+            </div>
+          </div>
         </div>
+
+        {/* ENDORSER SECTION (Only visible for Requestors) */}
+        {(userRole === 'requestor' || userRole === 'user') && (
+          <>
+            <hr className="section-divider" />
+            <div className="section-header">
+              <span className="step-badge">2</span> Endorser Information
+            </div>
+            <div className="form-grid col-2">
+              <div className="input-group">
+                <label>Endorser's Full Name <span className="req">*</span></label>
+                <input 
+                  type="text" 
+                  value={formData.endorserName} 
+                  onChange={(e) => handleInputChange('endorserName', e.target.value)} 
+                  placeholder="Faculty/Adviser name" 
+                />
+              </div>
+              <div className="input-group">
+                <label>Endorser's Designation <span className="req">*</span></label>
+                <input 
+                  type="text" 
+                  value={formData.endorserDesignation} 
+                  onChange={(e) => handleInputChange('endorserDesignation', e.target.value)} 
+                  placeholder="e.g. Dean, Faculty Adviser" 
+                />
+              </div>
+              <div className="input-group full-width">
+                <label>Endorser's Contact Email <span className="req">*</span></label>
+                <div className="input-with-icon left-icon">
+                  <i className="ph-fill ph-envelope-simple"></i>
+                  <input 
+                    type="email" 
+                    value={formData.endorserEmail} 
+                    onChange={(e) => handleInputChange('endorserEmail', e.target.value)} 
+                    placeholder="endorser@university.edu.ph" 
+                  />
+                </div>
+              </div>
+            </div>
+          </>
+        )}
       </div>
 
-      {/* SECTION 2: Event Information */}
+      {/* SECTION 3: Event Information */}
       <div className="form-card">
-        <div className="section-header"><span className="step-badge">2</span> Event Information</div>
+        <div className="section-header">
+          <span className="step-badge">3</span> Event Information
+        </div>
         <div className="form-grid col-2">
           <div className="input-group">
             <label>Event Name <span>*</span></label>
-            <input type="text" value={formData.eventName} onChange={(e) => handleInputChange('eventName', e.target.value)} placeholder="e.g. Annual General Assembly" />
+            <input 
+              type="text" 
+              value={formData.eventName} 
+              onChange={(e) => handleInputChange('eventName', e.target.value)} 
+              placeholder="e.g. Annual General Assembly" 
+            />
           </div>
           
           <div className="input-group">
             <label>Event Date <span>*</span></label>
-            <div style={{ position: 'relative' }}>
+            <div className="calendar-field">
               <div className="input-with-icon left-icon">
-                <i className="ph ph-calendar-blank" onClick={() => setShowCalendar(!showCalendar)} style={{ cursor: 'pointer', zIndex: 2 }}></i>
+                <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowCalendar(!showCalendar)}></i>
                 <input 
                   type="text" 
                   value={eventDate} 
@@ -415,10 +539,10 @@ const Reservation = () => {
                   maxLength={10}
                   placeholder="MM/DD/YYYY" 
                   onClick={() => setShowCalendar(true)} 
-                  style={{ borderColor: dateError ? '#EF4444' : '' }}
+                  className={dateError ? 'input-error' : ''}
                 />
               </div>
-              {dateError && <span style={{ color: '#EF4444', fontSize: '10px', marginTop: '4px', display: 'block' }}>{dateError}</span>}
+              {dateError && <span className="field-error">{dateError}</span>}
               
               {showCalendar && (
                 <>
@@ -457,33 +581,46 @@ const Reservation = () => {
               />
             </div>
           </div>
+
           <div className="input-group">
             <label>Event Type <span>*</span></label>
-            <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px'}}>
+            <div className="event-type-grid">
               {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map(type => (
-                <label key={type} style={{fontWeight: 400}}>
-                  <input type="checkbox" checked={formData.eventType.includes(type)} onChange={() => handleCheckboxArrayChange('eventType', type)} /> {type}
+                <label key={type} className="checkbox-option">
+                  <input 
+                    type="checkbox" 
+                    checked={formData.eventType.includes(type)} 
+                    onChange={() => handleCheckboxArrayChange('eventType', type)} 
+                  /> 
+                  {type}
                 </label>
               ))}
             </div>
           </div>
-          <div className="input-group" style={{gridColumn: '1 / -1'}}>
+
+          <div className="input-group full-width">
             <label>Purpose / Description <span>*</span></label>
-            <textarea value={formData.purpose} onChange={(e) => handleInputChange('purpose', e.target.value)} placeholder="Briefly describe the purpose and objectives of your event..."></textarea>
+            <textarea 
+              value={formData.purpose} 
+              onChange={(e) => handleInputChange('purpose', e.target.value)} 
+              placeholder="Briefly describe the purpose and objectives of your event..."
+            ></textarea>
           </div>
         </div>
       </div>
 
-      {/* SECTION 3: Facility Usage Schedule */}
+      {/* SECTION 4: Facility Usage Schedule */}
       <div className="form-card">
-        <div className="section-header"><span className="step-badge">3</span> Facility Usage Schedule</div>
+        <div className="section-header">
+          <span className="step-badge">4</span> Facility Usage Schedule
+        </div>
         <div className="form-grid col-3">
           <div className="input-group">
             <label>Number of Days <span>*</span></label>
-            <div style={{display: 'flex', border: '1px solid #E2E8F0', borderRadius: '6px', background: '#F8FAFC'}}>
-              <button type="button" onClick={() => updateDays(-1)} style={{border: 'none', background: 'transparent', padding: '10px 16px', cursor: 'pointer'}}>-</button>
-              <input type="text" value={days} readOnly style={{border: 'none', textAlign: 'center', width: '100%'}} />
-              <button type="button" onClick={() => updateDays(1)} style={{border: 'none', background: 'transparent', padding: '10px 16px', cursor: 'pointer'}}>+</button>
+            <div className="day-stepper">
+              <button type="button" className="stepper-btn" onClick={() => updateDays(-1)}>-</button>
+              <input type="text" value={days} readOnly className="stepper-value" />
+              <button type="button" className="stepper-btn" onClick={() => updateDays(1)}>+</button>
             </div>
           </div>
           <div className="input-group">
@@ -513,7 +650,7 @@ const Reservation = () => {
             </div>
           </div>
         </div>
-        <div className="info-box green" style={{marginTop: '16px', marginBottom: '0'}}>
+        <div className="info-box green duration-box">
           <i className="ph ph-info"></i>
           <div>
             <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s)</strong>
@@ -521,42 +658,44 @@ const Reservation = () => {
         </div>
       </div>
 
-      {/* SECTIONS 4 & 5 */}
+      {/* SECTIONS 5: Facilities & Equipment */}
       <div className="split-cards">
         
-        {/* SECTION 4: Facilities Needed (Dynamic DB List) */}
+        {/* Facilities Needed */}
         <div className="form-card">
-          <div className="section-header"><span className="step-badge">4</span> Facilities Needed</div>
+          <div className="section-header">
+            <span className="step-badge">5</span> Facilities Needed
+          </div>
           
-          <div className="checkbox-grid" style={{ gridTemplateColumns: '1fr', maxHeight: '340px', overflowY: 'auto', paddingRight: '4px', marginBottom: '16px' }}>
+          <div className="checkbox-grid facility-list">
             {inventoryFacilities.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 16px', color: '#64748B', fontSize: '13px' }}>
-                No facilities currently listed.
-              </div>
+              <div className="empty-list">No facilities currently listed.</div>
             ) : (
               inventoryFacilities.map((item) => {
                 const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
-                
-                let statusColor = '#10B981';
-                if (item.status === 'Maintenance') statusColor = '#F59E0B'; 
-                else if (isLocked) statusColor = '#EF4444'; 
+                const isSelected = formData.facilities.includes(item.id);
 
                 return (
-                  <label key={item.id} style={{ display: 'flex', alignItems: 'center', padding: '12px', border: '1px solid #E2E8F0', borderRadius: '8px', cursor: isLocked ? 'not-allowed' : 'pointer', opacity: isLocked ? 0.6 : 1, transition: 'all 0.2s', background: formData.facilities.includes(item.id) ? '#F0F9FF' : '#FFF', borderColor: formData.facilities.includes(item.id) ? '#38BDF8' : '#E2E8F0' }}>
+                  <label 
+                    key={item.id} 
+                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isLocked ? 'is-locked' : ''}`}
+                  >
                     <input 
                       type="checkbox" 
-                      style={{ marginRight: '16px', width: '18px', height: '18px', cursor: 'inherit' }}
-                      checked={formData.facilities.includes(item.id)} 
+                      className="facility-checkbox"
+                      checked={isSelected} 
                       onChange={() => handleCheckboxArrayChange('facilities', item.id)} 
                       disabled={isLocked}
                     /> 
-                    <div className="icon-box" style={{ marginRight: '12px', width: '40px', height: '40px', display: 'flex', alignItems: 'center', justifyContent: 'center', borderRadius: '8px', background: '#E0F2FE', color: '#0284C7', flexShrink: 0 }}>
-                      <i className="ph ph-buildings" style={{ fontSize: '20px' }}></i>
+                    <div className="facility-icon">
+                      <i className="ph ph-buildings"></i>
                     </div>
                     <div>
-                      <strong style={{ display: 'block', fontSize: '14px', color: '#1E293B', marginBottom: '2px' }}>{item.name}</strong>
-                      <span style={{ fontSize: '12px', color: '#64748B', display: 'block', marginBottom: '2px' }}>{item.location} | {item.capacity}</span>
-                      <span style={{ fontSize: '11px', color: statusColor, fontWeight: 500 }}>● {item.status}</span>
+                      <strong>{item.name}</strong>
+                      <span className="facility-meta">{item.location} | {item.capacity}</span>
+                      <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
+                        ● {item.status}
+                      </span>
                     </div>
                   </label>
                 );
@@ -564,44 +703,46 @@ const Reservation = () => {
             )}
           </div>
 
-          <div className="input-group" style={{ marginTop: 'auto' }}>
+          <div className="input-group room-field">
             <label>Specific Room Number / Name</label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-door"></i>
-              <input type="text" value={formData.specificRoom} onChange={(e) => handleInputChange('specificRoom', e.target.value)} placeholder="e.g. Room 301, Annex B" />
+              <input 
+                type="text" 
+                value={formData.specificRoom} 
+                onChange={(e) => handleInputChange('specificRoom', e.target.value)} 
+                placeholder="e.g. Room 301, Annex B" 
+              />
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
           </div>
         </div>
 
-        {/* SECTION 5: Equipment Needed */}
+        {/* Equipment Needed */}
         <div className="form-card">
-          <div className="section-header"><span className="step-badge">5</span> Equipment Needed</div>
+          <div className="section-header">
+            <span className="step-badge">5</span> Equipment Needed
+          </div>
           
-          <div className="equipment-list" style={{ maxHeight: '500px', overflowY: 'auto', paddingRight: '4px' }}>
+          <div className="equipment-list">
             {mappedEquipmentList.length === 0 ? (
-              <div style={{ textAlign: 'center', padding: '30px 16px', color: '#64748B', fontSize: '13px' }}>
-                No equipment currently listed in inventory.
-              </div>
+              <div className="empty-list">No equipment currently listed in inventory.</div>
             ) : (
               mappedEquipmentList.map((item) => {
                 const count = selectedEquip[item.id] || 0;
-                
                 const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
                 const isAvailable = !isLocked && item.computedAvailable > 0;
-                
-                let statusColor = '#10B981';
-                if (item.status === 'Maintenance') statusColor = '#F59E0B';
-                else if (isLocked || !isAvailable) statusColor = '#EF4444';
 
                 return (
-                  <div className="equip-item" key={item.id} style={{ opacity: isLocked ? 0.6 : 1 }}>
+                  <div className={`equip-item ${isLocked ? 'is-locked' : ''}`} key={item.id}>
                     <div className="equip-info">
-                      <div className="icon-box bg-blue"><i className="ph ph-package"></i></div>
+                      <div className="icon-box bg-blue">
+                        <i className="ph ph-package"></i>
+                      </div>
                       <div>
                         <strong>{item.name}</strong>
                         <span>{item.sku}</span>
-                        <span style={{ fontSize: '11px', color: statusColor, fontWeight: 500, marginTop: '2px', display: 'block' }}>
+                        <span className={`equip-status ${item.status?.toLowerCase() || ''}`}>
                           ● {item.status} ({item.computedAvailable} / {item.totalCount} units)
                         </span>
                       </div>
@@ -630,17 +771,19 @@ const Reservation = () => {
 
       {/* SECTION 6: Air Conditioning Schedule */}
       <div className="form-card">
-        <div className="section-header"><span className="step-badge">6</span> Air Conditioning Schedule</div>
+        <div className="section-header">
+          <span className="step-badge">6</span> Air Conditioning Schedule
+        </div>
         <div className="aircon-controls">
           
           <div className="aircon-inputs-row">
-            <div className="toggle-box" onClick={() => setAircon(!aircon)} style={{ cursor: 'pointer', borderColor: aircon ? '#10B981' : '#CBD5E1', background: aircon ? '#ECFDF5' : '#F8FAFC' }}>
-              <div style={{ width: '36px', height: '20px', borderRadius: '10px', position: 'relative', background: aircon ? '#10B981' : '#CBD5E1', transition: 'background 0.2s', flexShrink: 0 }}>
-                <div style={{ position: 'absolute', top: '2px', width: '16px', height: '16px', background: 'white', borderRadius: '50%', transition: 'left 0.2s', left: aircon ? '18px' : '2px' }}></div>
+            <div className={`toggle-box ${aircon ? 'is-enabled' : 'is-disabled'}`} onClick={() => setAircon(!aircon)}>
+              <div className="toggle-switch">
+                <div className="toggle-knob"></div>
               </div>
               <div>
-                <strong style={{ color: aircon ? '#065F46' : '#64748B', whiteSpace: 'nowrap' }}>Aircon {aircon ? 'Enabled' : 'Disabled'}</strong>
-                <span style={{ color: aircon ? '#059669' : '#94A3B8', display: 'block', whiteSpace: 'nowrap' }}>Click to toggle</span>
+                <strong>Aircon {aircon ? 'Enabled' : 'Disabled'}</strong>
+                <span>Click to toggle</span>
               </div>
             </div>
 
@@ -649,25 +792,39 @@ const Reservation = () => {
                 <label>Aircon ON Time</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
-                  <input type="text" value={formData.airconOnTime} onChange={(e) => handleInputChange('airconOnTime', e.target.value)} placeholder="08:00 AM" disabled={!aircon} style={{ background: !aircon ? '#F1F5F9' : '#F8FAFC' }} />
+                  <input 
+                    type="text" 
+                    value={formData.airconOnTime} 
+                    onChange={(e) => handleInputChange('airconOnTime', e.target.value)} 
+                    placeholder="08:00 AM" 
+                    disabled={!aircon} 
+                    className={!aircon ? 'input-disabled' : ''} 
+                  />
                 </div>
               </div>
               
-              <i className="ph ph-arrow-right arrow" style={{ marginTop: '24px' }}></i>
+              <i className="ph ph-arrow-right arrow"></i>
               
               <div className="input-group">
                 <label>Aircon OFF Time</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
-                  <input type="text" value={formData.airconOffTime} onChange={(e) => handleInputChange('airconOffTime', e.target.value)} placeholder="05:00 PM" disabled={!aircon} style={{ background: !aircon ? '#F1F5F9' : '#F8FAFC' }} />
+                  <input 
+                    type="text" 
+                    value={formData.airconOffTime} 
+                    onChange={(e) => handleInputChange('airconOffTime', e.target.value)} 
+                    placeholder="05:00 PM" 
+                    disabled={!aircon} 
+                    className={!aircon ? 'input-disabled' : ''} 
+                  />
                 </div>
               </div>
             </div>
           </div>
 
-          <div className="info-box blue" style={{marginBottom: 0, padding: '10px 12px'}}>
+          <div className="info-box blue aircon-note">
             <i className="ph ph-info"></i>
-            <div style={{fontSize: '11px'}}>Aircon will be scheduled based on approved timing. Ensure times are within facility operating hours (6:00 AM - 9:00 PM).</div>
+            <div>Aircon will be scheduled based on approved timing. Ensure times are within facility operating hours (6:00 AM - 9:00 PM).</div>
           </div>
 
         </div>
@@ -680,7 +837,9 @@ const Reservation = () => {
       </div>
 
       <div className="form-actions">
-        <button className="btn-outline" onClick={handleDiscard}><i className="ph ph-trash"></i> Discard Form</button>
+        <button className="btn-outline" onClick={handleDiscard}>
+          <i className="ph ph-trash"></i> Discard Form
+        </button>
         <div className="right-actions">
           <button className="btn-outline" onClick={handleSaveDraft}>
             <i className="ph ph-floppy-disk"></i> {isDraftSaved ? '✓ Draft Saved' : 'Save Draft'}
@@ -689,7 +848,6 @@ const Reservation = () => {
             className="btn-primary" 
             onClick={handleSubmit} 
             disabled={!certified}
-            style={{ opacity: !certified ? 0.6 : 1, cursor: !certified ? 'not-allowed' : 'pointer' }}
           >
             Submit Reservation
           </button>
@@ -698,19 +856,16 @@ const Reservation = () => {
 
       {/* Custom React Modal for General Alerts */}
       {customAlert && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '360px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ marginTop: 0, color: customAlert.isSuccess ? '#10B981' : '#DC2626', display: 'flex', alignItems: 'center', gap: '8px' }}>
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3 className={customAlert.isSuccess ? 'modal-title success' : 'modal-title error'}>
               {customAlert.title}
             </h3>
-            <p style={{ fontSize: '0.875rem', color: '#64748B', lineHeight: 1.5, marginBottom: '20px' }}>
+            <p className="modal-message">
               {customAlert.message}
             </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => setCustomAlert(null)}
-                style={{ background: '#3B82F6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
-              >
+            <div className="modal-actions">
+              <button onClick={() => setCustomAlert(null)} className="modal-button">
                 OK
               </button>
             </div>
@@ -720,17 +875,14 @@ const Reservation = () => {
 
       {/* Overlap Warning Modal */}
       {showOverlapWarning && (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 1000 }}>
-          <div style={{ background: '#fff', padding: '24px', borderRadius: '12px', width: '360px', boxShadow: '0 10px 25px rgba(0,0,0,0.15)' }}>
-            <h3 style={{ marginTop: 0, color: '#DC2626', display: 'flex', alignItems: 'center', gap: '8px' }}>Schedule Conflict</h3>
-            <p style={{ fontSize: '0.875rem', color: '#64748B', lineHeight: 1.5, marginBottom: '20px' }}>
+        <div className="modal-overlay">
+          <div className="modal-card">
+            <h3 className="modal-title error">Schedule Conflict</h3>
+            <p className="modal-message">
               The selected facility or room is already reserved on <strong>{eventDate}</strong> during an overlapping time window. Please adjust your <strong>Start/End Time</strong> or select a different facility.
             </p>
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <button 
-                onClick={() => setShowOverlapWarning(false)}
-                style={{ background: '#3B82F6', color: '#fff', border: 'none', padding: '8px 16px', borderRadius: '6px', cursor: 'pointer', fontWeight: 600 }}
-              >
+            <div className="modal-actions">
+              <button onClick={() => setShowOverlapWarning(false)} className="modal-button">
                 Understood
               </button>
             </div>

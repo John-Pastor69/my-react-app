@@ -62,19 +62,6 @@ const getDynamicStatus = (user) => {
   return 'Inactive';
 };
 
-const formatLastActive = (value) => {
-  if (value && typeof value.toDate === 'function') {
-    return value.toDate().toLocaleString([], {
-      month: 'short',
-      day: 'numeric',
-      year: 'numeric',
-      hour: 'numeric',
-      minute: '2-digit'
-    });
-  }
-  return '—';
-};
-
 const MisUserManagement = () => {
   const [usersData, setUsersData] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
@@ -90,7 +77,14 @@ const MisUserManagement = () => {
       collection(db, 'users'),
       (snapshot) => {
         const list = snapshot.docs
-          .map((d) => ({ id: d.id, ...d.data() }))
+          .map((d) => {
+            const data = d.data();
+            // Automatically strip out "(Student)" from the name
+            let cleanName = data.name || '';
+            cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+
+            return { id: d.id, ...data, name: cleanName };
+          })
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         setUsersData(list);
@@ -202,22 +196,22 @@ const MisUserManagement = () => {
 
         {actionError && <div className="error-banner">{actionError}</div>}
 
-        <div className="table-scroll-wrapper">
-          <table className="user-table">
+        {/* Added overflow-x to ensure the table can scroll horizontally without squishing */}
+        <div className="table-scroll-wrapper" style={{ overflowX: 'auto' }}>
+          <table className="user-table" style={{ minWidth: '900px' }}>
             <thead>
               <tr>
                 <th>USER</th>
                 <th>ROLE</th>
                 <th>OFFICE LOCATION</th>
                 <th>STATUS</th>
-                <th>LAST ACTIVE</th>
                 <th>ACTIONS</th>
               </tr>
             </thead>
             <tbody>
               {isLoading || loadError || usersData.length === 0 ? (
                 <tr>
-                  <td colSpan={6} className="empty-state-cell">
+                  <td colSpan={5} className="empty-state-cell">
                     <div className="empty-state">
                       <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
                       <p className="empty-state-title">
@@ -268,7 +262,6 @@ const MisUserManagement = () => {
                           {status}
                         </span>
                       </td>
-                      <td className="text-muted">{formatLastActive(user.lastActive)}</td>
                       <td>
                         <div className="action-buttons">
                           <button

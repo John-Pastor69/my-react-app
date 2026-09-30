@@ -1,4 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot } from 'firebase/firestore';
+import { db } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 
@@ -7,75 +9,83 @@ const Schedule = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [reservationsData, setReservationsData] = useState([]);
+  const [usersData, setUsersData] = useState([]);
   const itemsPerPage = 5;
 
-  const scheduleData = [
-    {
-      id: 1,
-      event: 'Annual Tech Symposium',
-      equip: 'Projector, Laptop, Mic',
-      submit: 'Oct 20, 2023',
-      name: 'Alex Johnson',
-      dept: 'IT Department',
-      date: 'Oct 24, 2023',
-      time: '09:00 AM - 05:00 PM',
-      iconClass: 'icon-blue',
-      icon: 'ph-monitor-play',
-      initial: 'A'
-    },
-    {
-      id: 2,
-      event: 'Team Offsite Workshop',
-      equip: 'Monitor, Webcam',
-      submit: 'Oct 22, 2023',
-      name: 'Sarah Lee',
-      dept: 'HR Department',
-      date: 'Oct 28, 2023',
-      time: '10:00 AM - 02:00 PM',
-      iconClass: 'icon-purple',
-      icon: 'ph-webcam',
-      initial: 'S'
-    },
-    {
-      id: 3,
-      event: 'Q3 Marketing Review',
-      equip: 'Video Conferencing Kit',
-      submit: 'Oct 23, 2023',
-      name: 'James Cruz',
-      dept: 'Marketing',
-      date: 'Nov 02, 2023',
-      time: '01:00 PM - 03:30 PM',
-      iconClass: 'icon-yellow',
-      icon: 'ph-presentation-chart',
-      initial: 'J'
-    },
-    {
-      id: 4,
-      event: 'Client Pitch Presentation',
-      equip: 'Projector, Clicker, HDMI',
-      submit: 'Oct 24, 2023',
-      name: 'Nina Reyes',
-      dept: 'Sales',
-      date: 'Nov 05, 2023',
-      time: '11:00 AM - 12:30 PM',
-      iconClass: 'icon-green',
-      icon: 'ph-lightning',
-      initial: 'N'
-    },
-    {
-      id: 5,
-      event: 'Department All-Hands',
-      equip: 'Wireless Mic, PA System',
-      submit: 'Oct 25, 2023',
-      name: 'Marco Tan',
-      dept: 'Operations',
-      date: 'Nov 10, 2023',
-      time: '03:00 PM - 04:30 PM',
-      iconClass: 'icon-pink',
-      icon: 'ph-microphone-stage',
-      initial: 'M'
+  // --- REAL-TIME FIRESTORE LISTENERS ---
+  useEffect(() => {
+    // Listen to all reservations
+    const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
+      const resList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setReservationsData(resList);
+    }, (error) => console.error('Failed to load reservations:', error));
+
+    // Listen to all users (for joining profile pic, name, and role)
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const usersList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setUsersData(usersList);
+    }, (error) => console.error('Failed to load users:', error));
+
+    return () => {
+      unsubRes();
+      unsubUsers();
+    };
+  }, []);
+
+  // --- MAP & JOIN DATA ---
+  const scheduleData = reservationsData.map((res, index) => {
+    // Find the user who made the reservation using their email or ID
+    const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+    
+    // Format submission date
+    let submitDate = 'Unknown';
+    if (res.createdAt) {
+      const d = new Date(res.createdAt);
+      submitDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     }
-  ];
+
+    // Determine equipment & facility summaries
+    let equipCount = 0;
+    if (res.selectedEquip) {
+      equipCount = Object.values(res.selectedEquip).filter(val => Number(val) > 0).length;
+    }
+    const facCount = (res.facilities || []).length;
+    let reqSubtext = '';
+    if (facCount > 0 || equipCount > 0) reqSubtext = `${facCount} Facility, ${equipCount} Equipment`;
+    else reqSubtext = 'No items requested';
+
+    // Cycle through a few nice background colors for the icons
+    const icons = ['icon-blue', 'icon-purple', 'icon-yellow', 'icon-green', 'icon-pink'];
+    const iconClass = icons[index % icons.length];
+
+    // Determine Role string
+    let displayRole = 'Requestor';
+    if (requestor.role) {
+      displayRole = requestor.role.replace(/_/g, ' ').toUpperCase();
+    }
+
+    // Clean up name by removing "(Student)"
+    let cleanName = requestor.name || res.fullName || 'Unknown User';
+    cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+
+    return {
+      id: res.id,
+      event: res.eventName || 'Untitled Event',
+      equip: reqSubtext,
+      submit: submitDate,
+      name: cleanName,
+      role: displayRole,
+      avatarUrl: requestor.avatarUrl || null,
+      initial: cleanName.charAt(0).toUpperCase(),
+      date: res.eventDate || 'No Date',
+      time: `${res.startTime || ''} - ${res.endTime || ''}`,
+      iconClass: iconClass,
+      icon: 'ph-calendar-check',
+      rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
+      fullData: res // Keep raw data in case the Modal needs it
+    };
+  }).sort((a, b) => b.rawDate - a.rawDate); // Sort newest first
 
   // --- SEARCH & FILTER LOGIC ---
   const handleSearch = (e) => {
@@ -86,7 +96,7 @@ const Schedule = () => {
   const filteredData = scheduleData.filter((row) =>
     row.event.toLowerCase().includes(searchQuery.toLowerCase()) ||
     row.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.dept.toLowerCase().includes(searchQuery.toLowerCase())
+    row.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
   // --- PAGINATION LOGIC ---
@@ -108,7 +118,6 @@ const Schedule = () => {
         <div className="card-header">
           <div className="title-group">
             <h3>Schedule</h3>
-            <p>Manage and track upcoming facility and equipment reservations</p>
           </div>
           <div className="controls-group">
             <div className="search-box">
@@ -136,19 +145,21 @@ const Schedule = () => {
               currentData.map((row) => (
                 <div className="table-row" key={row.id}>
                   <div className="col-event">
-                    <div className={`event-icon ${row.iconClass}`}>
-                      <i className={`ph ${row.icon}`}></i>
-                    </div>
                     <div className="event-details">
                       <strong>{row.event}</strong>
                       <span>Submitted {row.submit} · {row.equip}</span>
                     </div>
                   </div>
                   <div className="col-requestor">
-                    <div className="avatar">{row.initial}</div>
+                    {/* Dynamic Avatar Loading */}
+                    {row.avatarUrl ? (
+                      <img src={row.avatarUrl} alt="Avatar" className="avatar" style={{ objectFit: 'cover' }} />
+                    ) : (
+                      <div className="avatar">{row.initial}</div>
+                    )}
                     <div className="requestor-details">
                       <strong>{row.name}</strong>
-                      <span>{row.dept}</span>
+                      <span>{row.role}</span>
                     </div>
                   </div>
                   <div className="col-date">
@@ -174,7 +185,7 @@ const Schedule = () => {
 
         <div className="card-footer">
           <span className="showing-text">
-            Showing {currentData.length > 0 ? startIndex + 1 : 0} to {startIndex + currentData.length} of {filteredData.length} requests
+            Showing {currentData.length > 0 ? startIndex + 1 : 0} to {Math.min(startIndex + itemsPerPage, filteredData.length)} of {filteredData.length} requests
           </span>
           <div className="pagination">
             <button 
@@ -195,7 +206,7 @@ const Schedule = () => {
             ))}
 
             <button 
-              disabled={currentPage === totalPages} 
+              disabled={currentPage === totalPages || filteredData.length === 0} 
               onClick={handleNextPage}
             >
               Next
@@ -212,7 +223,7 @@ const Schedule = () => {
               ✕
             </button>
             <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-              <ReservationDetails data={selectedRequest} />
+              <ReservationDetails data={selectedRequest.fullData} />
             </div>
           </div>
         </div>
