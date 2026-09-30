@@ -54,7 +54,7 @@ const Reservation = () => {
   // --- FORM STATES ---
   const [formData, setFormData] = useState(initialFormState);
   const [days, setDays] = useState(0);
-  const [aircon, setAircon] = useState(true);
+  const [aircon, setAircon] = useState(false); // Default to off
   const [eventDate, setEventDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
@@ -222,7 +222,7 @@ const Reservation = () => {
     setDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
   };
 
-  const handleTimeBlur = (e, setter) => {
+  const handleTimeBlur = (e, setter, fieldKey = null) => {
     let val = e.target.value.trim().toUpperCase();
     if (!val) return;
     const match = val.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/);
@@ -236,7 +236,14 @@ const Reservation = () => {
         else if (h === 0) { h = 12; mod = 'AM'; }
         else { mod = 'AM'; }
       }
-      setter(`${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}${mod}`);
+      
+      const formattedTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${mod}`;
+      
+      if (fieldKey) {
+        setFormData(prev => ({ ...prev, [fieldKey]: formattedTime }));
+      } else {
+        setter(formattedTime);
+      }
     }
   };
 
@@ -272,7 +279,7 @@ const Reservation = () => {
   const handleDiscard = () => {
     setFormData(initialFormState);
     setDays(0);
-    setAircon(true);
+    setAircon(false);
     setEventDate('');
     setStartTime('');
     setEndTime('');
@@ -303,11 +310,13 @@ const Reservation = () => {
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
     const hasFacility = formData.facilities.length > 0;
 
-    // Required Fields Validation
-    if (!formData.fullName || !formData.emailAddress || !eventDate || !startTime || !endTime) {
+    // Required Fields Validation (Schedule is optional if no facility is booked)
+    if (!formData.fullName || !formData.emailAddress || !eventDate || (hasFacility && (!startTime || !endTime))) {
       setCustomAlert({
         title: 'Missing Fields',
-        message: 'Please fill in all required fields including Full Name, Email, Event Date, and Time.',
+        message: hasFacility 
+          ? 'Please fill in all required fields including Full Name, Email, Event Date, Start Time, and End Time.'
+          : 'Please fill in all required fields including Full Name, Email, and Event Date.',
         isSuccess: false
       });
       return;
@@ -336,32 +345,34 @@ const Reservation = () => {
     }
 
     try {
-      // 1. OVERLAP CHECK
-      const q = query(collection(db, 'reservations'), where('eventDate', '==', eventDate));
-      const snap = await getDocs(q);
-      
-      const isOverlapping = snap.docs.some(d => {
-        const res = d.data();
-        if (res.status === 'Rejected' || res.status === 'Cancelled') return false;
-
-        const startA = parseTimeToDecimal(startTime);
-        const endA = parseTimeToDecimal(endTime);
-        const startB = parseTimeToDecimal(res.startTime);
-        const endB = parseTimeToDecimal(res.endTime);
-        if (startA === null || endA === null || startB === null || endB === null) return false;
+      // 1. OVERLAP CHECK (Only if facility is booked)
+      if (hasFacility && startTime && endTime) {
+        const q = query(collection(db, 'reservations'), where('eventDate', '==', eventDate));
+        const snap = await getDocs(q);
         
-        const timeOverlap = startA < endB && endA > startB;
+        const isOverlapping = snap.docs.some(d => {
+          const res = d.data();
+          if (res.status === 'Rejected' || res.status === 'Cancelled') return false;
 
-        const hasFacilityOverlap = formData.facilities.length > 0 && res.facilities && formData.facilities.some(f => res.facilities.includes(f));
-        const hasRoomOverlap = formData.specificRoom && res.specificRoom && 
-                               formData.specificRoom.toLowerCase().trim() === res.specificRoom.toLowerCase().trim();
+          const startA = parseTimeToDecimal(startTime);
+          const endA = parseTimeToDecimal(endTime);
+          const startB = parseTimeToDecimal(res.startTime);
+          const endB = parseTimeToDecimal(res.endTime);
+          if (startA === null || endA === null || startB === null || endB === null) return false;
+          
+          const timeOverlap = startA < endB && endA > startB;
 
-        return timeOverlap && (hasFacilityOverlap || hasRoomOverlap);
-      });
+          const hasFacilityOverlap = formData.facilities.length > 0 && res.facilities && formData.facilities.some(f => res.facilities.includes(f));
+          const hasRoomOverlap = formData.specificRoom && res.specificRoom && 
+                                 formData.specificRoom.toLowerCase().trim() === res.specificRoom.toLowerCase().trim();
 
-      if (isOverlapping) {
-        setShowOverlapWarning(true);
-        return;
+          return timeOverlap && (hasFacilityOverlap || hasRoomOverlap);
+        });
+
+        if (isOverlapping) {
+          setShowOverlapWarning(true);
+          return;
+        }
       }
 
       // Generate a Unique Reference Number (e.g. RES-2026-0814)
@@ -373,9 +384,10 @@ const Reservation = () => {
         ...formData,
         userId: currentUser.uid,        
         userEmail: currentUser.email,   
+        userRole: userRole,
         eventDate,
-        startTime,
-        endTime,
+        startTime: startTime || 'N/A',
+        endTime: endTime || 'N/A',
         durationHours,
         days,
         aircon,
@@ -438,6 +450,7 @@ const Reservation = () => {
                 type="text" 
                 value={formData.fullName} 
                 onChange={(e) => handleInputChange('fullName', e.target.value)} 
+                maxLength={50}
                 placeholder="Enter your full name" 
               />
             </div>
@@ -449,7 +462,8 @@ const Reservation = () => {
               <input 
                 type="text" 
                 value={formData.contactNumber} 
-                onChange={(e) => handleInputChange('contactNumber', e.target.value.replace(/\D/g, ''))} 
+                onChange={(e) => handleInputChange('contactNumber', e.target.value.replace(/\D/g, '').slice(0, 11))} 
+                maxLength={11}
                 placeholder="09XX XXX XXXX" 
               />
             </div>
@@ -462,6 +476,7 @@ const Reservation = () => {
                 type="email" 
                 value={formData.emailAddress} 
                 onChange={(e) => handleInputChange('emailAddress', e.target.value)} 
+                maxLength={50}
                 placeholder="your.email@domain.com" 
               />
             </div>
@@ -482,6 +497,7 @@ const Reservation = () => {
                   type="text" 
                   value={formData.endorserName} 
                   onChange={(e) => handleInputChange('endorserName', e.target.value)} 
+                  maxLength={50}
                   placeholder="Faculty/Adviser name" 
                 />
               </div>
@@ -491,6 +507,7 @@ const Reservation = () => {
                   type="text" 
                   value={formData.endorserDesignation} 
                   onChange={(e) => handleInputChange('endorserDesignation', e.target.value)} 
+                  maxLength={50}
                   placeholder="e.g. Dean, Faculty Adviser" 
                 />
               </div>
@@ -502,6 +519,7 @@ const Reservation = () => {
                     type="email" 
                     value={formData.endorserEmail} 
                     onChange={(e) => handleInputChange('endorserEmail', e.target.value)} 
+                    maxLength={50}
                     placeholder="endorser@university.edu.ph" 
                   />
                 </div>
@@ -523,6 +541,7 @@ const Reservation = () => {
               type="text" 
               value={formData.eventName} 
               onChange={(e) => handleInputChange('eventName', e.target.value)} 
+              maxLength={75}
               placeholder="e.g. Annual General Assembly" 
             />
           </div>
@@ -612,11 +631,11 @@ const Reservation = () => {
       {/* SECTION 4: Facility Usage Schedule */}
       <div className="form-card">
         <div className="section-header">
-          <span className="step-badge">4</span> Facility Usage Schedule
+          <span className="step-badge">4</span> Facility Usage Schedule <span className="optional-badge">(Optional if only booking equipment)</span>
         </div>
         <div className="form-grid col-3">
           <div className="input-group">
-            <label>Number of Days <span>*</span></label>
+            <label>Number of Days</label>
             <div className="day-stepper">
               <button type="button" className="stepper-btn" onClick={() => updateDays(-1)}>-</button>
               <input type="text" value={days} readOnly className="stepper-value" />
@@ -624,7 +643,7 @@ const Reservation = () => {
             </div>
           </div>
           <div className="input-group">
-            <label>Start Time <span>*</span></label>
+            <label>Start Time</label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-clock"></i>
               <input 
@@ -637,7 +656,7 @@ const Reservation = () => {
             </div>
           </div>
           <div className="input-group">
-            <label>End Time <span>*</span></label>
+            <label>End Time</label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-clock"></i>
               <input 
@@ -772,7 +791,7 @@ const Reservation = () => {
       {/* SECTION 6: Air Conditioning Schedule */}
       <div className="form-card">
         <div className="section-header">
-          <span className="step-badge">6</span> Air Conditioning Schedule
+          <span className="step-badge">6</span> Air Condition
         </div>
         <div className="aircon-controls">
           
@@ -795,7 +814,8 @@ const Reservation = () => {
                   <input 
                     type="text" 
                     value={formData.airconOnTime} 
-                    onChange={(e) => handleInputChange('airconOnTime', e.target.value)} 
+                    onChange={(e) => handleInputChange('airconOnTime', e.target.value)}
+                    onBlur={(e) => handleTimeBlur(e, null, 'airconOnTime')}
                     placeholder="08:00 AM" 
                     disabled={!aircon} 
                     className={!aircon ? 'input-disabled' : ''} 
@@ -812,7 +832,8 @@ const Reservation = () => {
                   <input 
                     type="text" 
                     value={formData.airconOffTime} 
-                    onChange={(e) => handleInputChange('airconOffTime', e.target.value)} 
+                    onChange={(e) => handleInputChange('airconOffTime', e.target.value)}
+                    onBlur={(e) => handleTimeBlur(e, null, 'airconOffTime')}
                     placeholder="05:00 PM" 
                     disabled={!aircon} 
                     className={!aircon ? 'input-disabled' : ''} 
@@ -875,7 +896,7 @@ const Reservation = () => {
 
       {/* Overlap Warning Modal */}
       {showOverlapWarning && (
-        <div className="modal-overlay">
+        <div className="modal-overlay"> 
           <div className="modal-card">
             <h3 className="modal-title error">Schedule Conflict</h3>
             <p className="modal-message">

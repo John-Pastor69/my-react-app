@@ -19,10 +19,6 @@ $blue-main: #3B82F6;
     box-sizing: border-box;
   }
 
-  // ------------------------------------------------------------
-  // Main card
-  // ------------------------------------------------------------
-
   .schedule-main-card {
     width: 100%;
     max-width: 1400px;
@@ -32,10 +28,6 @@ $blue-main: #3B82F6;
     border-radius: 10px;
     overflow: hidden;
   }
-
-  // ------------------------------------------------------------
-  // Header
-  // ------------------------------------------------------------
 
   .card-header {
     display: flex;
@@ -107,13 +99,6 @@ $blue-main: #3B82F6;
     }
   }
 
-  // ------------------------------------------------------------
-  // Reservation list
-  //
-  // Desktop: real table-like grid
-  // Phone: each reservation becomes a readable card
-  // ------------------------------------------------------------
-
   .table-container {
     width: 100%;
   }
@@ -176,7 +161,6 @@ $blue-main: #3B82F6;
       content: 'DATE';
     }
 
-    // Event
     .col-event {
       .event-details {
         display: flex;
@@ -184,11 +168,26 @@ $blue-main: #3B82F6;
         min-width: 0;
 
         strong {
+          display: flex;
+          align-items: center;
+          gap: 8px;
           overflow: hidden;
           color: $text-dark;
           font-size: 14px;
           line-height: 1.4;
           text-overflow: ellipsis;
+
+          .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            display: inline-block;
+            flex-shrink: 0;
+
+            &.pending { background-color: #3b82f6; box-shadow: 0 0 0 3px #dbeafe; } /* Changed from yellow to blue */
+            &.approved { background-color: #10b981; box-shadow: 0 0 0 3px #d9f8ec; }
+            &.rejected { background-color: #ef4444; box-shadow: 0 0 0 3px #ffe2e2; }
+          }
         }
 
         span {
@@ -200,7 +199,6 @@ $blue-main: #3B82F6;
       }
     }
 
-    // Requestor
     .col-requestor {
       display: flex;
       align-items: center;
@@ -212,7 +210,6 @@ $blue-main: #3B82F6;
         left: 0;
       }
 
-      // Give the content room below the label.
       .avatar,
       .requestor-details {
         margin-top: 16px;
@@ -256,7 +253,6 @@ $blue-main: #3B82F6;
       }
     }
 
-    // Date
     .col-date {
       .date-details {
         display: flex;
@@ -277,7 +273,6 @@ $blue-main: #3B82F6;
       }
     }
 
-    // Action
     .col-action {
       .btn-view {
         width: 100%;
@@ -310,7 +305,6 @@ $blue-main: #3B82F6;
     }
   }
 
-  // Empty state
   .table-body > div[style] {
     min-height: 120px;
     display: flex;
@@ -320,10 +314,6 @@ $blue-main: #3B82F6;
     border-bottom: 0 !important;
     text-align: center;
   }
-
-  // ------------------------------------------------------------
-  // Footer / pagination
-  // ------------------------------------------------------------
 
   .card-footer {
     display: flex;
@@ -379,97 +369,8 @@ $blue-main: #3B82F6;
     }
   }
 
-  // ------------------------------------------------------------
-  // Small phones
-  // ------------------------------------------------------------
-
-  @media (max-width: 359px) {
-    padding: 8px;
-
-    .schedule-main-card {
-      border-radius: 8px;
-    }
-
-    .card-header {
-      padding: 13px;
-
-      .title-group {
-        h3 {
-          font-size: 16px;
-        }
-
-        p {
-          font-size: 11px;
-        }
-      }
-    }
-
-    .table-row {
-      padding: 14px;
-    }
-
-    .card-footer {
-      padding: 12px;
-
-      .pagination {
-        button {
-          min-width: 29px;
-          min-height: 29px;
-          padding: 4px 6px;
-          font-size: 10px;
-        }
-      }
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Larger phones / small tablets
-  // ------------------------------------------------------------
-
-  @media (min-width: 480px) {
-    padding: 16px;
-
-    .card-header {
-      padding: 18px;
-    }
-
-    .table-row {
-      padding: 18px;
-      grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr);
-      column-gap: 20px;
-      row-gap: 16px;
-
-      .col-event {
-        grid-column: 1 / -1;
-      }
-
-      .col-action {
-        display: flex;
-        align-items: flex-end;
-      }
-
-      .col-action .btn-view {
-        width: auto;
-      }
-    }
-
-    .card-footer {
-      .showing-text {
-        text-align: left;
-      }
-    }
-  }
-
-  // ------------------------------------------------------------
-  // Tablet
-  // ------------------------------------------------------------
-
   @media (min-width: 700px) {
     padding: 24px;
-
-    .schedule-main-card {
-      border-radius: 10px;
-    }
 
     .card-header {
       flex-direction: row;
@@ -517,13 +418,6 @@ $blue-main: #3B82F6;
       font-size: 10px;
       font-weight: 700;
       letter-spacing: 0.04em;
-
-      .col-event,
-      .col-requestor,
-      .col-date,
-      .col-action {
-        min-width: 0;
-      }
     }
 
     .table-row {
@@ -628,15 +522,7 @@ $blue-main: #3B82F6;
         }
       }
     }
-
-    .modal-overlay {
-      padding: 24px;
-    }
   }
-
-  // ------------------------------------------------------------
-  // Laptop / desktop
-  // ------------------------------------------------------------
 
   @media (min-width: 1024px) {
     .card-header {
@@ -675,10 +561,6 @@ $blue-main: #3B82F6;
       padding: 17px 28px;
     }
   }
-
-  // ------------------------------------------------------------
-  // Modal
-  // ------------------------------------------------------------
 
   .modal-overlay {
     position: fixed;

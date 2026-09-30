@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot } from 'firebase/firestore';
-import { db } from '../Firebase';
+import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 
@@ -69,6 +69,14 @@ const Schedule = () => {
     let cleanName = requestor.name || res.fullName || 'Unknown User';
     cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
 
+    // --- SCHEDULE STATUS LOGIC ---
+    const getScheduleStatus = () => {
+      const status = (res.status || 'Pending').toLowerCase();
+      if (status === 'approved') return 'approved';
+      if (status === 'rejected') return 'rejected';
+      return 'pending'; // Stays pending when first created
+    };
+
     return {
       id: res.id,
       event: res.eventName || 'Untitled Event',
@@ -80,10 +88,11 @@ const Schedule = () => {
       initial: cleanName.charAt(0).toUpperCase(),
       date: res.eventDate || 'No Date',
       time: `${res.startTime || ''} - ${res.endTime || ''}`,
+      scheduleStatus: getScheduleStatus(),
       iconClass: iconClass,
       icon: 'ph-calendar-check',
       rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
-      fullData: res // Keep raw data in case the Modal needs it
+      fullData: res 
     };
   }).sort((a, b) => b.rawDate - a.rawDate); // Sort newest first
 
@@ -146,7 +155,12 @@ const Schedule = () => {
                 <div className="table-row" key={row.id}>
                   <div className="col-event">
                     <div className="event-details">
-                      <strong>{row.event}</strong>
+                      <strong>
+                        {row.event}
+                        {row.scheduleStatus === 'pending' && <span className="status-dot pending" title="Pending"></span>}
+                        {row.scheduleStatus === 'approved' && <span className="status-dot approved" title="Approved"></span>}
+                        {row.scheduleStatus === 'rejected' && <span className="status-dot rejected" title="Rejected"></span>}
+                      </strong>
                       <span>Submitted {row.submit} · {row.equip}</span>
                     </div>
                   </div>
@@ -215,14 +229,14 @@ const Schedule = () => {
         </div>
       </div>
 
-      {/* --- UPDATED MODAL POPUP --- */}
+      {/* --- MODAL POPUP --- */}
       {selectedRequest && (
-        <div className="modal-overlay" onClick={() => setSelectedRequest(null)}>
+        <div className="modal-overlay">
           <div className="modal-wrapper">
             <button className="close-modal-btn" onClick={() => setSelectedRequest(null)}>
               ✕
             </button>
-            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+            <div className="modal-content">
               <ReservationDetails data={selectedRequest.fullData} />
             </div>
           </div>

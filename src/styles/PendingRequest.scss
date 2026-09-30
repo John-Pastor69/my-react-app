@@ -10,7 +10,6 @@ $primary-blue: #3b82f6;
 $success-green: #10b981;
 $danger-red: #ef4444;
 
-/* Force reset sa root at wrapper para iwas horizontal scrollbar/overflow */
 .mis-reservation-details-content,
 .reservation-details-wrapper {
   background-color: $bg-main;
@@ -130,6 +129,22 @@ $danger-red: #ef4444;
       font-weight: 600;
       white-space: nowrap;
       align-self: flex-start;
+    }
+
+    &.approved {
+      background-color: #ecfdf5;
+      border-color: #a7f3d0;
+      .banner-info strong { color: #065f46; }
+      .banner-info p { color: #047857; }
+      .banner-badge { background-color: #d1fae5; color: #065f46; }
+    }
+
+    &.rejected {
+      background-color: #fef2f2;
+      border-color: #fecaca;
+      .banner-info strong { color: #991b1b; }
+      .banner-info p { color: #b91c1c; }
+      .banner-badge { background-color: #fee2e2; color: #991b1b; }
     }
   }
 
@@ -591,6 +606,63 @@ $danger-red: #ef4444;
           }
         }
       }
+    }
+  }
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(15, 23, 42, 0.45);
+  }
+
+  .modal-card {
+    width: min(420px, 100%);
+    padding: 22px;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+
+    .modal-title {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      font-size: 18px;
+      font-weight: 700;
+
+      &.success { color: $success-green; }
+      &.error { color: $danger-red; }
+    }
+
+    .modal-message {
+      margin: 0 0 20px;
+      color: $text-muted;
+      font-size: 13px;
+      line-height: 1.55;
+    }
+
+    .modal-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 10px;
+    }
+
+    .modal-button {
+      min-width: 72px;
+      padding: 9px 16px;
+      border: 0;
+      border-radius: 7px;
+      background: $primary-blue;
+      color: #fff;
+      font: inherit;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
     }
   }
 }

@@ -10,7 +10,6 @@ $primary-blue: #3b82f6;
 $success-green: #10b981;
 $danger-red: #ef4444;
 
-/* Force reset sa root at wrapper para iwas horizontal scrollbar/overflow */
 .mis-reservation-details-content,
 .reservation-details-wrapper {
   background-color: $bg-main;
@@ -28,6 +27,19 @@ $danger-red: #ef4444;
 
   @media (max-width: 600px) {
     padding: 10px;
+  }
+
+  .loading-text {
+    padding: 24px;
+  }
+
+  .word-break {
+    word-break: break-word;
+    overflow-wrap: anywhere;
+  }
+
+  .equipment-requested-field {
+    grid-column: 1 / -1;
   }
 
   .card {
@@ -130,6 +142,22 @@ $danger-red: #ef4444;
       font-weight: 600;
       white-space: nowrap;
       align-self: flex-start;
+    }
+
+    &.approved {
+      background-color: #ecfdf5;
+      border-color: #a7f3d0;
+      .banner-info strong { color: #065f46; }
+      .banner-info p { color: #047857; }
+      .banner-badge { background-color: #d1fae5; color: #065f46; }
+    }
+
+    &.rejected {
+      background-color: #fef2f2;
+      border-color: #fecaca;
+      .banner-info strong { color: #991b1b; }
+      .banner-info p { color: #b91c1c; }
+      .banner-badge { background-color: #fee2e2; color: #991b1b; }
     }
   }
 
@@ -243,148 +271,6 @@ $danger-red: #ef4444;
           }
         }
       }
-    }
-
-    .card-header-small {
-      h3 {
-        margin-bottom: 2px;
-      }
-      p {
-        margin: 0 0 14px 0;
-        font-size: 11px;
-        color: $text-muted;
-      }
-    }
-
-    .user-profile-box {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background-color: #f9fafb;
-      padding: 10px;
-      border-radius: 6px;
-      margin-bottom: 14px;
-      gap: 8px;
-
-      .user-details {
-        display: flex;
-        align-items: center;
-        gap: 8px;
-
-        .avatar {
-          width: 30px;
-          height: 30px;
-          border-radius: 50%;
-          background-color: #4f46e5;
-          color: #fff;
-          display: grid;
-          place-items: center;
-          font-weight: bold;
-          font-size: 11px;
-          flex-shrink: 0;
-        }
-
-        .sub-text {
-          display: block;
-          font-size: 10px;
-          color: $text-muted;
-        }
-
-        strong {
-          font-size: 12px;
-        }
-      }
-
-      .role-tag {
-        font-size: 10px;
-        background-color: #e0e7ff;
-        color: #3730a3;
-        padding: 2px 6px;
-        border-radius: 4px;
-        white-space: nowrap;
-      }
-    }
-
-    .form-group {
-      margin-bottom: 14px;
-
-      label {
-        display: block;
-        font-size: 10px;
-        font-weight: 700;
-        text-transform: uppercase;
-
-        span {
-          color: $text-light;
-          font-weight: normal;
-          text-transform: none;
-        }
-      }
-
-      textarea {
-        width: 100%;
-        margin-top: 4px;
-        padding: 8px;
-        border-radius: 6px;
-        border: 1px solid #d1d5db;
-        font-size: 12px;
-        outline: none;
-
-        &:focus {
-          border-color: $primary-blue;
-        }
-      }
-
-      .hint-text {
-        font-size: 10px;
-        color: $text-light;
-        margin-top: 4px;
-        display: block;
-        line-height: 1.3;
-      }
-    }
-
-    .action-buttons {
-      display: flex;
-      flex-direction: column;
-      gap: 8px;
-
-      button {
-        width: 100%;
-        padding: 10px;
-        border-radius: 6px;
-        font-weight: 600;
-        font-size: 12px;
-        cursor: pointer;
-        border: none;
-      }
-
-      .btn-approve {
-        background-color: $success-green;
-        color: #fff;
-      }
-
-      .btn-reject {
-        background-color: $danger-red;
-        color: #fff;
-      }
-
-      .btn-pdf {
-        background-color: #f3f4f6;
-        color: #374151;
-        border: 1px solid #d1d5db;
-      }
-    }
-
-    .warning-box {
-      margin-top: 14px;
-      background-color: #fef2f2;
-      border: 1px solid #fecaca;
-      padding: 8px 10px;
-      border-radius: 6px;
-      font-size: 10px;
-      color: #991b1b;
-      line-height: 1.4;
     }
   }
 

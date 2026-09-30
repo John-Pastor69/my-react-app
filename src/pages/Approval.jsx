@@ -1,69 +1,181 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { db, auth } from '../Firebase';
 import "../styles/Approval.scss";
 import PendingRequest from './PendingRequest';
 
-const MisApproval = () => {
-    const [requests, setRequests] = useState([
-        { id: 1, event: 'Annual Tech Symposium', submitted: 'Oct 20, 2023', equipment: 'Projector, Laptop, Mic', requestor: 'Alex Johnson', department: 'IT Department', date: 'Oct 24, 2023', time: '09:00 AM - 05:00 PM', type: 'laptop', status: 'pending' },
-        { id: 2, event: 'Team Offsite Workshop', submitted: 'Oct 22, 2023', equipment: 'Monitor, Webcam', requestor: 'Sarah Lee', department: 'HR Department', date: 'Oct 28, 2023', time: '10:00 AM - 02:00 PM', type: 'monitor', status: 'pending' },
-        { id: 3, event: 'Q3 Marketing Review', submitted: 'Oct 23, 2023', equipment: 'Video Conferencing Kit', requestor: 'James Cruz', department: 'Marketing', date: 'Nov 02, 2023', time: '01:00 PM - 03:30 PM', type: 'camera', status: 'pending' },
-        { id: 4, event: 'Client Pitch Presentation', submitted: 'Oct 24, 2023', equipment: 'Projector, Clicker, HDMI', requestor: 'Nina Reyes', department: 'Sales', date: 'Nov 05, 2023', time: '11:00 AM - 12:30 PM', type: 'wifi', status: 'pending' },
-        { id: 5, event: 'Department All-Hands', submitted: 'Oct 25, 2023', equipment: 'Wireless Mic, PA System', requestor: 'Marco Tan', department: 'Operations', date: 'Nov 10, 2023', time: '03:00 PM - 04:30 PM', type: 'mic', status: 'pending' },
-        { id: 6, event: 'Leadership Summit 2023', submitted: 'Oct 26, 2023', equipment: 'LED Wall, Switcher, Cables', requestor: 'David Kim', department: 'Executive Office', date: 'Nov 15, 2023', time: '08:00 AM - 06:00 PM', type: 'cable', status: 'pending' },
-        { id: 7, event: 'Q1 Budget Planning', submitted: 'Oct 27, 2023', equipment: 'Projector, Whiteboard', requestor: 'Diana Prince', department: 'Finance', date: 'Nov 18, 2023', time: '10:00 AM - 12:00 PM', type: 'laptop', status: 'pending' },
-        { id: 8, event: 'New Hire Orientation', submitted: 'Oct 28, 2023', equipment: 'Laptops, Welcome Kits', requestor: 'Clark Kent', department: 'HR Department', date: 'Nov 20, 2023', time: '09:00 AM - 04:00 PM', type: 'laptop', status: 'pending' },
-        { id: 9, event: 'Product Launch Webinar', submitted: 'Oct 29, 2023', equipment: 'HD Camera, Ring Light, Mic', requestor: 'Bruce Wayne', department: 'Marketing', date: 'Nov 22, 2023', time: '02:00 PM - 04:00 PM', type: 'camera', status: 'pending' },
-        { id: 10, event: 'Board of Directors Meeting', submitted: 'Oct 30, 2023', equipment: 'Executive Conference Setup', requestor: 'Lex Luthor', department: 'Executive Office', date: 'Nov 25, 2023', time: '10:00 AM - 01:00 PM', type: 'monitor', status: 'pending' },
-        { id: 11, event: 'IT Security Training', submitted: 'Oct 31, 2023', equipment: 'Projector, Network Cables', requestor: 'Barry Allen', department: 'IT Department', date: 'Nov 28, 2023', time: '01:00 PM - 05:00 PM', type: 'cable', status: 'pending' },
-        { id: 12, event: 'Annual Holiday Party', submitted: 'Nov 01, 2023', equipment: 'PA System, Wireless Mics, Speakers', requestor: 'Arthur Curry', department: 'Operations', date: 'Dec 15, 2023', time: '06:00 PM - 11:00 PM', type: 'mic', status: 'pending' }
-    ]);
+// --- NAME FORMATTER HELPER ---
+// Converts "LastName, FirstName MiddleName (Student)" to "FirstName MiddleName LastName"
+const formatName = (fullName) => {
+    if (!fullName) return 'Unknown User';
+    let name = fullName.replace(/\s*\(Student\)/i, '').trim();
+    if (name.includes(',')) {
+        const parts = name.split(',');
+        name = `${parts[1].trim()} ${parts[0].trim()}`;
+    }
+    return name;
+};
 
+const Approval = () => {
+    // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
     const [currentPage, setCurrentPage] = useState(1);
     const [selectedRequest, setSelectedRequest] = useState(null);
-
+    const [reservationsData, setReservationsData] = useState([]);
+    const [usersData, setUsersData] = useState([]);
+    const [approverRoleKey, setApproverRoleKey] = useState('');
+    
     const itemsPerPage = 5;
 
+    // --- REAL-TIME FIRESTORE LISTENERS ---
+    useEffect(() => {
+        // Listen to all reservations
+        const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
+            const resList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            setReservationsData(resList);
+        }, (error) => console.error('Failed to load reservations:', error));
+
+        // Listen to all users
+        const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+            const usersList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            setUsersData(usersList);
+        }, (error) => console.error('Failed to load users:', error));
+
+        return () => {
+            unsubRes();
+            unsubUsers();
+        };
+    }, []);
+
+    // --- FETCH CURRENT USER ROLE ---
+    useEffect(() => {
+        const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+            if (user) {
+                try {
+                    const userRef = doc(db, 'users', user.uid);
+                    const userSnap = await getDoc(userRef);
+                    if (userSnap.exists()) {
+                        const userData = userSnap.data();
+                        const rawRole = userData.role || 'user';
+                        setApproverRoleKey(rawRole.toLowerCase().trim());
+                    }
+                } catch (err) {
+                    console.error("Failed to fetch approver data", err);
+                }
+            }
+        });
+        return () => unsubscribeAuth();
+    }, []);
+
+    // --- MAP & JOIN DATA ---
+    const approvalData = reservationsData.map((res) => {
+        const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+        
+        let submitDate = 'Unknown';
+        if (res.createdAt) {
+            const d = new Date(res.createdAt);
+            submitDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+
+        let equipCount = 0;
+        if (res.selectedEquip) {
+            equipCount = Object.values(res.selectedEquip).filter(val => Number(val) > 0).length;
+        }
+        const facCount = (res.facilities || []).length;
+        let reqSubtext = '';
+        if (facCount > 0 || equipCount > 0) reqSubtext = `${facCount} Facility, ${equipCount} Equipment`;
+        else reqSubtext = 'No items requested';
+
+        let displayRole = 'Requestor';
+        if (requestor.role) {
+            displayRole = requestor.role.replace(/_/g, ' ').toUpperCase();
+        }
+
+        // Apply formatter to the table row names
+        const cleanName = formatName(requestor.name || res.fullName);
+
+        // --- DETERMINE USER NOTIFICATION STATUS ---
+        const determineUserStatus = () => {
+            if (!approverRoleKey) return null;
+            
+            // Check if current user already acted
+            const myRecord = res.approvals?.[approverRoleKey];
+            if (myRecord?.status === 'approved') return 'approved';
+            if (myRecord?.status === 'rejected') return 'rejected';
+
+            // If overall is completed, no pending action needed
+            if (res.status === 'Rejected' || res.status === 'Approved') return null;
+
+            const roleHierarchy = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
+            const myIndex = roleHierarchy.indexOf(approverRoleKey);
+            if (myIndex <= 0) return null;
+
+            const reqRole = (requestor.role || 'requestor').toLowerCase().trim();
+            const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
+            const hasEndorser = !!res.endorserName;
+
+            const prevStepKey = roleHierarchy[myIndex - 1];
+            let prevIsApproved = false;
+
+            if (prevStepKey === 'requestor') {
+                prevIsApproved = true;
+            } else if (prevStepKey === 'endorser') {
+                if (isStaffRequestor || !hasEndorser) {
+                    prevIsApproved = true;
+                } else {
+                    prevIsApproved = res.approvals?.['endorser']?.status === 'approved';
+                }
+            } else {
+                prevIsApproved = res.approvals?.[prevStepKey]?.status === 'approved';
+            }
+
+            if (prevIsApproved) return 'your-turn';
+            return null;
+        };
+
+        return {
+            id: res.id,
+            event: res.eventName || 'Untitled Event',
+            equip: reqSubtext,
+            submit: submitDate,
+            name: cleanName,
+            role: displayRole,
+            avatarUrl: requestor.avatarUrl || null,
+            initial: cleanName.charAt(0).toUpperCase(),
+            date: res.eventDate || 'No Date',
+            time: `${res.startTime || ''} - ${res.endTime || ''}`,
+            status: res.status || 'Pending',
+            userActionStatus: determineUserStatus(),
+            rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
+            fullData: res 
+        };
+    }).sort((a, b) => b.rawDate - a.rawDate); 
+
+    // --- COUNTS FOR SUMMARY CARDS ---
+    const pendingCount = approvalData.filter((req) => req.status.toLowerCase() === 'pending').length;
+    const approvedCount = approvalData.filter((req) => req.status.toLowerCase() === 'approved').length;
+    const rejectedCount = approvalData.filter((req) => req.status.toLowerCase() === 'rejected').length;
+
+    // --- SEARCH & FILTER LOGIC ---
     const handleSearch = (e) => {
         setSearch(e.target.value);
         setCurrentPage(1);
     };
 
-    const approveRequest = (id) => {
-        setRequests(requests.map((request) =>
-            request.id === id ? { ...request, status: 'approved' } : request
-        ));
-    };
-
-    const rejectRequest = (id) => {
-        setRequests(requests.map((request) =>
-            request.id === id ? { ...request, status: 'rejected' } : request
-        ));
-    };
-
-    const undoRequest = (id) => {
-        setRequests(requests.map((request) =>
-            request.id === id ? { ...request, status: 'pending' } : request
-        ));
-    };
-
-    const filteredRequests = requests.filter((request) =>
+    const filteredRequests = approvalData.filter((request) =>
         request.event.toLowerCase().includes(search.toLowerCase()) ||
-        request.requestor.toLowerCase().includes(search.toLowerCase()) ||
-        request.department.toLowerCase().includes(search.toLowerCase())
+        request.name.toLowerCase().includes(search.toLowerCase()) ||
+        request.role.toLowerCase().includes(search.toLowerCase())
     );
 
+    // --- PAGINATION LOGIC ---
     const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage));
     const indexOfLastItem = currentPage * itemsPerPage;
     const indexOfFirstItem = indexOfLastItem - itemsPerPage;
     const currentItems = filteredRequests.slice(indexOfFirstItem, indexOfLastItem);
 
-    const pendingCount = requests.filter((req) => req.status === 'pending').length;
-    const approvedCount = requests.filter((req) => req.status === 'approved').length;
-    const rejectedCount = requests.filter((req) => req.status === 'rejected').length;
-
     return (
-        <div className="mis-approval">
+        <div className="approval">
             <div className="approval-header">
                 <div className="header-title">
                     <h1>Approval Overview</h1>
@@ -113,8 +225,6 @@ const MisApproval = () => {
                                 onChange={handleSearch}
                             />
                         </div>
-                        <button type="button" className="tool-btn">⚑ <span>Filter</span></button>
-                        <button type="button" className="tool-btn">↕ <span>Sort</span></button>
                     </div>
                 </div>
 
@@ -129,22 +239,29 @@ const MisApproval = () => {
 
                         {currentItems.length > 0 ? (
                             currentItems.map((request) => (
-                                <div className={`request-row ${request.status}`} key={request.id}>
+                                <div className="request-row" key={request.id}>
+                                    
                                     <div className="event-info">
-                                        <div className={`event-icon ${request.type}`} aria-hidden="true">
-                                            <span className="icon-glyph">{request.type}</span>
-                                        </div>
                                         <div className="event-text">
-                                            <strong>{request.event}</strong>
-                                            <p>Submitted {request.submitted} · {request.equipment}</p>
+                                            <strong>
+                                                {request.event}
+                                                {request.userActionStatus === 'your-turn' && <span className="status-dot pending" title="Your Turn to Approve"></span>}
+                                                {request.userActionStatus === 'approved' && <span className="status-dot approved" title="You Approved"></span>}
+                                                {request.userActionStatus === 'rejected' && <span className="status-dot rejected" title="You Rejected"></span>}
+                                            </strong>
+                                            <p>Submitted {request.submit} · {request.equip}</p>
                                         </div>
                                     </div>
 
                                     <div className="requestor-info">
-                                        <div className="avatar">{request.requestor.charAt(0)}</div>
+                                        {request.avatarUrl ? (
+                                            <img src={request.avatarUrl} alt="Avatar" className="avatar avatar-img" />
+                                        ) : (
+                                            <div className="avatar">{request.initial}</div>
+                                        )}
                                         <div className="requestor-text">
-                                            <strong>{request.requestor}</strong>
-                                            <p>{request.department}</p>
+                                            <strong>{request.name}</strong>
+                                            <p>{request.role}</p>
                                         </div>
                                     </div>
 
@@ -154,46 +271,15 @@ const MisApproval = () => {
                                     </div>
 
                                     <div className="request-actions">
-                                        {request.status === 'pending' ? (
-                                            <>
-                                                <button
-                                                    type="button"
-                                                    className="approve-btn"
-                                                    onClick={() => approveRequest(request.id)}
-                                                >
-                                                    ✓ Approve
-                                                </button>
-                                                <button
-                                                    type="button"
-                                                    className="reject-btn"
-                                                    onClick={() => rejectRequest(request.id)}
-                                                >
-                                                    × Reject
-                                                </button>
-                                            </>
-                                        ) : (
-                                            <>
-                                                <span className={`status-label ${request.status}`}>
-                                                    {request.status}
-                                                </span>
-                                                <button
-                                                    type="button"
-                                                    className="undo-btn"
-                                                    onClick={() => undoRequest(request.id)}
-                                                >
-                                                    ⟲ Undo
-                                                </button>
-                                            </>
-                                        )}
-
                                         <button
                                             type="button"
                                             className="details-btn"
                                             onClick={() => setSelectedRequest(request)}
                                         >
-                                            ◉ View Details
+                                            <i className="ph ph-eye"></i> View Details
                                         </button>
                                     </div>
+                                    
                                 </div>
                             ))
                         ) : (
@@ -232,7 +318,7 @@ const MisApproval = () => {
 
                         <button
                             type="button"
-                            disabled={currentPage === totalPages}
+                            disabled={currentPage === totalPages || filteredRequests.length === 0}
                             onClick={() => setCurrentPage((prev) => prev + 1)}
                         >
                             Next
@@ -242,8 +328,8 @@ const MisApproval = () => {
             </div>
 
             {selectedRequest && (
-                <div className="modal-overlay" onClick={() => setSelectedRequest(null)}>
-                    <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                <div className="modal-overlay"> 
+                    <div className="modal-wrapper">
                         <button
                             type="button"
                             className="close-modal-btn"
@@ -252,8 +338,9 @@ const MisApproval = () => {
                         >
                             ✕
                         </button>
-
-                        <PendingRequest data={selectedRequest} />
+                        <div className="modal-content" onClick={(e) => e.stopPropagation()}>
+                            <PendingRequest data={selectedRequest.fullData} />
+                        </div>
                     </div>
                 </div>
             )}
@@ -261,4 +348,4 @@ const MisApproval = () => {
     );
 };
 
-export default MisApproval;
+export default Approval;

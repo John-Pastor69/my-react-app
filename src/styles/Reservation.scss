@@ -11,13 +11,17 @@ $orange-main: #F59E0B;
 
 .reservation-container {
   width: 100%;
-  min-height: 100%;
+  
+  /* FIXED SCROLL ISSUE: Use 100vh and removed overflow-y: auto so the native window scrollbar takes over perfectly */
+  min-height: 100vh;
   padding: 16px;
+  padding-bottom: 60px; /* Extra padding so the bottom buttons aren't cut off */
+  
   background: $bg-main;
   color: $text-dark;
   font-family: 'Inter', system-ui, sans-serif;
   overflow-x: hidden;
-  overflow-y: auto;
+  box-sizing: border-box;
 
   *, *::before, *::after { 
     box-sizing: border-box; 
@@ -82,6 +86,12 @@ $orange-main: #F59E0B;
       border-radius: 7px; 
       background: $blue-main; 
       color: #fff;
+      font-size: 12px;
+    }
+
+    .optional-badge {
+      font-weight: 400;
+      color: $text-muted;
       font-size: 12px;
     }
   }
@@ -397,7 +407,6 @@ $orange-main: #F59E0B;
       flex-direction: column; 
     }
 
-    // Unified typography to match equipment needed
     strong { 
       display: block; 
       margin-bottom: 2px; 
@@ -439,7 +448,7 @@ $orange-main: #F59E0B;
     gap: 10px;
     max-height: 340px; 
     overflow-y: auto; 
-    overflow-x: auto; // Added horizontal scroll to prevent squishing
+    overflow-x: auto;
     padding-right: 4px;
 
     .equip-item {
@@ -447,7 +456,7 @@ $orange-main: #F59E0B;
       align-items: center; 
       justify-content: space-between; 
       gap: 14px;
-      min-width: 280px; // Enforces a safe width, triggering horizontal scroll when container is tight
+      min-width: 280px; 
       padding: 12px; 
       border: 1px solid $border-color; 
       border-radius: 8px; 
