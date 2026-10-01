@@ -8,9 +8,9 @@ $blue-main: #3B82F6;
 .schedule-container {
   min-height: 100vh;
   width: 100%;
-  padding: 12px;
+  padding: 16px;
   background: $bg-main;
-  font-family: 'Inter', sans-serif;
+  font-family: 'Inter', system-ui, sans-serif;
   box-sizing: border-box;
 
   *,
@@ -184,7 +184,7 @@ $blue-main: #3B82F6;
             display: inline-block;
             flex-shrink: 0;
 
-            &.pending { background-color: #3b82f6; box-shadow: 0 0 0 3px #dbeafe; } /* Changed from yellow to blue */
+            &.pending { background-color: #3b82f6; box-shadow: 0 0 0 3px #dbeafe; } 
             &.approved { background-color: #10b981; box-shadow: 0 0 0 3px #d9f8ec; }
             &.rejected { background-color: #ef4444; box-shadow: 0 0 0 3px #ffe2e2; }
           }
@@ -227,6 +227,9 @@ $blue-main: #3B82F6;
         color: #475569;
         font-size: 12px;
         font-weight: 600;
+      }
+
+      .avatar-cover {
         object-fit: cover;
       }
 
@@ -274,6 +277,10 @@ $blue-main: #3B82F6;
     }
 
     .col-action {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+
       .btn-view {
         width: 100%;
         min-height: 38px;
@@ -302,16 +309,44 @@ $blue-main: #3B82F6;
           transform: translateY(1px);
         }
       }
+
+      .btn-delete {
+        min-width: 38px;
+        width: 38px;
+        min-height: 38px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 8px 12px;
+        border: 1px solid #FECACA;
+        border-radius: 7px;
+        background: #FEF2F2;
+        color: #EF4444;
+        font-size: 16px;
+        cursor: pointer;
+        transition: background 0.2s, border-color 0.2s;
+
+        &:hover {
+          background: #FEE2E2;
+          border-color: #F87171;
+        }
+
+        &:active {
+          transform: translateY(1px);
+        }
+      }
     }
   }
 
-  .table-body > div[style] {
+  .empty-events-message {
     min-height: 120px;
     display: flex;
     align-items: center;
     justify-content: center;
-    padding: 24px !important;
-    border-bottom: 0 !important;
+    padding: 40px;
+    color: #64748B;
+    font-size: 14px;
+    border-bottom: 1px solid #E2E8F0;
     text-align: center;
   }
 
@@ -365,6 +400,14 @@ $blue-main: #3B82F6;
           background: $blue-main;
           color: #FFFFFF;
         }
+      }
+    }
+  }
+
+  @media (min-width: 480px) {
+    .table-row {
+      .col-action {
+        align-items: center; 
       }
     }
   }
@@ -497,6 +540,12 @@ $blue-main: #3B82F6;
           padding: 8px 12px;
           font-size: 12px;
         }
+        
+        .btn-delete {
+          min-width: 36px;
+          width: 36px;
+          min-height: 36px;
+        }
       }
     }
 
@@ -618,6 +667,71 @@ $blue-main: #3B82F6;
         box-shadow:
           0 20px 25px -5px rgba(0, 0, 0, 0.10),
           0 10px 10px -5px rgba(0, 0, 0, 0.04);
+      }
+    }
+    
+    // Popup Modal For Warnings/Confirmation
+    .modal-card {
+      width: min(420px, 100%);
+      padding: 22px;
+      border-radius: 12px;
+      background: #fff;
+      box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+      position: relative;
+      z-index: 10004;
+
+      .modal-title {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+        margin: 0 0 10px;
+        font-size: 18px;
+        font-weight: 700;
+
+        &.success { color: #10b981; } 
+        &.error { color: #ef4444; } 
+      }
+
+      .modal-message {
+        margin: 0 0 20px;
+        color: #64748B; 
+        font-size: 13px;
+        line-height: 1.55;
+      }
+
+      .modal-actions {
+        display: flex;
+        justify-content: flex-end;
+        gap: 10px;
+      }
+
+      .modal-button {
+        min-width: 72px;
+        padding: 9px 16px;
+        border: 0;
+        border-radius: 7px;
+        background: #3B82F6; 
+        color: #fff;
+        font: inherit;
+        font-size: 12px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: opacity 0.2s;
+
+        &:disabled {
+          opacity: 0.7;
+          cursor: not-allowed;
+        }
+      }
+      
+      .btn-modal-cancel {
+        background: #E2E8F0;
+        color: #0F172A;
+      }
+
+      .btn-modal-confirm {
+        background: #EF4444;
+        color: #FFFFFF;
       }
     }
   }

@@ -6,7 +6,7 @@ $border-color: #E2E8F0;
 $blue-main: #3B82F6;
 $red-main: #EF4444;
 
-.mis-profile-container {
+.profile-container {
   padding: 16px;
   background: $bg-main;
   
@@ -19,11 +19,12 @@ $red-main: #EF4444;
 
     .banner-bg {
       height: 120px;
-      background: linear-gradient(135deg, #475569 0%, #1E293B 100%);
       border-radius: 12px;
       position: relative; 
       overflow: hidden;
-      cursor: pointer; // Make images look clickable when not editing
+      cursor: pointer;
+      background-size: cover;
+      background-position: center;
 
       .banner-overlay {
         position: absolute;
@@ -44,7 +45,6 @@ $red-main: #EF4444;
           opacity: 1;
         }
 
-        // Hides the input entirely so it doesn't break flex alignment
         input {
           display: none !important; 
         }
@@ -69,10 +69,10 @@ $red-main: #EF4444;
 
       .avatar-container {
         position: relative;
-        width: 108px;  // Fixed size (100px + 8px borders)
+        width: 108px;  
         height: 108px;
         border-radius: 50%;
-        border: 4px solid $bg-main; // Border moved to container
+        border: 4px solid $bg-main; 
         background: $bg-panel;
         
         img {
@@ -81,7 +81,7 @@ $red-main: #EF4444;
           border-radius: 50%;
           object-fit: cover;
           display: block;
-          cursor: pointer; // Make images look clickable when not editing
+          cursor: pointer; 
         }
         
         .avatar-overlay {
@@ -104,7 +104,6 @@ $red-main: #EF4444;
             opacity: 1;
           }
 
-          // Hides the input entirely so the camera icon perfectly centers
           input {
             display: none !important; 
           }
@@ -116,10 +115,17 @@ $red-main: #EF4444;
           right: 0px;
           width: 16px;
           height: 16px;
-          background: #94A3B8;
           border: 3px solid $bg-main;
           border-radius: 50%;
           z-index: 3;
+
+          &.status-active {
+            background: #10B981;
+          }
+
+          &.status-inactive {
+            background: #DC2626;
+          }
         }
       }
 
@@ -191,14 +197,12 @@ $red-main: #EF4444;
     }
   }
 
-  // --- MAIN GRID LAYOUT (Mobile Stacked) ---
   .profile-content-grid {
     display: flex;
     flex-direction: column;
     gap: 32px;
   }
 
-  // --- CARD STYLING ---
   .card-style {
     background: #FFFFFF;
     border-radius: 12px;
@@ -227,14 +231,14 @@ $red-main: #EF4444;
       &.bg-indigo-soft { background: #EEF2FF; color: #4338CA; }
       &.bg-green-soft { background: #D1FAE5; color: #059669; }
       &.bg-yellow-soft { background: #FEF3C7; color: #D97706; }
+      &.danger-icon-wrap { background: #FEE2E2; color: #EF4444; }
     }
     h3 { font-size: 16px; font-weight: 600; color: $text-dark; margin: 0; }
   }
 
-  // --- LEFT COLUMN (Forms) ---
   .form-grid {
     display: grid;
-    grid-template-columns: 1fr; // Stacked inputs for mobile
+    grid-template-columns: 1fr; 
     gap: 20px;
     
     .input-group {
@@ -257,22 +261,41 @@ $red-main: #EF4444;
       input {
         background: $bg-panel;
         border: 1px solid transparent; 
-        padding: 12px 16px; // !important removed
+        padding: 12px 16px; 
         border-radius: 6px;
         color: $text-dark;
         font-size: 14px;
         outline: none;
         box-shadow: 0 1px 2px rgba(0,0,0,0.02);
-        text-align: left !important;
+        text-align: left;
         width: 100%;
         box-sizing: border-box;
 
         &:focus { border-color: $blue-main; }
       }
+
+      .profile-readonly-input {
+        background: #F8FAFC;
+        border: 1px solid transparent;
+        text-align: left;
+        text-indent: 0;
+        cursor: not-allowed;
+        color: #64748B;
+      }
+
+      .profile-dynamic-input {
+        background: #F8FAFC;
+        border: 1px solid transparent;
+        text-align: left;
+        text-indent: 0;
+
+        &.editing {
+          background: #FFFFFF;
+          border: 1px solid #CBD5E1;
+        }
+      }
     }
   }
-
-  // --- BUTTONS & SIDEBAR PANELS ---
 
   .danger-zone {
     p { font-size: 12px; color: $text-light; line-height: 1.5; margin-bottom: 20px; }
@@ -294,11 +317,10 @@ $red-main: #EF4444;
     }
   }
 
-  // --- DELETE MODAL STYLES ---
   .modal-overlay {
     position: fixed;
     top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(15, 23, 42, 0.6); // Darkened background
+    background: rgba(15, 23, 42, 0.6); 
     display: flex;
     align-items: center;
     justify-content: center;
@@ -381,7 +403,6 @@ $red-main: #EF4444;
     }
   }
 
-  // Image Expansion Modal
   .image-modal-content {
     background: transparent !important;
     box-shadow: none !important;
@@ -419,12 +440,10 @@ $red-main: #EF4444;
       &:hover { background: rgba(0, 0, 0, 0.9); }
     }
   }
+} 
 
-} // <--- END OF .mis-profile-container
-
-// tablet 
 @media (min-width: 1024px) {
-  .mis-profile-container { padding: 24px; }
+  .profile-container { padding: 24px; }
   
   .profile-hero {
     .banner-bg { height: 160px; }
@@ -456,20 +475,19 @@ $red-main: #EF4444;
   }
 
   .form-grid {
-    grid-template-columns: 1fr 1fr; // Inputs snap side-by-side
+    grid-template-columns: 1fr 1fr; 
     &.single-col { grid-template-columns: 1fr; }
   }
 }
 
-/* 3. PC STYLES (1024px and up) */
 @media (min-width: 1024px) {
-  .mis-profile-container {
+  .profile-container {
     padding: 24px 40px;
   }
 
   .profile-content-grid {
     display: grid;
-    grid-template-columns: 2fr 1fr; // Left forms and right sidebar split
+    grid-template-columns: 2fr 1fr; 
     gap: 24px;
   }
 }

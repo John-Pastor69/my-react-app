@@ -3,7 +3,7 @@
 :root, body, html {
   font-family: 'Inter', system-ui, sans-serif;
   font-weight: 400; 
-  color: #1E293B; 
+  color: #1E293B;
 }
 
 button, input, textarea, select {

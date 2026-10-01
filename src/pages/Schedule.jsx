@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
@@ -9,8 +9,12 @@ const Schedule = () => {
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
+  const [deleteModalData, setDeleteModalData] = useState(null);
+  const [isDeleting, setIsDeleting] = useState(false);
   const [reservationsData, setReservationsData] = useState([]);
   const [usersData, setUsersData] = useState([]);
+  const [approverRoleKey, setApproverRoleKey] = useState('');
+  const [currentUser, setCurrentUser] = useState(null);
   const itemsPerPage = 5;
 
   // --- REAL-TIME FIRESTORE LISTENERS ---
@@ -33,68 +37,93 @@ const Schedule = () => {
     };
   }, []);
 
+  // --- FETCH CURRENT USER ROLE & DATA ---
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      if (user) {
+        setCurrentUser(user);
+        try {
+          const userRef = doc(db, 'users', user.uid);
+          const userSnap = await getDoc(userRef);
+          if (userSnap.exists()) {
+            const userData = userSnap.data();
+            const rawRole = userData.role || 'user';
+            setApproverRoleKey(rawRole.toLowerCase().trim());
+          }
+        } catch (err) {
+          console.error("Failed to fetch approver data", err);
+        }
+      } else {
+        setCurrentUser(null);
+      }
+    });
+    return () => unsubscribeAuth();
+  }, []);
+
   // --- MAP & JOIN DATA ---
-  const scheduleData = reservationsData.map((res, index) => {
-    // Find the user who made the reservation using their email or ID
-    const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
-    
-    // Format submission date
-    let submitDate = 'Unknown';
-    if (res.createdAt) {
-      const d = new Date(res.createdAt);
-      submitDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-    }
+  const scheduleData = reservationsData
+    .filter(res => currentUser && (res.userId === currentUser.uid || res.userEmail === currentUser.email))
+    .map((res, index) => {
+      // Find the user who made the reservation using their email or ID
+      const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+      
+      // Format submission date
+      let submitDate = 'Unknown';
+      if (res.createdAt) {
+        const d = new Date(res.createdAt);
+        submitDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      }
 
-    // Determine equipment & facility summaries
-    let equipCount = 0;
-    if (res.selectedEquip) {
-      equipCount = Object.values(res.selectedEquip).filter(val => Number(val) > 0).length;
-    }
-    const facCount = (res.facilities || []).length;
-    let reqSubtext = '';
-    if (facCount > 0 || equipCount > 0) reqSubtext = `${facCount} Facility, ${equipCount} Equipment`;
-    else reqSubtext = 'No items requested';
+      // Determine equipment & facility summaries
+      let equipCount = 0;
+      if (res.selectedEquip) {
+        equipCount = Object.values(res.selectedEquip).filter(val => Number(val) > 0).length;
+      }
+      const facCount = (res.facilities || []).length;
+      let reqSubtext = '';
+      if (facCount > 0 || equipCount > 0) reqSubtext = `${facCount} Facility, ${equipCount} Equipment`;
+      else reqSubtext = 'No items requested';
 
-    // Cycle through a few nice background colors for the icons
-    const icons = ['icon-blue', 'icon-purple', 'icon-yellow', 'icon-green', 'icon-pink'];
-    const iconClass = icons[index % icons.length];
+      // Cycle through a few nice background colors for the icons
+      const icons = ['icon-blue', 'icon-purple', 'icon-yellow', 'icon-green', 'icon-pink'];
+      const iconClass = icons[index % icons.length];
 
-    // Determine Role string
-    let displayRole = 'Requestor';
-    if (requestor.role) {
-      displayRole = requestor.role.replace(/_/g, ' ').toUpperCase();
-    }
+      // Determine Role string
+      let displayRole = 'Requestor';
+      if (requestor.role) {
+        displayRole = requestor.role.replace(/_/g, ' ').toUpperCase();
+      }
 
-    // Clean up name by removing "(Student)"
-    let cleanName = requestor.name || res.fullName || 'Unknown User';
-    cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+      // Clean up name by removing "(Student)"
+      let cleanName = requestor.name || res.fullName || 'Unknown User';
+      cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
 
-    // --- SCHEDULE STATUS LOGIC ---
-    const getScheduleStatus = () => {
-      const status = (res.status || 'Pending').toLowerCase();
-      if (status === 'approved') return 'approved';
-      if (status === 'rejected') return 'rejected';
-      return 'pending'; // Stays pending when first created
-    };
+      // --- SCHEDULE STATUS LOGIC ---
+      const getScheduleStatus = () => {
+        const status = (res.status || 'Pending').toLowerCase();
+        if (status === 'approved') return 'approved';
+        if (status === 'rejected') return 'rejected';
+        return 'pending'; // Stays pending when first created
+      };
 
-    return {
-      id: res.id,
-      event: res.eventName || 'Untitled Event',
-      equip: reqSubtext,
-      submit: submitDate,
-      name: cleanName,
-      role: displayRole,
-      avatarUrl: requestor.avatarUrl || null,
-      initial: cleanName.charAt(0).toUpperCase(),
-      date: res.eventDate || 'No Date',
-      time: `${res.startTime || ''} - ${res.endTime || ''}`,
-      scheduleStatus: getScheduleStatus(),
-      iconClass: iconClass,
-      icon: 'ph-calendar-check',
-      rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
-      fullData: res 
-    };
-  }).sort((a, b) => b.rawDate - a.rawDate); // Sort newest first
+      return {
+        id: res.id,
+        event: res.eventName || 'Untitled Event',
+        equip: reqSubtext,
+        submit: submitDate,
+        name: cleanName,
+        role: displayRole,
+        avatarUrl: requestor.avatarUrl || null,
+        initial: cleanName.charAt(0).toUpperCase(),
+        date: res.eventDate || 'No Date',
+        time: `${res.startTime || ''} - ${res.endTime || ''}`,
+        scheduleStatus: getScheduleStatus(),
+        iconClass: iconClass,
+        icon: 'ph-calendar-check',
+        rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
+        fullData: res 
+      };
+    }).sort((a, b) => b.rawDate - a.rawDate); // Sort newest first
 
   // --- SEARCH & FILTER LOGIC ---
   const handleSearch = (e) => {
@@ -119,6 +148,20 @@ const Schedule = () => {
 
   const handleNextPage = () => {
     if (currentPage < totalPages) setCurrentPage(currentPage + 1);
+  };
+
+  // --- DELETION LOGIC ---
+  const confirmDelete = async () => {
+    if (!deleteModalData) return;
+    setIsDeleting(true);
+    try {
+      await deleteDoc(doc(db, 'reservations', deleteModalData.id));
+      setDeleteModalData(null);
+    } catch (error) {
+      console.error("Error deleting reservation:", error);
+    } finally {
+      setIsDeleting(false);
+    }
   };
 
   return (
@@ -167,7 +210,7 @@ const Schedule = () => {
                   <div className="col-requestor">
                     {/* Dynamic Avatar Loading */}
                     {row.avatarUrl ? (
-                      <img src={row.avatarUrl} alt="Avatar" className="avatar" style={{ objectFit: 'cover' }} />
+                      <img src={row.avatarUrl} alt="Avatar" className="avatar avatar-cover" />
                     ) : (
                       <div className="avatar">{row.initial}</div>
                     )}
@@ -186,11 +229,14 @@ const Schedule = () => {
                     <button className="btn-view" onClick={() => setSelectedRequest(row)}>
                       <i className="ph ph-eye"></i> View Details
                     </button>
+                    <button className="btn-delete" onClick={() => setDeleteModalData(row)} title="Delete Reservation">
+                      <i className="ph ph-x"></i>
+                    </button>
                   </div>
                 </div>
               ))
             ) : (
-              <div style={{ padding: '40px', textAlign: 'center', color: '#64748B', fontSize: '14px', borderBottom: '1px solid #E2E8F0' }}>
+              <div className="empty-events-message">
                 No matching events found.
               </div>
             )}
@@ -236,8 +282,35 @@ const Schedule = () => {
             <button className="close-modal-btn" onClick={() => setSelectedRequest(null)}>
               ✕
             </button>
-            <div className="modal-content">
+            <div className="modal-content" onClick={(e) => e.stopPropagation()}>
               <ReservationDetails data={selectedRequest.fullData} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- DELETE CONFIRMATION MODAL --- */}
+      {deleteModalData && (
+        <div className="modal-overlay delete-modal-overlay">
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title error">Confirm Deletion</h3>
+            <p className="modal-message">
+              Are you sure you want to delete the reservation for <strong>{deleteModalData.event}</strong>? This action cannot be undone.
+            </p>
+            <div className="modal-actions">
+              <button 
+                onClick={() => setDeleteModalData(null)}
+                className="modal-button btn-modal-cancel"
+              >
+                Cancel
+              </button>
+              <button 
+                onClick={confirmDelete}
+                className="modal-button btn-modal-confirm"
+                disabled={isDeleting}
+              >
+                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
             </div>
           </div>
         </div>

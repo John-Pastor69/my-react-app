@@ -2,51 +2,83 @@ import React, { useState, useEffect } from 'react';
 import { db } from "../Firebase";
 import { collection, query, onSnapshot } from "firebase/firestore";
 import "../styles/Calendar.scss";
+import ReservationDetails from './ReservationDetails';
 
-const MisCalendar = () => {
-  // 1. NEW STATE: Tracks the currently viewed month (defaults to today's date)
+// --- NAME FORMATTER HELPER ---
+const formatName = (fullName) => {
+  if (!fullName) return 'N/A';
+  let name = fullName.replace(/\s*\(Student\)/i, '').trim();
+  if (name.includes(',')) {
+    const parts = name.split(',');
+    name = `${parts[1].trim()} ${parts[0].trim()}`;
+  }
+  return name;
+};
+
+const Calendar = () => {
+  // 1. STATE
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
-  
-  const [events, setEvents] = useState([]);
+  const [reservationsData, setReservationsData] = useState([]);
+  const [facilitiesMap, setFacilitiesMap] = useState({});
+  const [equipmentMap, setEquipmentMap] = useState({});
+  const [selectedRequest, setSelectedRequest] = useState(null);
 
-  // live websocket
+  // 2. LIVE LISTENERS (Reservations, Facilities, Equipments)
   useEffect(() => {
-    const q = query(collection(db, "reservations"));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const liveData = snapshot.docs.map(doc => {
-        const data = doc.data();
-        
-        // Map database text to your UI colors
-        let uiStatusColor = 'yellow'; // default
-        if (data.status === 'approved') uiStatusColor = 'green';
-        if (data.status === 'rejected') uiStatusColor = 'red';
-        if (data.status === 'pending') uiStatusColor = 'yellow';
+    const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
+      setReservationsData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    }, (error) => console.error('Failed to load reservations:', error));
 
-        return {
-          id: doc.id,
-          title: data.title || "Untitled Event",
-          date: data.date, // must be "YYYY-MM-DD"
-          status: uiStatusColor, 
-          
-          // Pulling extra data for the sidebar cards
-          time: data.time || "TBA",
-          facility: data.facility || "No facility assigned",
-          requestor: data.requestor || "Unknown"
-        };
-      });
+    const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
+      const fMap = {};
+      snapshot.forEach(doc => { fMap[doc.id] = doc.data(); });
+      setFacilitiesMap(fMap);
+    }, (error) => console.error('Failed to load facilities:', error));
 
-      setEvents(liveData);
-    }, (error) => {
-      console.error("Error fetching live calendar data:", error);
-    });
+    const unsubEq = onSnapshot(collection(db, 'equipments'), (snapshot) => {
+      const eMap = {};
+      snapshot.forEach(doc => { eMap[doc.id] = doc.data(); });
+      setEquipmentMap(eMap);
+    }, (error) => console.error('Failed to load equipments:', error));
 
-    // Cleanup the listener when the user leaves the page
-    return () => unsubscribe();
+    return () => { unsubRes(); unsubFac(); unsubEq(); };
   }, []);
 
-  // 2. NAVIGATION CONTROLLERS
+  // 3. MAP DATA TO EVENTS
+  const events = reservationsData.map(data => {
+    const status = (data.status || 'pending').toLowerCase();
+    
+    // Map database text to your UI colors (yellow for pending)
+    let uiStatusColor = 'yellow'; 
+    if (status === 'approved') uiStatusColor = 'green';
+    if (status === 'rejected') uiStatusColor = 'red';
+    if (status === 'pending') uiStatusColor = 'yellow';
+
+    // Map Names
+    const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
+    const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'N/A';
+    
+    const equipArray = Object.entries(data.selectedEquip || {})
+      .filter(([id, qty]) => Number(qty) > 0)
+      .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
+    const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
+
+    return {
+      id: data.id,
+      title: data.eventName || data.title || "Untitled Event",
+      date: data.eventDate || data.date,
+      status: uiStatusColor, 
+      time: (data.startTime && data.endTime) ? `${data.startTime} - ${data.endTime}` : "N/A",
+      facility: facilityDisplay,
+      equipment: equipmentRequested,
+      requestor: formatName(data.fullName),
+      endorser: data.endorserName ? formatName(data.endorserName) : 'N/A',
+      fullData: data // Kept for modal injection
+    };
+  });
+
+  // 4. NAVIGATION CONTROLLERS
   const handlePrevMonth = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   };
@@ -55,27 +87,25 @@ const MisCalendar = () => {
     setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
   };
 
-  // 3. DYNAMIC CALENDAR GENERATOR
+  // 5. DYNAMIC CALENDAR GENERATOR
   const generateCalendar = () => {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
 
     const firstDayOfMonth = new Date(year, month, 1);
-    const startingDayOfWeek = firstDayOfMonth.getDay(); // 0 (Sun) to 6 (Sat)
+    const startingDayOfWeek = firstDayOfMonth.getDay(); 
     const daysInMonth = new Date(year, month + 1, 0).getDate();
 
     const calendar = [];
     const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
-    // Helper to format dates as "YYYY-MM-DD" securely across all timezones
     const formatDate = (d) => {
       const y = d.getFullYear();
       const m = String(d.getMonth() + 1).padStart(2, '0');
       const day = String(d.getDate()).padStart(2, '0');
-      return `${y}-${m}-${day}`;
+      return `${m}/${day}/${y}`; 
     };
 
-    // Step A: Fill empty slots from the PREVIOUS month
     const prevMonthLastDay = new Date(year, month, 0).getDate();
     for (let i = startingDayOfWeek - 1; i >= 0; i--) {
       const d = new Date(year, month - 1, prevMonthLastDay - i);
@@ -87,7 +117,6 @@ const MisCalendar = () => {
       });
     }
 
-    // Step B: Fill the CURRENT month
     for (let i = 1; i <= daysInMonth; i++) {
       const d = new Date(year, month, i);
       calendar.push({
@@ -98,7 +127,6 @@ const MisCalendar = () => {
       });
     }
 
-    // Step C: Fill empty slots for the NEXT month (Locks grid to exactly 42 cells / 6 rows)
     let nextMonthDay = 1;
     while (calendar.length < 42) {
       const d = new Date(year, month + 1, nextMonthDay);
@@ -115,8 +143,6 @@ const MisCalendar = () => {
   };
 
   const calendarDays = generateCalendar();
-  
-  // Formats the header title (e.g., "November 2023") based on current state
   const currentMonthYearString = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
   return (
@@ -134,6 +160,7 @@ const MisCalendar = () => {
           <div className="calendar-legend">
             <span className="legend-item"><span className="dot dot-yellow"></span> Pending</span>
             <span className="legend-item"><span className="dot dot-green"></span> Approved</span>
+            <span className="legend-item"><span className="dot dot-red"></span> Rejected</span>
           </div>
         </div>
 
@@ -150,8 +177,8 @@ const MisCalendar = () => {
             return (
               <div 
                 key={index} 
-                onClick={() => setSelectedDate(day.date)} // Sets the clicked date
-                style={{ cursor: 'pointer' }} // Changes mouse to a clicking hand
+                onClick={() => setSelectedDate(day.date)}
+                style={{ cursor: 'pointer' }}
                 className={`day-cell ${isEmpty ? 'empty-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
               >
                 <span className="date"><span>{day.name}</span> {day.num}</span>
@@ -168,16 +195,13 @@ const MisCalendar = () => {
       </div>
 
       {/* --- RIGHT: SIDEBAR DETAILS --- */}
-      {/* --- RIGHT: SIDEBAR DETAILS --- */}
       <div className="calendar-sidebar">
-        
-        {/* Calculates sidebar data based on the clicked date */}
         {(() => {
           const sidebarEvents = events.filter(e => e.date === selectedDate);
           const approvedCount = sidebarEvents.filter(e => e.status === 'green').length;
           const pendingCount = sidebarEvents.filter(e => e.status === 'yellow').length;
+          const rejectedCount = sidebarEvents.filter(e => e.status === 'red').length;
           
-          // Formats the selected date for the title (e.g., "Tuesday, Sep 15")
           const displayDate = selectedDate 
             ? new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'short', day: 'numeric' })
             : "Select a date";
@@ -202,6 +226,11 @@ const MisCalendar = () => {
                   <span className="stat-num text-yellow">{pendingCount}</span>
                   <span className="stat-label">Pending</span>
                 </div>
+                <div className="stat-divider"></div>
+                <div className="stat-box">
+                  <span className="stat-num text-red">{rejectedCount}</span>
+                  <span className="stat-label">Rejected</span>
+                </div>
               </div>
 
               <div className="event-cards">
@@ -215,16 +244,20 @@ const MisCalendar = () => {
                       <div className="card-top">
                         <h4>{event.title}</h4>
                         <span className={`status-badge bg-${event.status}`}>
-                          {event.status === 'green' ? 'Approved' : 'Pending'}
+                          {event.status === 'green' ? 'Approved' : event.status === 'red' ? 'Rejected' : 'Pending'}
                         </span>
                       </div>
                       <div className="card-details">
-                        <p><i className="ph ph-clock"></i> {event.time}</p>
-                        <p><i className="ph ph-map-pin"></i> {event.facility}</p>
                         <p><i className="ph ph-user"></i> {event.requestor}</p>
+                        <p><i className="ph ph-clock"></i> {event.time}</p>
+                        <p><i className="ph ph-buildings"></i> {event.facility}</p>
+                        <p><i className="ph ph-package"></i> {event.equipment}</p>
+                        <p><i className="ph ph-signature"></i> {event.endorser}</p>
                       </div>
                       <div className="card-actions">
-                        <button className="btn-view">View Details</button>
+                        <button className="btn-view" onClick={() => setSelectedRequest(event.fullData)}>
+                          View Details
+                        </button>
                       </div>
                     </div>
                   ))
@@ -234,8 +267,23 @@ const MisCalendar = () => {
           );
         })()}
       </div>
+
+      {/* --- MODAL POPUP --- */}
+      {selectedRequest && (
+        <div className="modal-overlay">
+          <div className="modal-wrapper">
+            <button className="close-modal-btn" onClick={() => setSelectedRequest(null)}>
+              ✕
+            </button>
+            <div className="modal-content">
+              <ReservationDetails data={selectedRequest} />
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };
 
-export default MisCalendar;
+export default Calendar;

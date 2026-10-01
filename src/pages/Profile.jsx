@@ -4,7 +4,7 @@ import { deleteUser } from 'firebase/auth';
 import { auth, db } from '../Firebase'; 
 import '../styles/Profile.scss';
 
-const MisProfile = () => {
+const Profile = () => {
   // --- STATE MANAGEMENT ---
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -30,7 +30,7 @@ const MisProfile = () => {
     officeLocation: '',
     phone: '',
     role: '',
-    status: 'Active', // Added status tracking
+    status: 'Active',
     dateJoined: '',
     avatarUrl: '',
     bannerUrl: ''
@@ -74,7 +74,7 @@ const MisProfile = () => {
               lastName: parsedLastName,
               email: data.email || user.email || '',
               role: data.role ? data.role.toUpperCase() : '',
-              status: data.status || 'Active', // Pulls dynamic status
+              status: data.status || 'Active',
               dateJoined: joinedDate || 'N/A', 
               officeLocation: data.officeLocation || '',
               phone: data.phone || '',
@@ -94,7 +94,7 @@ const MisProfile = () => {
   // --- HANDLERS ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    const sanitizedValue = name === 'phone' ? value.replace(/[^0-9]/g, '') : value;
+    const sanitizedValue = name === 'phone' ? value.replace(/[^0-9]/g, '').slice(0, 11) : value;
     setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
   };
 
@@ -102,7 +102,6 @@ const MisProfile = () => {
     const file = e.target.files[0];
     if (!file) return;
 
-    // Create a local URL so the user sees the image instantly before saving
     const previewUrl = URL.createObjectURL(file);
 
     if (type === 'avatar') {
@@ -118,7 +117,6 @@ const MisProfile = () => {
     setIsEditing(!isEditing);
     setSaveSuccess(false); 
     
-    // If cancelling edit, clear any unsaved image previews
     if (isEditing) {
       setAvatarPreview(null);
       setBannerPreview(null);
@@ -140,14 +138,11 @@ const MisProfile = () => {
         let updatedAvatarUrl = formData.avatarUrl;
         let updatedBannerUrl = formData.bannerUrl;
 
-        // --- CLOUDINARY UPLOAD HELPER FUNCTION ---
         const uploadToCloudinary = async (file) => {
           const data = new FormData();
           data.append('file', file);
-          // ⚠️ REPLACE WITH YOUR ACTUAL PRESET NAME:
           data.append('upload_preset', 'osmsg1ns'); 
           
-          // ⚠️ REPLACE 'YOUR_CLOUD_NAME' IN THIS URL:
           const res = await fetch('https://api.cloudinary.com/v1_1/a2hopaxe/image/upload', {
             method: 'POST',
             body: data
@@ -157,19 +152,16 @@ const MisProfile = () => {
           return uploadedImage.secure_url;
         };
 
-        // Upload new Avatar if selected
         if (avatarFile) {
           updatedAvatarUrl = await uploadToCloudinary(avatarFile);
         }
 
-        // Upload new Banner if selected
         if (bannerFile) {
           updatedBannerUrl = await uploadToCloudinary(bannerFile);
         }
 
         const userDocRef = doc(db, 'users', user.uid);
         
-        // Push text updates and the new Cloudinary image URLs to Firestore
         await updateDoc(userDocRef, {
           phone: formData.phone,
           officeLocation: formData.officeLocation,
@@ -177,7 +169,6 @@ const MisProfile = () => {
           bannerUrl: updatedBannerUrl
         });
 
-        // Update local state to reflect saved URLs
         setFormData(prev => ({
           ...prev,
           avatarUrl: updatedAvatarUrl,
@@ -204,7 +195,6 @@ const MisProfile = () => {
     try {
       const user = auth.currentUser;
       if (user) {
-        // Set inactive before deleting just to be safe
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
         
@@ -226,10 +216,9 @@ const MisProfile = () => {
   };
 
   return (
-    <div className="mis-profile-container">
+    <div className="profile-container">
       
       <div className="profile-hero">
-        {/* DYNAMIC BANNER BACKGROUND */}
         <div 
           className="banner-bg" 
           onClick={() => {
@@ -242,10 +231,7 @@ const MisProfile = () => {
               ? `url(${bannerPreview})` 
               : formData.bannerUrl 
                 ? `url(${formData.bannerUrl})` 
-                : 'linear-gradient(135deg, #475569 0%, #1E293B 100%)',
-            backgroundSize: 'cover',
-            backgroundPosition: 'center',
-            position: 'relative'
+                : 'linear-gradient(135deg, #475569 0%, #1E293B 100%)'
           }}
         >
           {isEditing && (
@@ -258,7 +244,6 @@ const MisProfile = () => {
         
         <div className="profile-header-content">
           <div className="profile-identity">
-            {/* DYNAMIC AVATAR */}
             <div className="avatar-container">
               <img 
                 onClick={() => {
@@ -283,10 +268,8 @@ const MisProfile = () => {
                   <i className="ph-fill ph-camera"></i>
                 </label>
               )}
-              {/* Dynamic Status Indicator */}
               <div 
-                className="status-indicator" 
-                style={{ background: formData.status === 'Active' ? '#10B981' : '#DC2626' }}
+                className={`status-indicator ${formData.status === 'Active' ? 'status-active' : 'status-inactive'}`}
                 title={formData.status}
               ></div> 
             </div>
@@ -333,32 +316,32 @@ const MisProfile = () => {
             <div className="form-grid">
               <div className="input-group">
                 <label>FIRST NAME</label>
-                <input type="text" name="firstName" value={formData.firstName} readOnly style={{ background: '#F8FAFC', border: '1px solid transparent', textAlign: 'left', textIndent: '0', cursor: 'not-allowed', color: '#64748B' }} />
+                <input type="text" name="firstName" value={formData.firstName} readOnly className="profile-readonly-input" />
               </div>
               <div className="input-group">
                 <label>LAST NAME</label>
-                <input type="text" name="lastName" value={formData.lastName} readOnly style={{ background: '#F8FAFC', border: '1px solid transparent', textAlign: 'left', textIndent: '0', cursor: 'not-allowed', color: '#64748B' }} />
+                <input type="text" name="lastName" value={formData.lastName} readOnly className="profile-readonly-input" />
               </div>
               <div className="input-group full-width">
                 <label>EMAIL</label>
-                <input type="email" name="email" value={formData.email} readOnly style={{ background: '#F8FAFC', border: '1px solid transparent', textAlign: 'left', textIndent: '0', cursor: 'not-allowed', color: '#64748B' }} />
+                <input type="email" name="email" value={formData.email} readOnly className="profile-readonly-input" />
               </div>
               <div className="input-group">
                 <label>ROLE</label>
-                <input type="text" name="role" value={formData.role} readOnly style={{ background: '#F8FAFC', border: '1px solid transparent', textAlign: 'left', textIndent: '0', cursor: 'not-allowed', color: '#64748B' }} />
+                <input type="text" name="role" value={formData.role} readOnly className="profile-readonly-input" />
               </div>
               <div className="input-group">
                 <label>DATE JOINED</label>
-                <input type="text" name="dateJoined" value={formData.dateJoined} readOnly style={{ background: '#F8FAFC', border: '1px solid transparent', textAlign: 'left', textIndent: '0', cursor: 'not-allowed', color: '#64748B' }} />
+                <input type="text" name="dateJoined" value={formData.dateJoined} readOnly className="profile-readonly-input" />
               </div>
               <div className="input-group">
                 <label>PHONE NUMBER</label>
-                <input type="text" name="phone" value={formData.phone} onChange={handleInputChange} readOnly={!isEditing} placeholder="Enter value..." style={{ background: isEditing ? '#FFFFFF' : '#F8FAFC', border: isEditing ? '1px solid #CBD5E1' : '1px solid transparent', textAlign: 'left', textIndent: '0' }} />
+                <input type="text" name="phone" value={formData.phone} onChange={handleInputChange} maxLength={11} readOnly={!isEditing} placeholder="09XX XXX XXXX" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
               </div>
               {formData.role?.toLowerCase() !== 'requestor' && (
                 <div className="input-group">
                   <label>OFFICE LOCATION</label>
-                  <input type="text" name="officeLocation" value={formData.officeLocation} onChange={handleInputChange} readOnly={!isEditing} placeholder="Enter value..." style={{ background: isEditing ? '#FFFFFF' : '#F8FAFC', border: isEditing ? '1px solid #CBD5E1' : '1px solid transparent', textAlign: 'left', textIndent: '0' }} />
+                  <input type="text" name="officeLocation" value={formData.officeLocation} onChange={handleInputChange} readOnly={!isEditing} placeholder="e.g. Floor A, Room 102" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
                 </div>
               )}
             </div>
@@ -368,7 +351,7 @@ const MisProfile = () => {
         <div className="profile-sidebar">
           <div className="side-panel card-style danger-zone">
             <div className="section-title">
-              <div className="icon-wrap" style={{background: '#FEE2E2', color: '#EF4444'}}><i className="ph-fill ph-warning"></i></div>
+              <div className="icon-wrap danger-icon-wrap"><i className="ph-fill ph-warning"></i></div>
               <h3>Danger Zone</h3>
             </div>
             <p>This action cannot be undone.</p>
@@ -409,4 +392,4 @@ const MisProfile = () => {
   );
 };
 
-export default MisProfile;
+export default Profile;

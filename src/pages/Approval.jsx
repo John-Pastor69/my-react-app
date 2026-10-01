@@ -91,7 +91,6 @@ const Approval = () => {
             displayRole = requestor.role.replace(/_/g, ' ').toUpperCase();
         }
 
-        // Apply formatter to the table row names
         const cleanName = formatName(requestor.name || res.fullName);
 
         // --- DETERMINE USER NOTIFICATION STATUS ---
@@ -151,10 +150,10 @@ const Approval = () => {
         };
     }).sort((a, b) => b.rawDate - a.rawDate); 
 
-    // --- COUNTS FOR SUMMARY CARDS ---
-    const pendingCount = approvalData.filter((req) => req.status.toLowerCase() === 'pending').length;
-    const approvedCount = approvalData.filter((req) => req.status.toLowerCase() === 'approved').length;
-    const rejectedCount = approvalData.filter((req) => req.status.toLowerCase() === 'rejected').length;
+    // --- COUNTS FOR SUMMARY CARDS (Based purely on User's Individual Action)[cite: 67] ---
+    const pendingCount = approvalData.filter((req) => req.userActionStatus === 'your-turn').length;
+    const approvedCount = approvalData.filter((req) => req.userActionStatus === 'approved').length;
+    const rejectedCount = approvalData.filter((req) => req.userActionStatus === 'rejected').length;
 
     // --- SEARCH & FILTER LOGIC ---
     const handleSearch = (e) => {

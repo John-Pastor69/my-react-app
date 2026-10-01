@@ -1,4 +1,8 @@
+
 .topbar {
+  flex-shrink: 0;
+  box-sizing: border-box;
+
   width: 100%;
   display: flex;
   justify-content: space-between;
@@ -133,16 +137,19 @@
       .user-info {
         display: flex;
         flex-direction: column;
+        justify-content: center;
 
         .user-name {
           font-size: 14px;
           font-weight: 600;
           color: #111827;
+          line-height: 1.2;
         }
 
         .user-role {
           font-size: 12px;
           color: #6b7280;
+          line-height: 1.2;
         }
       }
     }
