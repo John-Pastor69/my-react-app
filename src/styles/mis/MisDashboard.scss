@@ -1,33 +1,13 @@
 @use "sass:color";
 
-
-// ==================================================
-// SAME COLORS USED BY THE EQUIPMENT MANAGEMENT PAGE
-// ==================================================
-
 $bg-canvas: #f1f5f9;
 $card-bg: #ffffff;
 $border-color: #e2e8f0;
-
 $text-main: #1e293b;
 $text-muted: #64748b;
-
 $primary-color: #2563eb;
-
-
-// ==================================================
-// SAME RESPONSIVE BREAKPOINTS AS EQUIPMENT PAGE
-// ==================================================
-
 $bp-tablet: 640px;
 $bp-desktop: 1024px;
-
-
-// ==================================================
-// UNIVERSAL LAYOUT FIX
-// Prevents the dashboard from becoming wider
-// than the screen.
-// ==================================================
 
 :host,
 body,
@@ -36,287 +16,117 @@ main,
 .page-wrapper {
   width: 100% !important;
   max-width: 100vw !important;
-
   overflow-x: hidden !important;
-
   box-sizing: border-box !important;
 }
 
-
-// ==================================================
-// MAIN DASHBOARD CONTAINER
-// ==================================================
-
 .mis-dashboard-content {
-
-  // Mobile padding
-  padding: 12px;
-
-  // Same background as Equipment page
+  padding: 0.75rem;
   background-color: $bg-canvas;
-
-  // Same font as Equipment page
   font-family: system-ui, -apple-system, sans-serif;
-
-  // Main text color
   color: $text-main;
-
-  // Prevent width problems
   width: 100%;
   max-width: 100%;
   min-width: 0;
-
   box-sizing: border-box;
 
-
-  // ==================================================
-  // TABLET / DESKTOP PADDING
-  // Same breakpoint as Equipment page
-  // ==================================================
-
   @media (min-width: $bp-tablet) {
-    padding: 24px;
+    padding: 1.5rem;
   }
 
-
-  // ==================================================
-  // DASHBOARD TITLE
-  // ==================================================
-
   .dashboard-title {
-
     width: 100%;
-
-    // Space between title and cards
-    margin-bottom: 16px;
-
+    margin-bottom: 1rem;
 
     h1 {
-
-      // Remove browser default margin
       margin: 0;
-
-      // Requested size
-      font-size: 16px;
-
-      // Same strong heading weight
+      font-size: clamp(1rem, 0.85rem + 0.45vw, 1.25rem);
       font-weight: 700;
-
-      // Main text color
       color: $text-main;
-
       line-height: 1.2;
     }
   }
 
-
-  // ==================================================
-  // DASHBOARD CARD GRID
-  // ==================================================
-
   .dashboard-grid {
-
     display: grid;
-
-    // Mobile:
-    // One card per row
     grid-template-columns: 1fr;
-
-    // Same spacing style as Equipment page
-    gap: 12px;
-
+    gap: 0.75rem;
     width: 100%;
-
     box-sizing: border-box;
 
-
-    // ==================================================
-    // TABLET / DESKTOP
-    // Three cards per row
-    // ==================================================
-
     @media (min-width: $bp-tablet) {
-
       grid-template-columns: repeat(3, 1fr);
-
-      gap: 16px;
+      gap: 1rem;
     }
   }
 
-
-  // ==================================================
-  // DASHBOARD CARDS
-  // Same basic card style as Equipment page
-  // ==================================================
-
   .dashboard-card {
-
-    // White card
     background: $card-bg;
-
-    // Same border
     border: 1px solid $border-color;
-
-    // Same rounded corners
-    border-radius: 12px;
-
-    // Mobile padding
-    padding: 16px;
-
-    // Align content vertically
+    border-radius: 0.75rem;
+    padding: 1rem;
     display: flex;
-
     align-items: center;
-
-    gap: 16px;
-
+    gap: 1rem;
     width: 100%;
-
-    // Keeps the cards from becoming too short
-    min-height: 90px;
-
+    min-height: 5.625rem;
     box-sizing: border-box;
 
-
-    // ==================================================
-    // TABLET / DESKTOP CARD SIZE
-    // ==================================================
-
     @media (min-width: $bp-tablet) {
-
-      // Same padding as Equipment metric cards
-      padding: 20px 24px;
-
-      min-height: 100px;
+      padding: 1.25rem 1.5rem;
+      min-height: 6.25rem;
     }
 
-
-    // ==================================================
-    // CARD CONTENT
-    // ==================================================
-
     .dashboard-info {
-
       display: flex;
-
       flex-direction: column;
-
-
-      // ----------------------------------------------
-      // CARD LABEL
-      // Example:
-      // Pending Approvals
-      // Approved
-      // Rejected
-      // ----------------------------------------------
+      min-width: 0;
 
       .label {
-
-        // Same size as Equipment metric labels
-        font-size: 0.85rem;
-
-        // Same muted blue/gray color
+        font-size: clamp(0.75rem, 0.68rem + 0.25vw, 0.9rem);
         color: $text-muted;
-
-        // Same font weight
         font-weight: 500;
-
-        margin-bottom: 2px;
+        line-height: 1.3;
+        margin-bottom: 0.125rem;
+        overflow-wrap: break-word;
       }
 
-
-      // ----------------------------------------------
-      // CARD NUMBER
-      // Example:
-      // 18
-      // 198
-      // 31
-      // ----------------------------------------------
-
       .count {
-
-        // Same size as Equipment metric numbers
-        font-size: 1.6rem;
-
-        // Bold number
+        font-size: clamp(1.4rem, 1.2rem + 0.65vw, 1.75rem);
         font-weight: 700;
-
-        // Main dark text
         color: $text-main;
-
         line-height: 1.2;
       }
     }
   }
 }
 
-
-// ==================================================
-// MOBILE RESPONSIVE SETTINGS
-// ==================================================
-
 @media (max-width: 639px) {
-
   .mis-dashboard-content {
-
-
-    // ----------------------------------------------
-    // MOBILE TITLE
-    // ----------------------------------------------
-
     .dashboard-title {
-
-      margin-bottom: 14px;
+      margin-bottom: 0.875rem;
 
       h1 {
-
-        // Keep Dashboard at 16px
-        font-size: 16px;
+        font-size: clamp(0.95rem, 0.8rem + 0.7vw, 1.1rem);
       }
     }
 
-
-    // ----------------------------------------------
-    // MOBILE CARD GRID
-    // One card per row
-    // ----------------------------------------------
-
     .dashboard-grid {
-
       grid-template-columns: 1fr;
-
-      gap: 12px;
+      gap: 0.75rem;
     }
 
-
-    // ----------------------------------------------
-    // MOBILE CARD
-    // ----------------------------------------------
-
     .dashboard-card {
-
-      min-height: 90px;
-
-      padding: 16px;
-    }
-
-
-    // ----------------------------------------------
-    // MOBILE TEXT
-    // ----------------------------------------------
-
-    .dashboard-card {
+      min-height: 5.625rem;
+      padding: 1rem;
 
       .dashboard-info {
-
         .label {
-
-          font-size: 0.85rem;
+          font-size: clamp(0.75rem, 0.68rem + 0.45vw, 0.85rem);
         }
 
         .count {
-
-          font-size: 1.6rem;
+          font-size: clamp(1.4rem, 1.15rem + 1.2vw, 1.6rem);
         }
       }
     }

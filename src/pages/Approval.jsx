@@ -113,6 +113,9 @@ const Approval = () => {
             const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
             const hasEndorser = !!res.endorserName;
 
+            // FIX: If current user is an endorser and it's a staff/endorser requestor, skip endorser step
+            if (approverRoleKey === 'endorser' && isStaffRequestor) return null;
+
             const prevStepKey = roleHierarchy[myIndex - 1];
             let prevIsApproved = false;
 
@@ -150,7 +153,7 @@ const Approval = () => {
         };
     }).sort((a, b) => b.rawDate - a.rawDate); 
 
-    // --- COUNTS FOR SUMMARY CARDS (Based purely on User's Individual Action)[cite: 67] ---
+    // --- COUNTS FOR SUMMARY CARDS (Based purely on User's Individual Action) ---
     const pendingCount = approvalData.filter((req) => req.userActionStatus === 'your-turn').length;
     const approvedCount = approvalData.filter((req) => req.userActionStatus === 'approved').length;
     const rejectedCount = approvalData.filter((req) => req.userActionStatus === 'rejected').length;
