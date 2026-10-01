@@ -94,9 +94,13 @@ const Schedule = () => {
         displayRole = requestor.role.replace(/_/g, ' ').toUpperCase();
       }
 
-      // Clean up name by removing "(Student)"
-      let cleanName = requestor.name || res.fullName || 'Unknown User';
-      cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+      const fullName = (requestor.name || res.fullName || 'Unknown User')
+        .replace(/\s*\(Student\)/i, '')
+        .trim();
+      const [lastName, ...givenNames] = fullName.split(',');
+      const cleanName = givenNames.length
+        ? `${givenNames.join(',').trim()} ${lastName.trim()}`
+        : fullName;
 
       // --- SCHEDULE STATUS LOGIC ---
       const getScheduleStatus = () => {
@@ -188,6 +192,7 @@ const Schedule = () => {
           <div className="table-header">
             <div className="col-event">EVENT NAME</div>
             <div className="col-requestor">REQUESTOR</div>
+            <div className="col-resources">RESOURCES</div>
             <div className="col-date">DATE</div>
             <div className="col-action">ACTION</div>
           </div>
@@ -204,7 +209,7 @@ const Schedule = () => {
                         {row.scheduleStatus === 'approved' && <span className="status-dot approved" title="Approved"></span>}
                         {row.scheduleStatus === 'rejected' && <span className="status-dot rejected" title="Rejected"></span>}
                       </strong>
-                      <span>Submitted {row.submit} · {row.equip}</span>
+                      <span>Submitted {row.submit}</span>
                     </div>
                   </div>
                   <div className="col-requestor">
@@ -219,6 +224,7 @@ const Schedule = () => {
                       <span>{row.role}</span>
                     </div>
                   </div>
+                  <div className="col-resources">{row.equip}</div>
                   <div className="col-date">
                     <div className="date-details">
                       <strong>{row.date}</strong>

@@ -4,11 +4,6 @@ import "../../styles/mis/MisDashboard.scss";
 
 const MisDashboard = () => {
 
-  // ==========================================
-  // DASHBOARD DATA
-  // Change these numbers later when connecting
-  // the dashboard to Firebase.
-  // ==========================================
   const [dashboardData] = useState({
     pendingApprovals: 18,
     approved: 198,
@@ -17,7 +12,6 @@ const MisDashboard = () => {
     facilityRequests: 7,
     users: 64
   });
-
 
   return (
     <div className="mis-dashboard-content">

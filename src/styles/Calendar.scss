@@ -14,25 +14,24 @@ $red-light: #FEE2E2;
 
 .calendar-page-container { // mobile layout
   display: flex;
-  flex-direction: column; /* Stack vertically on phones */
-  gap: 24px;
-  padding: 16px;
+  flex-direction: column; 
+  gap: 1.6rem;
   width: 100%;
   box-sizing: border-box;
   background: $bg-main;
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: inherit;
   
   /* Scrollable setup for stacked layout */
-  height: calc(100vh - 80px);
+  height: calc(100vh - 5.3333rem);
   overflow-y: auto;
 }
 
 .calendar-main, .calendar-sidebar {
   width: 100%;
   background: $bg-panel;
-  border-radius: 12px;
-  padding: 16px;
-  border: 1px solid $border-color;
+  border-radius: 0.8rem;
+  padding: 1.0667rem;
+  border: 0.0667rem solid $border-color;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -42,19 +41,19 @@ $red-light: #FEE2E2;
 .calendar-header {
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  margin-bottom: 24px;
+  gap: 1.0667rem;
+  margin-bottom: 1.6rem;
 
   .month-nav {
     display: flex;
     align-items: center;
-    gap: 12px;
-    h2 { font-size: 20px; font-weight: 700; color: $text-dark; margin: 0; }
+    gap: 0.8rem;
+    h2 { font-size: 1.3333rem; font-weight: 700; color: $text-dark; margin: 0; }
     
     .icon-btn, .today-btn {
       background: white;
-      border: 1px solid $border-color;
-      border-radius: 6px;
+      border: 0.0667rem solid $border-color;
+      border-radius: 0.4rem;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -62,21 +61,21 @@ $red-light: #FEE2E2;
       color: $text-dark;
       &:hover { background: #f8fafc; }
     }
-    .icon-btn { width: 32px; height: 32px; font-size: 16px; }
-    .today-btn { padding: 6px 12px; font-weight: 500; font-size: 14px; }
+    .icon-btn { width: 2.1333rem; height: 2.1333rem; font-size: 1.0667rem; }
+    .today-btn { padding: 0.4rem 0.8rem; font-weight: 500; font-size: 0.9333rem; }
   }
 
   .calendar-legend {
     display: flex;
     flex-wrap: wrap;
-    gap: 16px;
+    gap: 1.0667rem;
     .legend-item {
-      font-size: 13px;
+      font-size: var(--font-body);
       color: $text-light;
       display: flex;
       align-items: center;
-      gap: 6px;
-      .dot { width: 8px; height: 8px; border-radius: 50%; }
+      gap: 0.4rem;
+      .dot { width: 0.5333rem; height: 0.5333rem; border-radius: 50%; }
       .dot-yellow { background: $yellow-main; }
       .dot-green { background: $green-main; }
       .dot-red { background: $red-main; }
@@ -86,17 +85,17 @@ $red-light: #FEE2E2;
   .filter-facility-btn {
     background: #FFFFFF;
     color: #475569;
-    border: 1px solid $border-color;
-    padding: 8px 16px;
-    border-radius: 8px;
+    border: 0.0667rem solid $border-color;
+    padding: 0.5333rem 1.0667rem;
+    border-radius: 0.5333rem;
     font-weight: 500;
-    font-size: 14px;
+    font-size: 0.9333rem;
     display: flex;
     align-items: center;
     width: max-content;
-    gap: 12px;
+    gap: 0.8rem;
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+    box-shadow: 0 0.0667rem 0.1333rem rgba(0, 0, 0, 0.05);
   }
 }
 
@@ -104,45 +103,44 @@ $red-light: #FEE2E2;
 .calendar-grid {
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 1.0667rem;
   
-  .weekday { display: none; } /* Hide headers on mobile */
+  .weekday { display: none; } 
   
   .day-cell {
     display: flex;
     flex-direction: column;
     
-    &.empty-day { display: none; } /* Hide days with no events on mobile */
+    &.empty-day { display: none; } 
 
     .date {
       display: flex;
-      gap: 8px;
-      font-size: 16px;
+      gap: 0.5333rem;
+      font-size: 1.0667rem;
       font-weight: 700;
       color: $text-dark;
-      margin-bottom: 12px;
-      padding-bottom: 8px;
-      border-bottom: 1px solid $border-color;
+      margin-bottom: 0.8rem;
+      padding-bottom: 0.5333rem;
+      border-bottom: 0.0667rem solid $border-color;
       
-      span { display: inline; } /* Show "Mon", "Tue" text on mobile */
+      span { display: inline; } 
     }
 
     .event-pill {
-      padding: 12px 16px;
-      margin-bottom: 8px;
-      border-radius: 6px;
+      padding: 0.8rem 1.0667rem;
+      margin-bottom: 0.5333rem;
+      border-radius: 0.4rem;
       background: #F8FAFC; 
-      border-left: 4px solid;
-      font-size: 13px;
+      border-left: 0.2667rem solid;
+      font-size: var(--font-body);
       font-weight: 600;
 
-      /* Translating pill backgrounds to left-borders for mobile cards */
       &.pill-green { border-left-color: $green-main; color: $text-dark; }
       &.pill-yellow { border-left-color: $yellow-main; color: $text-dark; }
       &.pill-red { border-left-color: $red-main; color: $text-dark; }
     }
 
-    .event-more { display: none; } /* Hide "+1 more" on mobile agenda */
+    .event-more { display: none; } 
   }
 }
 
@@ -152,105 +150,102 @@ $red-light: #FEE2E2;
     display: flex;
     justify-content: space-between;
     align-items: flex-start;
-    margin-bottom: 16px;
-    h3 { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
-    p { font-size: 12px; color: $text-light; margin: 0; }
-    .event-count { background: $blue-light; color: $blue-main; padding: 4px 8px; border-radius: 12px; font-size: 12px; font-weight: 600; }
+    margin-bottom: 1.0667rem;
+    h3 { font-size: 1.0667rem; font-weight: 700; margin-bottom: 0.2667rem; }
+    p { font-size: 0.8rem; color: $text-light; margin: 0; }
+    .event-count { background: $blue-light; color: $blue-main; padding: 0.2667rem 0.5333rem; border-radius: 0.8rem; font-size: 0.8rem; font-weight: 600; }
   }
 
   .sidebar-stats {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding-bottom: 16px;
-    margin-bottom: 16px;
-    border-bottom: 1px solid $border-color;
+    padding-bottom: 1.0667rem;
+    margin-bottom: 1.0667rem;
+    border-bottom: 0.0667rem solid $border-color;
     .stat-box {
       display: flex;
       flex-direction: column;
       align-items: center;
       flex: 1;
-      .stat-num { font-size: 16px; font-weight: 700; margin-bottom: 4px; }
+      .stat-num { font-size: 1.0667rem; font-weight: 700; margin-bottom: 0.2667rem; }
       .text-green { color: $green-main; }
       .text-yellow { color: $yellow-main; }
       .text-red { color: $red-main; }
-      .stat-label { font-size: 11px; color: $text-light; }
+      .stat-label { font-size: 0.7333rem; color: $text-light; }
     }
-    .stat-divider { width: 1px; height: 24px; background: $border-color; }
+    .stat-divider { width: 0.0667rem; height: 1.6rem; background: $border-color; }
   }
 
   .event-cards {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 0.8rem;
     .event-card {
-      border: 1px solid $border-color;
-      border-radius: 8px;
-      padding: 16px;
+      border: 0.0667rem solid $border-color;
+      border-radius: 0.5333rem;
+      padding: 1.0667rem;
       .card-top {
         display: flex;
         justify-content: space-between;
-        margin-bottom: 12px;
-        h4 { font-size: 14px; font-weight: 600; margin: 0; }
+        margin-bottom: 0.8rem;
+        h4 { font-size: 0.9333rem; font-weight: 600; margin: 0; }
         .status-badge {
-          font-size: 11px; padding: 2px 8px; border-radius: 12px; font-weight: 600;
+          font-size: 0.7333rem; padding: 0.1333rem 0.5333rem; border-radius: 0.8rem; font-weight: 600;
           &.bg-green { background: $green-light; color: $green-main; }
           &.bg-yellow { background: $yellow-light; color: $yellow-main; }
           &.bg-red { background: $red-light; color: $red-main; }
         }
       }
       .card-details {
-        display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px;
-        p { font-size: 12px; color: $text-light; display: flex; align-items: center; gap: 8px; margin: 0; }
+        display: flex; flex-direction: column; gap: 0.4rem; margin-bottom: 0.8rem;
+        p { font-size: 0.8rem; color: $text-light; display: flex; align-items: center; gap: 0.5333rem; margin: 0; }
       }
       .card-actions {
-        display: flex; gap: 8px;
+        display: flex; gap: 0.5333rem;
         button {
-          flex: 1; padding: 6px; border-radius: 4px; font-size: 12px; font-weight: 500; cursor: pointer; background: white;
-          &.btn-view { border: 1px solid #BFDBFE; color: $blue-main; }
-          &.btn-approve { border: 1px solid #A7F3D0; color: $green-main; }
-          &.btn-reject { border: 1px solid #FECACA; color: $red-main; }
+          flex: 1; padding: 0.4rem; border-radius: 0.2667rem; font-size: 0.8rem; font-weight: 500; cursor: pointer; background: white;
+          &.btn-view { border: 0.0667rem solid #BFDBFE; color: $blue-main; }
+          &.btn-approve { border: 0.0667rem solid #A7F3D0; color: $green-main; }
+          &.btn-reject { border: 0.0667rem solid #FECACA; color: $red-main; }
         }
       }
     }
   }
 
   .sidebar-bottom-actions {
-    display: flex; flex-direction: column; gap: 8px; margin-top: 24px;
+    display: flex; flex-direction: column; gap: 0.5333rem; margin-top: 1.6rem;
     button {
-      padding: 10px; border-radius: 6px; font-weight: 600; font-size: 13px; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 8px;
+      padding: 0.6667rem; border-radius: 0.4rem; font-weight: 600; font-size: var(--font-body); cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 0.5333rem;
       &.btn-review { background: $blue-main; color: white; border: none; }
-      &.btn-export { background: white; color: $text-dark; border: 1px solid $border-color; }
+      &.btn-export { background: white; color: $text-dark; border: 0.0667rem solid $border-color; }
     }
   }
 }
 
 //tablet and up size
-@media (min-width: 768px) {
+@media (min-width: 51.2rem) {
   
   .calendar-page-container {
     flex-direction: row;
     align-items: flex-start;
-    padding: 24px 40px;
   }
 
   .calendar-main {
-    /* flex: 1 allows it to fluidly stretch and absorb all remaining space */
     flex: 1;
     min-width: 0;
   }
 
   .calendar-sidebar {
-    /* flex: 0 (don't grow) 0 (don't shrink) 320px (exact width) */
-    flex: 0 0 320px; 
-    width: 320px; /* Explicitly lock the width */
+    flex: 0 0 21.3333rem; 
+    width: 21.3333rem; 
     
-    height: calc(100vh - 128px);
+    height: calc(100vh - 8.5333rem);
     
     .event-cards {
       flex: 1;
-      overflow-y: auto; /* Internal scrolling for PC sidebar */
-      padding-right: 8px;
+      overflow-y: auto; 
+      padding-right: 0.5333rem;
     }
   }
 
@@ -260,40 +255,36 @@ $red-light: #FEE2E2;
     align-items: center;
   }
 
-  /* Transform Agenda back into 7x5 Grid */
   .calendar-grid {
     display: grid;
-    
-    /* THE GRID FIX: minmax(0, 1fr) forces the columns to allow shrinking */
     grid-template-columns: repeat(7, minmax(0, 1fr)); 
-    
     gap: 0;
-    border-top: 1px solid $border-color;
-    border-left: 1px solid $border-color;
-    border-radius: 8px 8px 0 0;
+    border-top: 0.0667rem solid $border-color;
+    border-left: 0.0667rem solid $border-color;
+    border-radius: 0.5333rem 0.5333rem 0 0;
     
     .weekday {
       display: block; 
-      padding: 12px; text-align: center; font-size: 12px; font-weight: 600; color: #94A3B8;
-      border-right: 1px solid $border-color; border-bottom: 1px solid $border-color;
+      padding: 0.8rem; text-align: center; font-size: 0.8rem; font-weight: 600; color: #94A3B8;
+      border-right: 0.0667rem solid $border-color; border-bottom: 0.0667rem solid $border-color;
     }
     
     .day-cell {
       display: flex;
-      flex-direction: column; /* THE CELL FIX: Stacks the pills vertically */
-      min-width: 0;           /* THE CELL FIX: Prevents flexbox blowout */
-      overflow: hidden;       /* Keeps content cleanly inside the borders */
+      flex-direction: column; 
+      min-width: 0;           
+      overflow: hidden;       
       
-      min-height: 100px;
-      padding: 8px;
-      border-right: 1px solid $border-color;
-      border-bottom: 1px solid $border-color;
+      min-height: 6.6667rem;
+      padding: 0.5333rem;
+      border-right: 0.0667rem solid $border-color;
+      border-bottom: 0.0667rem solid $border-color;
       
       &.empty-day { display: flex; } 
       
       .date {
-        font-size: 14px; font-weight: 500; color: $text-dark; margin-bottom: 8px;
-        width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+        font-size: 0.9333rem; font-weight: 500; color: $text-dark; margin-bottom: 0.5333rem;
+        width: 1.6rem; height: 1.6rem; display: flex; align-items: center; justify-content: center;
         border: none; padding: 0;
         span { display: none; } 
       }
@@ -305,18 +296,15 @@ $red-light: #FEE2E2;
         .date { background: $blue-main; color: white; border-radius: 50%; }
       }
 
-      /* Desktop Pill Styling */
       .event-pill {
-        width: 100%; /* Ensures the pill doesn't stretch past the cell */
+        width: 100%; 
         box-sizing: border-box;
-        
-        /* These 3 lines create the "..." when the cell gets squeezed */
         white-space: nowrap; 
         overflow: hidden; 
         text-overflow: ellipsis;
         
-        font-size: 11px; padding: 4px 6px; border-radius: 4px; font-weight: 600;
-        border-left: none; margin-bottom: 4px;
+        font-size: 0.7333rem; padding: 0.2667rem 0.4rem; border-radius: 0.2667rem; font-weight: 600;
+        border-left: none; margin-bottom: 0.2667rem;
         
         &.pill-green { background: $green-light; color: $green-main; }
         &.pill-yellow { background: $yellow-light; color: $yellow-main; }
@@ -325,14 +313,14 @@ $red-light: #FEE2E2;
 
       .event-more {
         display: block; 
-        font-size: 11px; color: $blue-main; font-weight: 600; padding-left: 4px; margin-top: 2px;
+        font-size: 0.7333rem; color: $blue-main; font-weight: 600; padding-left: 0.2667rem; margin-top: 0.1333rem;
       }
     }
   }
 }
 
 // ------------------------------------------------------------
-// Modal Overlay (For ReservationDetails popup)
+// Modal Overlay
 // ------------------------------------------------------------
 
 .modal-overlay {
@@ -344,24 +332,24 @@ $red-light: #FEE2E2;
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 10px;
+  padding: 0.6667rem;
   background: rgba(15, 23, 42, 0.70);
   box-sizing: border-box;
 
   .modal-wrapper {
     position: relative;
     width: 100%;
-    max-width: 1100px;
+    max-width: 73.3333rem;
     max-height: 100%;
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 6px;
+    gap: 0.4rem;
 
     .close-modal-btn {
       flex: 0 0 auto;
-      width: 32px;
-      height: 32px;
+      width: 2.1333rem;
+      height: 2.1333rem;
       display: flex;
       align-items: center;
       justify-content: center;
@@ -369,9 +357,9 @@ $red-light: #FEE2E2;
       border-radius: 50%;
       background: #FFFFFF;
       color: $text-dark;
-      font-size: 14px;
+      font-size: 0.9333rem;
       cursor: pointer;
-      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.12);
+      box-shadow: 0 0.2667rem 0.6667rem rgba(0, 0, 0, 0.12);
       transition: background 0.2s, transform 0.2s;
 
       &:hover {
@@ -382,55 +370,55 @@ $red-light: #FEE2E2;
 
     .modal-content {
       width: 100%;
-      max-height: calc(100vh - 52px);
+      max-height: calc(100vh - 3.4667rem);
       overflow-x: hidden;
       overflow-y: auto;
       position: relative;
-      border-radius: 10px;
+      border-radius: 0.6667rem;
       background: #FFFFFF;
       box-shadow:
-        0 20px 25px -5px rgba(0, 0, 0, 0.10),
-        0 10px 10px -5px rgba(0, 0, 0, 0.04);
+        0 1.3333rem 1.6667rem -0.3333rem rgba(0, 0, 0, 0.10),
+        0 0.6667rem 0.6667rem -0.3333rem rgba(0, 0, 0, 0.04);
     }
   }
 }
 
-@media (min-width: 700px) {
+@media (min-width: 46.6667rem) {
   .modal-overlay {
-    padding: 20px;
+    padding: 1.3333rem;
 
     .modal-wrapper {
-      gap: 8px;
+      gap: 0.5333rem;
 
       .close-modal-btn {
-        width: 36px;
-        height: 36px;
-        font-size: 16px;
+        width: 2.4rem;
+        height: 2.4rem;
+        font-size: 1.0667rem;
       }
 
       .modal-content {
-        max-height: calc(100vh - 70px);
-        border-radius: 12px;
+        max-height: calc(100vh - 4.6667rem);
+        border-radius: 0.8rem;
       }
     }
   }
 }
 
-@media (min-width: 1024px) {
+@media (min-width: 68.2667rem) {
   .modal-overlay {
-    padding: 28px;
+    padding: 1.8667rem;
 
     .modal-wrapper {
-      gap: 10px;
+      gap: 0.6667rem;
 
       .close-modal-btn {
-        width: 40px;
-        height: 40px;
-        font-size: 18px;
+        width: 2.6667rem;
+        height: 2.6667rem;
+        font-size: var(--font-h3);
       }
 
       .modal-content {
-        max-height: calc(100vh - 86px);
+        max-height: calc(100vh - 5.7333rem);
       }
     }
   }

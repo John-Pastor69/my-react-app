@@ -1,5 +1,5 @@
 // Variables
-$bg-main: #F1F5F9;
+$bg-main: #F4F7FE;
 $bg-card: #FFFFFF;
 $text-dark: #0F172A;
 $text-muted: #64748B;
@@ -11,17 +11,13 @@ $orange-main: #F59E0B;
 
 .reservation-container {
   width: 100%;
-  
-  /* FIXED SCROLL ISSUE: Use 100vh and removed overflow-y: auto so the native window scrollbar takes over perfectly */
   min-height: 100vh;
-  padding: 16px;
-  padding-bottom: 60px; /* Extra padding so the bottom buttons aren't cut off */
-  
   background: $bg-main;
   color: $text-dark;
-  font-family: 'Inter', system-ui, sans-serif;
   overflow-x: hidden;
+  font-family: inherit;
   box-sizing: border-box;
+  font-size: var(--font-body);
 
   *, *::before, *::after { 
     box-sizing: border-box; 
@@ -29,24 +25,23 @@ $orange-main: #F59E0B;
 
   .form-header {
     width: 100%;
-    max-width: 1400px;
-    margin: 0 auto 18px;
+    max-width: 87.5rem;
+    margin: 0 auto 1.2rem;
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 16px;
+    gap: 1rem;
 
     .title { 
       display: flex; 
       align-items: center; 
-      gap: 8px; 
-      font-size: 22px; 
+      font-size: var(--font-h1); 
       font-weight: 700; 
     }
 
     .required-note { 
       color: $text-muted; 
-      font-size: 12px; 
+      font-size: var(--font-body); 
       white-space: nowrap; 
     }
 
@@ -59,9 +54,9 @@ $orange-main: #F59E0B;
   .form-card,
   .certification {
     width: 100%;
-    max-width: 1400px;
-    margin: 0 auto 16px;
-    padding: 18px;
+    max-width: 87.5rem;
+    margin: 0 auto 1.0667rem;
+    padding: 1.125rem;
     background: $bg-card;
     border: 1px solid $border-color;
     border-radius: 10px;
@@ -71,33 +66,33 @@ $orange-main: #F59E0B;
   .section-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 18px;
-    font-size: 16px;
+    gap: 0.625rem;
+    margin-bottom: 1.125rem;
+    font-size: var(--font-h3);
     font-weight: 700;
 
     .step-badge {
-      width: 26px; 
-      height: 26px; 
-      flex: 0 0 26px;
+      width: 1.625rem; 
+      height: 1.625rem; 
+      flex: 0 0 1.733rem;
       display: inline-flex; 
       align-items: center; 
       justify-content: center;
       border-radius: 7px; 
       background: $blue-main; 
       color: #fff;
-      font-size: 12px;
+      font-size: var(--font-body);
     }
 
     .optional-badge {
       font-weight: 400;
       color: $text-muted;
-      font-size: 12px;
+      font-size: var(--font-body);
     }
   }
 
   .section-divider { 
-    margin: 26px 0 22px; 
+    margin: 1.625rem 0 1.375rem; 
     border: 0; 
     border-top: 1px dashed #CBD5E1; 
   }
@@ -105,7 +100,7 @@ $orange-main: #F59E0B;
   .form-grid {
     display: grid; 
     grid-template-columns: 1fr; 
-    gap: 16px;
+    gap: 1rem;
 
     &.col-2, &.col-3 { 
       grid-template-columns: 1fr; 
@@ -116,7 +111,7 @@ $orange-main: #F59E0B;
     min-width: 0; 
     display: flex; 
     flex-direction: column; 
-    gap: 7px;
+    gap: 0.4375rem;
 
     &.full-width { 
       grid-column: 1 / -1; 
@@ -124,7 +119,7 @@ $orange-main: #F59E0B;
 
     label { 
       color: $text-dark; 
-      font-size: 12px; 
+      font-size: var(--font-body); 
       font-weight: 600; 
 
       .req { 
@@ -138,15 +133,15 @@ $orange-main: #F59E0B;
     select, 
     textarea {
       width: 100%; 
-      min-height: 40px; 
-      padding: 9px 12px;
+      min-height: 2.5rem; 
+      padding: 0.5625rem 0.75rem;
       border: 1px solid $border-color; 
       border-radius: 7px; 
       outline: none;
       background: #F8FAFC; 
       color: $text-dark; 
       font: inherit; 
-      font-size: 13px;
+      font-size: var(--font-body);
       transition: border-color .2s, box-shadow .2s, background .2s;
 
       &::placeholder { 
@@ -174,7 +169,7 @@ $orange-main: #F59E0B;
     }
 
     textarea { 
-      min-height: 96px; 
+      min-height: 6rem; 
       resize: vertical; 
     }
 
@@ -187,30 +182,30 @@ $orange-main: #F59E0B;
         top: 50%; 
         transform: translateY(-50%); 
         color: $text-muted; 
-        font-size: 16px; 
+        font-size: var(--font-h3); 
       }
 
       &.left-icon { 
-        i { left: 12px; } 
-        input, select { padding-left: 36px; } 
+        i { left: 0.75rem; } 
+        input, select { padding-left: 2.25rem; } 
       }
 
       &.right-icon { 
-        i { right: 12px; } 
-        input, select { padding-right: 36px; } 
+        i { right: 0.75rem; } 
+        input, select { padding-right: 2.25rem; } 
       }
     }
 
     .helper-text { 
-      margin-top: -2px; 
+      margin-top: -0.125rem; 
       color: $text-muted; 
-      font-size: 10px; 
+      font-size: var(--font-body); 
     }
 
     .field-error { 
-      margin-top: -2px; 
+      margin-top: -0.125rem; 
       color: $red-main; 
-      font-size: 10px; 
+      font-size: var(--font-body); 
     }
   }
 
@@ -227,18 +222,18 @@ $orange-main: #F59E0B;
   .event-type-grid {
     display: grid; 
     grid-template-columns: repeat(2, minmax(0, 1fr)); 
-    gap: 8px;
+    gap: 0.5rem;
 
     .checkbox-option {
       display: flex; 
       align-items: center; 
-      gap: 7px; 
+      gap: 0.4375rem; 
       min-width: 0;
-      padding: 8px 10px; 
+      padding: 0.5rem 0.625rem; 
       border: 1px solid $border-color; 
       border-radius: 7px;
       color: $text-muted; 
-      font-size: 12px; 
+      font-size: var(--font-body); 
       font-weight: 400; 
       cursor: pointer;
 
@@ -252,18 +247,18 @@ $orange-main: #F59E0B;
   .day-stepper {
     display: flex; 
     align-items: center; 
-    min-height: 40px;
+    min-height: 2.5rem;
     border: 1px solid $border-color; 
     border-radius: 7px; 
     background: #F8FAFC; 
     overflow: hidden;
 
     .stepper-btn { 
-      width: 42px; 
-      height: 40px; 
+      width: 2.625rem; 
+      height: 2.5rem; 
       border: 0; 
       background: transparent; 
-      font-size: 18px; 
+      font-size: var(--font-h3); 
       cursor: pointer; 
       
       &:hover { 
@@ -273,7 +268,7 @@ $orange-main: #F59E0B;
 
     .stepper-value { 
       min-width: 0; 
-      height: 40px; 
+      height: 2.5rem; 
       border: 0 !important; 
       box-shadow: none !important; 
       text-align: center; 
@@ -285,16 +280,16 @@ $orange-main: #F59E0B;
     width: 100%; 
     display: flex; 
     align-items: flex-start; 
-    gap: 10px; 
-    padding: 11px 13px;
+    gap: 0.625rem; 
+    padding: 0.6875rem 0.8125rem;
     border-radius: 7px; 
-    font-size: 12px; 
+    font-size: var(--font-body); 
     line-height: 1.45;
 
     i { 
       flex: 0 0 auto; 
-      margin-top: 1px; 
-      font-size: 17px; 
+      margin-top: 0.0625rem; 
+      font-size: var(--font-h3); 
     }
 
     &.green { 
@@ -312,24 +307,24 @@ $orange-main: #F59E0B;
     }
 
     &.duration-box { 
-      margin-top: 16px; 
+      margin-top: 1rem; 
       margin-bottom: 0; 
     }
 
     &.aircon-note { 
       margin-bottom: 0; 
-      padding: 10px 12px; 
-      font-size: 11px; 
+      padding: 0.625rem 0.75rem; 
+      font-size: var(--font-body); 
     }
   }
 
   .split-cards {
     width: 100%; 
-    max-width: 1400px; 
-    margin: 0 auto 16px;
+    max-width: 87.5rem; 
+    margin: 0 auto 1.0667rem;
     display: grid; 
     grid-template-columns: 1fr; 
-    gap: 16px;
+    gap: 1rem;
 
     .form-card { 
       max-width: none; 
@@ -341,23 +336,23 @@ $orange-main: #F59E0B;
   .checkbox-grid {
     display: grid; 
     grid-template-columns: 1fr; 
-    gap: 10px; 
+    gap: 0.625rem; 
     width: 100%; 
-    margin-bottom: 16px;
+    margin-bottom: 1rem;
 
     &.facility-list { 
-      max-height: 340px; 
+      max-height: 21.25rem; 
       overflow-y: auto; 
-      padding-right: 4px; 
+      padding-right: 0.25rem; 
     }
   }
 
   .facility-option {
     display: flex; 
     align-items: center; 
-    gap: 11px; 
+    gap: 0.6875rem; 
     min-width: 0; 
-    padding: 11px;
+    padding: 0.6875rem;
     border: 1px solid $border-color; 
     border-radius: 8px; 
     background: #fff; 
@@ -380,17 +375,17 @@ $orange-main: #F59E0B;
     }
 
     .facility-checkbox { 
-      width: 18px; 
-      height: 18px; 
-      flex: 0 0 18px; 
+      width: 1.125rem; 
+      height: 1.125rem; 
+      flex: 0 0 1.2rem; 
       margin: 0; 
       accent-color: $blue-main; 
       cursor: inherit; 
     }
 
     .facility-icon { 
-      width: 40px; 
-      height: 40px; 
+      width: 2.5rem; 
+      height: 2.5rem; 
       flex: 0 0 40px; 
       display: flex; 
       align-items: center; 
@@ -398,7 +393,7 @@ $orange-main: #F59E0B;
       border-radius: 8px; 
       background: #E0F2FE; 
       color: #0284C7; 
-      font-size: 20px; 
+      font-size: var(--font-h3); 
     }
 
     > div:last-child { 
@@ -409,8 +404,8 @@ $orange-main: #F59E0B;
 
     strong { 
       display: block; 
-      margin-bottom: 2px; 
-      font-size: 12px; 
+      margin-bottom: 0.125rem; 
+      font-size: var(--font-body); 
       font-weight: 700;
       color: $text-dark;
       line-height: 1.3; 
@@ -418,14 +413,14 @@ $orange-main: #F59E0B;
 
     .facility-meta { 
       display: block; 
-      margin-bottom: 2px; 
+      margin-bottom: 0.125rem; 
       color: $text-muted; 
-      font-size: 10px; 
+      font-size: var(--font-body); 
       line-height: 1.35; 
     }
 
     .facility-status { 
-      font-size: 10px; 
+      font-size: var(--font-body); 
       font-weight: 600; 
 
       &.available { color: $green-main; } 
@@ -435,9 +430,9 @@ $orange-main: #F59E0B;
   }
 
   .empty-list { 
-    padding: 28px 16px; 
+    padding: 1.75rem 1rem; 
     color: $text-muted; 
-    font-size: 12px; 
+    font-size: var(--font-body); 
     text-align: center; 
   }
 
@@ -445,19 +440,19 @@ $orange-main: #F59E0B;
     width: 100%; 
     display: flex; 
     flex-direction: column; 
-    gap: 10px;
-    max-height: 340px; 
+    gap: 0.625rem;
+    max-height: 21.25rem; 
     overflow-y: auto; 
     overflow-x: auto;
-    padding-right: 4px;
+    padding-right: 0.25rem;
 
     .equip-item {
       display: flex; 
       align-items: center; 
       justify-content: space-between; 
-      gap: 14px;
-      min-width: 280px; 
-      padding: 12px; 
+      gap: 0.875rem;
+      min-width: 17.5rem; 
+      padding: 0.75rem; 
       border: 1px solid $border-color; 
       border-radius: 8px; 
       background: #fff;
@@ -471,17 +466,17 @@ $orange-main: #F59E0B;
       min-width: 0; 
       display: flex; 
       align-items: center; 
-      gap: 10px;
+      gap: 0.625rem;
 
       .icon-box { 
-        width: 36px; 
-        height: 36px; 
+        width: 2.25rem; 
+        height: 2.25rem; 
         flex: 0 0 36px; 
         display: flex; 
         align-items: center; 
         justify-content: center; 
         border-radius: 7px; 
-        font-size: 17px; 
+        font-size: var(--font-h3); 
 
         &.bg-blue { 
           background: #DBEAFE; 
@@ -496,19 +491,19 @@ $orange-main: #F59E0B;
       }
 
       strong { 
-        font-size: 12px; 
+        font-size: var(--font-body); 
         font-weight: 700;
         color: $text-dark;
       }
 
       span { 
         color: $text-muted; 
-        font-size: 10px; 
+        font-size: var(--font-body); 
       }
 
       .equip-status { 
-        margin-top: 2px; 
-        font-size: 10px; 
+        margin-top: 0.125rem; 
+        font-size: var(--font-body); 
         font-weight: 600; 
 
         &.available { color: $green-main; } 
@@ -527,12 +522,12 @@ $orange-main: #F59E0B;
       overflow: hidden;
 
       button { 
-        width: 36px; 
-        height: 34px; 
+        width: 2.25rem; 
+        height: 2.125rem; 
         border: 0; 
         background: transparent; 
         color: $text-muted; 
-        font-size: 16px; 
+        font-size: var(--font-h3); 
         font-weight: 700; 
         cursor: pointer; 
 
@@ -548,13 +543,13 @@ $orange-main: #F59E0B;
       }
 
       input { 
-        width: 34px; 
-        height: 34px; 
+        width: 2.125rem; 
+        height: 2.125rem; 
         padding: 0; 
         border: 0; 
         background: transparent; 
         text-align: center; 
-        font-size: 12px; 
+        font-size: var(--font-body); 
         font-weight: 700; 
         outline: none; 
       }
@@ -564,21 +559,21 @@ $orange-main: #F59E0B;
   .aircon-controls {
     display: flex; 
     flex-direction: column; 
-    gap: 14px;
+    gap: 0.875rem;
 
     .aircon-inputs-row { 
       display: grid; 
       grid-template-columns: 1fr; 
-      gap: 14px; 
+      gap: 0.875rem; 
       align-items: center; 
     }
 
     .toggle-box {
       display: flex; 
       align-items: center; 
-      gap: 11px; 
-      min-height: 60px; 
-      padding: 10px 13px;
+      gap: 0.6875rem; 
+      min-height: 3.75rem; 
+      padding: 0.625rem 0.8125rem;
       border: 1px solid #CBD5E1; 
       border-radius: 8px; 
       background: #F8FAFC; 
@@ -587,8 +582,8 @@ $orange-main: #F59E0B;
 
       .toggle-switch { 
         position: relative; 
-        width: 36px; 
-        height: 20px; 
+        width: 2.25rem; 
+        height: 1.25rem; 
         flex: 0 0 36px; 
         border-radius: 999px; 
         background: #CBD5E1; 
@@ -597,10 +592,10 @@ $orange-main: #F59E0B;
 
       .toggle-knob { 
         position: absolute; 
-        top: 2px; 
-        left: 2px; 
-        width: 16px; 
-        height: 16px; 
+        top: 0.125rem; 
+        left: 0.125rem; 
+        width: 1rem; 
+        height: 1rem; 
         border-radius: 50%; 
         background: #fff; 
         transition: left .2s; 
@@ -609,14 +604,14 @@ $orange-main: #F59E0B;
 
       strong { 
         color: $text-muted; 
-        font-size: 12px; 
+        font-size: var(--font-body); 
       }
 
       span { 
         display: block; 
-        margin-top: 2px; 
+        margin-top: 0.125rem; 
         color: #94A3B8; 
-        font-size: 10px; 
+        font-size: var(--font-body); 
       }
 
       &.is-enabled { 
@@ -628,7 +623,7 @@ $orange-main: #F59E0B;
         } 
 
         .toggle-knob { 
-          left: 18px; 
+          left: 1.125rem; 
         } 
 
         strong { 
@@ -645,7 +640,7 @@ $orange-main: #F59E0B;
       display: grid; 
       grid-template-columns: 1fr; 
       align-items: end; 
-      gap: 10px; 
+      gap: 0.625rem; 
       min-width: 0;
 
       .arrow { 
@@ -659,49 +654,49 @@ $orange-main: #F59E0B;
   .certification {
     display: flex; 
     align-items: flex-start; 
-    gap: 11px;
+    gap: 0.6875rem;
 
     input { 
-      width: 16px; 
-      height: 16px; 
-      flex: 0 0 16px; 
-      margin-top: 3px; 
+      width: 1rem; 
+      height: 1rem; 
+      flex: 0 0 1.0667rem; 
+      margin-top: 0.1875rem; 
       accent-color: $blue-main; 
     }
 
     p { 
       margin: 0; 
       color: $text-muted; 
-      font-size: 11px; 
+      font-size: var(--font-body); 
       line-height: 1.55; 
     }
   }
 
   .form-actions {
     width: 100%; 
-    max-width: 1400px; 
+    max-width: 87.5rem; 
     margin: 0 auto;
     display: flex; 
     flex-direction: column; 
-    gap: 10px;
+    gap: 0.625rem;
 
     .right-actions { 
       display: flex; 
       flex-direction: column; 
-      gap: 10px; 
+      gap: 0.625rem; 
     }
 
     button {
-      min-height: 40px; 
-      padding: 9px 16px; 
+      min-height: 2.5rem; 
+      padding: 0.5625rem 1rem; 
       border-radius: 7px; 
       display: inline-flex; 
       align-items: center; 
       justify-content: center;
-      gap: 7px; 
+      gap: 0.4375rem; 
       border: 1px solid transparent; 
       font: inherit; 
-      font-size: 12px; 
+      font-size: var(--font-body); 
       font-weight: 600; 
       cursor: pointer;
 
@@ -745,7 +740,7 @@ $orange-main: #F59E0B;
   left: 0; 
   z-index: 50;
   width: min(280px, calc(100vw - 32px)); 
-  padding: 14px; 
+  padding: 0.875rem; 
   border: 1px solid $border-color; 
   border-radius: 9px; 
   background: #fff;
@@ -755,14 +750,14 @@ $orange-main: #F59E0B;
     display: flex; 
     align-items: center; 
     justify-content: space-between; 
-    gap: 10px; 
-    margin-bottom: 12px; 
-    font-size: 13px; 
+    gap: 0.625rem; 
+    margin-bottom: 0.75rem; 
+    font-size: var(--font-body); 
     font-weight: 700;
 
     button { 
-      width: 30px; 
-      height: 30px; 
+      width: 1.875rem; 
+      height: 1.875rem; 
       border: 0; 
       border-radius: 6px; 
       background: #F1F5F9; 
@@ -777,20 +772,20 @@ $orange-main: #F59E0B;
   .calendar-grid { 
     display: grid; 
     grid-template-columns: repeat(7,minmax(0,1fr)); 
-    gap: 4px; 
+    gap: 0.25rem; 
     text-align: center;
 
     .calendar-day-name { 
-      padding-bottom: 6px; 
+      padding-bottom: 0.375rem; 
       color: $text-muted; 
-      font-size: 10px; 
+      font-size: var(--font-body); 
       font-weight: 700; 
     }
 
     .calendar-day { 
-      padding: 7px 0; 
+      padding: 0.4375rem 0; 
       border-radius: 6px; 
-      font-size: 12px; 
+      font-size: var(--font-body); 
       cursor: pointer; 
 
       &:hover:not(.empty) { 
@@ -812,13 +807,13 @@ $orange-main: #F59E0B;
   display: flex; 
   align-items: center; 
   justify-content: center; 
-  padding: 16px;
+  padding: 1rem;
   background: rgba(15,23,42,.45);
 }
 
 .modal-card {
   width: min(420px, 100%); 
-  padding: 22px; 
+  padding: 1.375rem; 
   border-radius: 12px; 
   background: #fff; 
   box-shadow: 0 18px 45px rgba(15,23,42,.18);
@@ -826,18 +821,18 @@ $orange-main: #F59E0B;
   .modal-title { 
     display: flex; 
     align-items: center; 
-    gap: 8px; 
-    margin: 0 0 10px; 
-    font-size: 18px; 
+    gap: 0.5rem; 
+    margin: 0 0 0.625rem; 
+    font-size: var(--font-h3); 
     
     &.success { color: $green-main; } 
     &.error { color: #DC2626; } 
   }
 
   .modal-message { 
-    margin: 0 0 20px; 
+    margin: 0 0 1.25rem; 
     color: $text-muted; 
-    font-size: 13px; 
+    font-size: var(--font-body); 
     line-height: 1.55; 
   }
 
@@ -847,14 +842,14 @@ $orange-main: #F59E0B;
   }
 
   .modal-button { 
-    min-width: 72px; 
-    padding: 9px 16px; 
+    min-width: 4.5rem; 
+    padding: 0.5625rem 1rem; 
     border: 0; 
     border-radius: 7px; 
     background: $blue-main; 
     color: #fff; 
     font: inherit; 
-    font-size: 12px; 
+    font-size: var(--font-body); 
     font-weight: 600; 
     cursor: pointer; 
   }
@@ -862,11 +857,10 @@ $orange-main: #F59E0B;
 
 @media (min-width: 640px) {
   .reservation-container {
-    padding: 20px;
 
     .form-card, 
     .certification { 
-      padding: 22px; 
+      padding: 1.375rem; 
     }
 
     .form-grid { 
@@ -906,7 +900,6 @@ $orange-main: #F59E0B;
 
 @media (min-width: 900px) {
   .reservation-container {
-    padding: 24px;
 
     .split-cards { 
       grid-template-columns: repeat(2,minmax(0,1fr)); 
@@ -919,39 +912,32 @@ $orange-main: #F59E0B;
   }
 }
 
-@media (min-width: 1200px) {
-  .reservation-container { 
-    padding: 24px 40px; 
-  }
-}
-
 @media (max-width: 479px) {
   .reservation-container {
-    padding: 12px;
 
     .form-header { 
       align-items: flex-start; 
       flex-direction: column; 
-      gap: 5px; 
+      gap: 0.3125rem; 
 
       .title { 
-        font-size: 19px; 
+        font-size: var(--font-h3); 
       } 
     }
 
     .form-card, 
     .certification { 
-      padding: 14px; 
+      padding: 0.875rem; 
       border-radius: 8px; 
     }
 
     .section-header { 
-      margin-bottom: 15px; 
-      font-size: 15px; 
+      margin-bottom: 0.9375rem; 
+      font-size: var(--font-body); 
     }
 
     .form-grid { 
-      gap: 13px; 
+      gap: 0.8125rem; 
     }
 
     .event-type-grid { 

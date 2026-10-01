@@ -1,14 +1,14 @@
 @use "sass:color";
 
-$bg-canvas: #f1f5f9;
+$bg-canvas: #F4F7FE;
 $card-bg: #ffffff;
 $border-color: #e2e8f0;
 $text-main: #1e293b;
 $text-muted: #64748b;
 $primary-color: #2563eb;
 
-$bp-tablet: 640px;
-$bp-desktop: 1024px;
+$bp-tablet: 42.6667rem;
+$bp-desktop: 68.2667rem;
 
 /* Universal Layout Fix */
 :host, 
@@ -23,46 +23,41 @@ main,
 }
 
 .equipment-management-content {
-  padding: 12px;
   background-color: $bg-canvas;
-  font-family: system-ui, -apple-system, sans-serif;
+  font-family: inherit;
   color: $text-main;
   width: 100%;
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
 
-  @media (min-width: $bp-tablet) {
-    padding: 24px;
-  }
-
   /* Top Metrics */
   .metrics-grid {
     display: grid;
     grid-template-columns: 1fr;
-    gap: 12px;
-    margin-bottom: 24px;
+    gap: 0.8rem;
+    margin-bottom: 1.6rem;
     width: 100%;
     box-sizing: border-box;
 
     @media (min-width: $bp-tablet) {
       grid-template-columns: repeat(2, 1fr);
-      gap: 16px;
+      gap: 1.0667rem;
     }
 
     .metric-card {
       background: $card-bg;
-      border: 1px solid $border-color;
-      border-radius: 12px;
-      padding: 16px;
+      border: 0.0667rem solid $border-color;
+      border-radius: 0.8rem;
+      padding: 1.0667rem;
       display: flex;
       align-items: center;
-      gap: 16px;
+      gap: 1.0667rem;
       width: 100%;
       box-sizing: border-box;
 
       @media (min-width: $bp-tablet) {
-        padding: 20px 24px;
+        padding: 1.3333rem 1.6rem;
       }
 
       .metric-info {
@@ -70,7 +65,7 @@ main,
         flex-direction: column;
 
         .label {
-          font-size: 0.85rem;
+          font-size: var(--font-body);
           color: $text-muted;
           font-weight: 500;
         }
@@ -87,23 +82,23 @@ main,
   /* Table Container */
   .table-container {
     background: $card-bg;
-    border: 1px solid $border-color;
-    border-radius: 12px;
-    padding: 16px 12px;
+    border: 0.0667rem solid $border-color;
+    border-radius: 0.8rem;
+    padding: 1.0667rem 0.8rem;
     width: 100%;
     max-width: 100%;
     min-width: 0;
     box-sizing: border-box;
 
     @media (min-width: $bp-tablet) {
-      padding: 24px;
+      padding: 1.6rem;
     }
 
     .table-controls {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      margin-bottom: 24px;
+      gap: 1.0667rem;
+      margin-bottom: 1.6rem;
       width: 100%;
       box-sizing: border-box;
 
@@ -115,14 +110,14 @@ main,
 
       .controls-left {
         h2 {
-          margin: 0 0 4px 0;
-          font-size: 1.25rem;
+          margin: 0 0 0.2667rem 0;
+          font-size: var(--font-h3);
           font-weight: 700;
           color: $text-main;
         }
         p {
           margin: 0;
-          font-size: 0.875rem;
+          font-size: var(--font-body);
           color: $text-muted;
         }
       }
@@ -130,7 +125,7 @@ main,
       .controls-right {
         display: flex;
         flex-direction: column;
-        gap: 10px;
+        gap: 0.6667rem;
         width: 100%;
         box-sizing: border-box;
 
@@ -138,7 +133,7 @@ main,
           flex-direction: row;
           align-items: center;
           width: auto;
-          gap: 12px;
+          gap: 0.8rem;
         }
 
         .search-input-wrapper {
@@ -148,23 +143,23 @@ main,
           width: 100%;
 
           @media (min-width: $bp-tablet) {
-            width: 220px;
+            width: 14.6667rem;
           }
 
           .search-icon {
             position: absolute;
-            left: 12px;
-            font-size: 0.85rem;
+            left: 0.8rem;
+            font-size: var(--font-body);
             color: $text-muted;
             pointer-events: none;
           }
 
           input {
             width: 100%;
-            padding: 8px 12px 8px 34px;
-            border: 1px solid $border-color;
-            border-radius: 8px;
-            font-size: 0.875rem;
+            padding: 0.5333rem 0.8rem 0.5333rem 2.2667rem;
+            border: 0.0667rem solid $border-color;
+            border-radius: 0.5333rem;
+            font-size: var(--font-body);
             outline: none;
             box-sizing: border-box;
 
@@ -189,9 +184,9 @@ main,
           background: $primary-color;
           color: #ffffff;
           border: none;
-          padding: 8px 16px;
-          border-radius: 8px;
-          font-size: 0.875rem;
+          padding: 0.5333rem 1.0667rem;
+          border-radius: 0.5333rem;
+          font-size: var(--font-body);
           font-weight: 600;
           cursor: pointer;
 
@@ -203,10 +198,10 @@ main,
         .btn-danger {
           background: #fef2f2;
           color: #dc2626;
-          border: 1px solid #fecaca;
-          padding: 8px 14px;
-          border-radius: 8px;
-          font-size: 0.875rem;
+          border: 0.0667rem solid #fecaca;
+          padding: 0.5333rem 0.9333rem;
+          border-radius: 0.5333rem;
+          font-size: var(--font-body);
           font-weight: 600;
           cursor: pointer;
 
@@ -232,29 +227,29 @@ main,
 
     .equipment-table {
       width: 100%;
-      min-width: 600px;
+      min-width: 40rem;
       border-collapse: collapse;
       text-align: left;
 
       th {
-        padding: 12px 16px;
-        font-size: 0.725rem;
+        padding: 0.8rem 1.0667rem;
+        font-size: 0.7333rem;
         font-weight: 700;
         color: $text-muted;
-        border-bottom: 1px solid $border-color;
+        border-bottom: 0.0667rem solid $border-color;
         letter-spacing: 0.05em;
         white-space: nowrap;
       }
 
       td {
-        padding: 16px;
-        border-bottom: 1px solid $border-color;
-        font-size: 0.875rem;
+        padding: 1.0667rem;
+        border-bottom: 0.0667rem solid $border-color;
+        font-size: var(--font-body);
         white-space: nowrap;
       }
 
       .checkbox-col {
-        width: 32px;
+        width: 2.1333rem;
         text-align: center;
       }
 
@@ -264,7 +259,7 @@ main,
           color: $text-main;
         }
         .item-sku {
-          font-size: 0.75rem;
+          font-size: 0.8rem;
           color: $text-muted;
         }
       }
@@ -278,7 +273,7 @@ main,
       }
 
       .status-badge {
-        font-size: 0.75rem;
+        font-size: 0.8rem;
         font-weight: 600;
 
         &.status-available { color: #16a34a; }
@@ -302,11 +297,11 @@ main,
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        padding: 48px 16px;
+        padding: 3.2rem 1.0667rem;
         text-align: center;
-        .empty-state-icon { font-size: 2rem; margin-bottom: 12px; opacity: 0.6; }
-        .empty-state-title { margin: 0 0 4px 0; font-size: 1rem; font-weight: 600; }
-        .empty-state-subtitle { margin: 0; font-size: 0.875rem; color: $text-muted; }
+        .empty-state-icon { font-size: 2rem; margin-bottom: 0.8rem; opacity: 0.6; }
+        .empty-state-title { margin: 0 0 0.2667rem 0; font-size: 1rem; font-weight: 600; }
+        .empty-state-subtitle { margin: 0; font-size: var(--font-body); color: $text-muted; }
       }
     }
 
@@ -314,23 +309,23 @@ main,
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 12px;
-      margin-top: 20px;
+      gap: 0.8rem;
+      margin-top: 1.3333rem;
 
       @media (min-width: $bp-tablet) {
         flex-direction: row;
         justify-content: space-between;
       }
 
-      .pagination-text { font-size: 0.85rem; color: $text-muted; }
+      .pagination-text { font-size: var(--font-body); color: $text-muted; }
       .pagination-buttons {
         display: flex;
-        gap: 4px;
+        gap: 0.2667rem;
         .page-btn {
           background: #ffffff;
-          border: 1px solid $border-color;
-          padding: 6px 12px;
-          border-radius: 6px;
+          border: 0.0667rem solid $border-color;
+          padding: 0.4rem 0.8rem;
+          border-radius: 0.4rem;
           font-size: 0.8rem;
           cursor: pointer;
           &.active { background-color: #f1f5f9; font-weight: 700; }
@@ -355,39 +350,39 @@ main,
 
     .modal-content {
       background: #ffffff;
-      padding: 18px;
-      border-radius: 12px;
+      padding: 1.2rem;
+      border-radius: 0.8rem;
       width: 90vw;
-      max-width: 360px;
-      box-shadow: 0 10px 25px rgba(0, 0, 0, 0.15);
+      max-width: 24rem;
+      box-shadow: 0 0.6667rem 1.6667rem rgba(0, 0, 0, 0.15);
 
       @media (min-width: $bp-tablet) {
-        padding: 24px;
-        width: 360px;
+        padding: 1.6rem;
+        width: 24rem;
       }
 
-      h3 { margin-top: 0; margin-bottom: 16px; }
-      .confirm-text { margin: -8px 0 4px 0; font-size: 0.875rem; color: $text-muted; }
+      h3 { margin-top: 0; margin-bottom: 1.0667rem; }
+      .confirm-text { margin: -0.5333rem 0 0.2667rem 0; font-size: var(--font-body); color: $text-muted; }
 
       .form-group {
-        margin-bottom: 16px;
+        margin-bottom: 1.0667rem;
 
         label {
           display: block;
           font-size: 0.8rem;
           font-weight: 600;
-          margin-bottom: 6px;
+          margin-bottom: 0.4rem;
           color: $text-muted;
         }
 
         input,
         select {
           width: 100%;
-          padding: 8px 12px;
-          border: 1px solid $border-color;
-          border-radius: 6px;
+          padding: 0.5333rem 0.8rem;
+          border: 0.0667rem solid $border-color;
+          border-radius: 0.4rem;
           box-sizing: border-box;
-          font-size: 0.875rem;
+          font-size: var(--font-body);
           &:focus { outline: none; border-color: $primary-color; }
         }
 
@@ -395,16 +390,16 @@ main,
         .quantity-row {
           display: grid;
           grid-template-columns: 1fr auto;
-          gap: 8px;
+          gap: 0.5333rem;
           align-items: center;
 
           .qty-display-input {
-            border: 1px solid $border-color;
-            border-radius: 6px;
-            padding: 9px 12px;
+            border: 0.0667rem solid $border-color;
+            border-radius: 0.4rem;
+            padding: 0.6rem 0.8rem;
             text-align: center;
             font-weight: 600;
-            font-size: 15px;
+            font-size: 1rem;
             background: #f8fafc;
             color: $text-main;
             width: 100%;
@@ -419,13 +414,13 @@ main,
 
           .qty-steppers {
             display: flex;
-            gap: 4px;
+            gap: 0.2667rem;
 
             button {
-              border: 1px solid #cbd5e1;
+              border: 0.0667rem solid #cbd5e1;
               background: #f1f5f9;
-              border-radius: 6px;
-              padding: 9px 14px;
+              border-radius: 0.4rem;
+              padding: 0.6rem 0.9333rem;
               cursor: pointer;
               font-weight: bold;
               color: $text-main;
@@ -441,15 +436,15 @@ main,
       .modal-actions {
         display: flex;
         justify-content: flex-end;
-        gap: 12px;
-        margin-top: 20px;
+        gap: 0.8rem;
+        margin-top: 1.3333rem;
 
         button {
-          padding: 8px 16px;
-          border-radius: 6px;
+          padding: 0.5333rem 1.0667rem;
+          border-radius: 0.4rem;
           cursor: pointer;
-          border: 1px solid $border-color;
-          font-size: 0.85rem;
+          border: 0.0667rem solid $border-color;
+          font-size: var(--font-body);
 
           &.btn-save {
             background-color: $primary-color;
@@ -469,4 +464,3 @@ main,
     }
   }
 }
-

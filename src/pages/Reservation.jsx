@@ -429,7 +429,7 @@ const Reservation = () => {
       
       <div className="form-header">
         <div className="title">
-          <i className="ph"></i> Reservation Form
+          <i className="ph"></i>Reservation Form
         </div>
         <div className="required-note">
           All fields marked <span className="req">*</span> are required

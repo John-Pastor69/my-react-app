@@ -34,13 +34,14 @@ label {
   flex-direction: column;
   height: 100vh;
   overflow: hidden;
-  background-color: #f9fafb; 
+  background-color: #F4F7FE; 
 }
 
 .page-content {
   flex: 1;
   overflow-y: auto;
   min-height: 0; 
+  padding: 24px;
 }
 
 @media (max-width: 768px) {
