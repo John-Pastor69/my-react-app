@@ -4,6 +4,8 @@ import { deleteUser } from 'firebase/auth';
 import { auth, db } from '../Firebase'; 
 import '../styles/Profile.scss';
 
+const MAX_GIF_SIZE = 10 * 1024 * 1024;
+
 const Profile = () => {
   // --- STATE MANAGEMENT ---
   const [isEditing, setIsEditing] = useState(false);
@@ -102,6 +104,12 @@ const Profile = () => {
   const handleImageChange = (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
+
+    if ((file.type === 'image/gif' || /\.gif$/i.test(file.name)) && file.size > MAX_GIF_SIZE) {
+      setSaveError('GIF files must be 50 MB or smaller.');
+      e.target.value = '';
+      return;
+    }
 
     setSaveError('');
     const previewUrl = URL.createObjectURL(file);
