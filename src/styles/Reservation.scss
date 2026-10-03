@@ -207,6 +207,54 @@ $orange-main: #F59E0B;
       color: $red-main; 
       font-size: var(--font-body); 
     }
+
+    /* ENDORSER DROPDOWN STYLES */
+    &.endorser-autocomplete {
+      position: relative;
+
+      .autocomplete-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        margin-top: 0.25rem;
+        background: #ffffff;
+        border: 1px solid $border-color;
+        border-radius: 7px;
+        box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+        max-height: 12.5rem;
+        overflow-y: auto;
+        z-index: 50;
+
+        .autocomplete-item {
+          padding: 0.5rem 0.75rem;
+          cursor: pointer;
+          display: flex;
+          flex-direction: column;
+          gap: 0.125rem;
+          border-bottom: 1px solid #F1F5F9;
+
+          &:last-child {
+            border-bottom: none;
+          }
+
+          &:hover {
+            background-color: #F8FAFC;
+          }
+
+          .endorser-dropdown-name {
+            font-size: var(--font-body);
+            font-weight: 600;
+            color: $text-dark;
+          }
+
+          .endorser-dropdown-email {
+            font-size: 0.75rem;
+            color: $text-muted;
+          }
+        }
+      }
+    }
   }
 
   .calendar-field { 

@@ -53,38 +53,6 @@
     align-items: center;
     gap: 1.6rem;
 
-    .search-container {
-      position: relative;
-      display: flex;
-      align-items: center;
-
-      .search-icon {
-        position: absolute;
-        left: 0.8rem;
-        color: #9ca3af;
-      }
-
-      input {
-        padding: 0.4rem 0.5333rem 0.4rem 2rem; 
-        border: 0.0667rem solid #e5e7eb;
-        border-radius: 0.5333rem;
-        background-color: #f9fafb;
-        width: 17.3333rem;
-        font-size: 0.9333rem;
-        outline: none;
-        transition: all 0.2s;
-
-        &::placeholder {
-          color: #9ca3af;
-        }
-
-        &:focus {
-          border-color: #3b82f6;
-          background-color: #ffffff;
-        }
-      }
-    }
-
     /* --- NOTIFICATION DROPDOWN STYLES --- */
     .notification-wrapper {
       position: relative;
@@ -135,7 +103,6 @@
         max-height: 28rem; 
         overflow: hidden;
 
-        /* Mobile alignment fix */
         @media (max-width: 51.2rem) {
           position: fixed;
           top: 4rem;
@@ -156,6 +123,24 @@
             font-size: var(--font-body);
             font-weight: 700;
             color: #1e293b;
+          }
+
+          .clear-all-btn {
+            background: transparent !important;
+            border: none !important;
+            outline: none !important;
+            box-shadow: none !important;
+            color: #64748b;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            padding: 0;
+            transition: color 0.2s;
+
+            &:hover {
+              color: #ef4444;
+            }
           }
         }
 
@@ -180,25 +165,11 @@
               background: #f8fafc;
             }
 
-            /* Unread state with blue dot */
             &.unread {
               background: #f8fafc;
               position: relative;
-              
-              &::before {
-                content: '';
-                position: absolute;
-                left: 0.4rem;
-                top: 50%;
-                transform: translateY(-50%);
-                width: 0.4rem;
-                height: 0.4rem;
-                border-radius: 50%;
-                background: #3b82f6;
-              }
             }
 
-            /* Read state grayed out */
             &.read {
               background: #ffffff;
               opacity: 0.65;
@@ -310,11 +281,6 @@
 
     .header-titles h1 {
       font-size: 1.0667rem;
-    }
-
-    .search-container input,
-    .search-container .search-icon {
-      display: none;
     }
 
     .user-info {

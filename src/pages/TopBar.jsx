@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Bell, Menu } from 'lucide-react';
+import { Bell, Menu, Trash2 } from 'lucide-react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../Firebase'; 
-import PendingRequest from './PendingRequest'; // Import the details modal component
+import PendingRequest from './PendingRequest';
 import '../styles/Topbar.scss'; 
 
 // Helper function to format timestamp into "X ago"
@@ -23,6 +23,42 @@ const timeAgo = (dateInput) => {
   return Math.floor(seconds) + " seconds ago";
 };
 
+// Helper to check if event has expired based on Date, End Time, and Duration (days)
+const isExpired = (eventDate, endTime, days = 1) => {
+  if (!eventDate) return false;
+  const now = new Date();
+  let endDateTime;
+  
+  const [month, day, year] = eventDate.split('/');
+  if (!month || !day || !year) return false;
+
+  const parsedDays = parseInt(days, 10) || 1;
+  const baseDate = new Date(year, month - 1, day);
+  baseDate.setDate(baseDate.getDate() + (parsedDays - 1));
+
+  const endYear = baseDate.getFullYear();
+  const endMonth = baseDate.getMonth();
+  const endDay = baseDate.getDate();
+  
+  if (endTime && endTime !== 'N/A') {
+    const match = endTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (match) {
+      let [ , hours, minutes, modifier ] = match;
+      hours = parseInt(hours, 10);
+      if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
+      if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
+      
+      endDateTime = new Date(endYear, endMonth, endDay, hours, minutes);
+    }
+  }
+  
+  if (!endDateTime) {
+    endDateTime = new Date(endYear, endMonth, endDay, 23, 59, 59);
+  }
+
+  return now > endDateTime;
+};
+
 const TopBar = ({ toggleSidebar }) => {
   const [userData, setUserData] = useState({
     displayName: 'Loading...',
@@ -38,12 +74,18 @@ const TopBar = ({ toggleSidebar }) => {
   // Notification & Modal State
   const [notifications, setNotifications] = useState([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [selectedRequest, setSelectedRequest] = useState(null); // Controls the popup modal
+  const [selectedRequest, setSelectedRequest] = useState(null); 
   const notifRef = useRef(null);
 
   // Local storage for read notifications persistence
   const [readNotifs, setReadNotifs] = useState(() => {
     const saved = localStorage.getItem('facilityResReadNotifs');
+    return saved ? JSON.parse(saved) : [];
+  });
+
+  // Local storage for deleted (cleared) notifications
+  const [deletedNotifs, setDeletedNotifs] = useState(() => {
+    const saved = localStorage.getItem('facilityResDeletedNotifs');
     return saved ? JSON.parse(saved) : [];
   });
 
@@ -119,7 +161,7 @@ const TopBar = ({ toggleSidebar }) => {
     };
   }, []);
 
-  // Process Real-Time Notifications
+  // Process Real-Time Notifications & Persist Auto-Removed
   useEffect(() => {
     if (!userData.role || userData.role === '...' || !auth.currentUser) return;
 
@@ -128,6 +170,10 @@ const TopBar = ({ toggleSidebar }) => {
     const email = auth.currentUser.email;
     let newNotifs = [];
 
+    // Pull previously saved auto-removed notifications to prevent losing them when Schedule.jsx deletes the document
+    let currentAutoRemoved = JSON.parse(localStorage.getItem('facilityResAutoRemoved')) || [];
+    let autoRemovedChanged = false;
+
     reservationsData.forEach(res => {
       const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
       const reqRole = (requestor.role || 'requestor').toLowerCase().trim();
@@ -135,26 +181,46 @@ const TopBar = ({ toggleSidebar }) => {
       
       // --- 1. REQUESTOR NOTIFICATIONS ---
       if (res.userId === uid || res.userEmail === email) {
-        if (res.status === 'Approved') {
-          newNotifs.push({
-            id: `${res.id}-app`,
-            type: 'approved',
-            title: 'Approved',
-            message: `Your reservation for ${res.eventName || 'an event'} has been approved.`,
-            time: res.updatedAt || res.createdAt,
-            rawDate: new Date(res.updatedAt || res.createdAt || 0),
-            fullData: res // Attach full data for the modal
-          });
-        } else if (res.status === 'Rejected') {
-          newNotifs.push({
-            id: `${res.id}-rej`,
-            type: 'rejected',
-            title: 'Rejected',
-            message: `Your request for ${res.eventName || 'an event'} was declined.`,
-            time: res.updatedAt || res.createdAt,
-            rawDate: new Date(res.updatedAt || res.createdAt || 0),
-            fullData: res
-          });
+        
+        // ---> Auto-Removed Expiration Check
+        if (isExpired(res.eventDate, res.endTime, res.days)) {
+          const notifId = `${res.id}-auto`;
+          if (!currentAutoRemoved.find(n => n.id === notifId)) {
+            currentAutoRemoved.push({
+              id: notifId,
+              type: 'removed',
+              title: 'Auto-Removed',
+              message: `Your schedule exceeded the given time and/or date for ${res.eventName || 'an event'}.`,
+              time: new Date().toISOString(),
+              rawDate: new Date().toISOString(),
+              fullData: res 
+            });
+            autoRemovedChanged = true;
+          }
+        } 
+        // Normal Notifications
+        else {
+          if (res.status === 'Approved') {
+            newNotifs.push({
+              id: `${res.id}-app`,
+              type: 'approved',
+              title: 'Approved',
+              message: `Your reservation for ${res.eventName || 'an event'} has been approved.`,
+              time: res.updatedAt || res.createdAt,
+              rawDate: new Date(res.updatedAt || res.createdAt || 0),
+              fullData: res 
+            });
+          } else if (res.status === 'Rejected') {
+            newNotifs.push({
+              id: `${res.id}-rej`,
+              type: 'rejected',
+              title: 'Rejected',
+              message: `Your request for ${res.eventName || 'an event'} was declined.`,
+              time: res.updatedAt || res.createdAt,
+              rawDate: new Date(res.updatedAt || res.createdAt || 0),
+              fullData: res
+            });
+          }
         }
       }
 
@@ -162,7 +228,12 @@ const TopBar = ({ toggleSidebar }) => {
       const roleHierarchy = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
       const myIndex = roleHierarchy.indexOf(myRoleKey);
       
-      if (myIndex > 0 && res.status !== 'Rejected' && res.status !== 'Approved') {
+      if (myIndex > 0 && res.status !== 'Rejected' && res.status !== 'Approved' && !isExpired(res.eventDate, res.endTime, res.days)) {
+        
+        if (myRoleKey === 'endorser' && res.endorserEmail !== email) {
+          return; 
+        }
+
         const hasEndorser = !!res.endorserName;
         let isMyTurn = false;
         
@@ -200,10 +271,25 @@ const TopBar = ({ toggleSidebar }) => {
       }
     });
 
+    // Save Auto-Removed to localStorage if new ones were generated
+    if (autoRemovedChanged) {
+      localStorage.setItem('facilityResAutoRemoved', JSON.stringify(currentAutoRemoved));
+    }
+
+    // Combine active database notifications with persisted auto-removed ones
+    const combinedNotifs = [...newNotifs, ...currentAutoRemoved].map(n => ({
+      ...n,
+      // Rehydrate stringified dates back into Date objects for accurate sorting
+      rawDate: typeof n.rawDate === 'string' ? new Date(n.rawDate) : n.rawDate 
+    }));
+
+    // Filter out notifications that the user explicitly cleared
+    const filteredNotifs = combinedNotifs.filter(notif => !deletedNotifs.includes(notif.id));
+    
     // Sort newest first
-    newNotifs.sort((a, b) => b.rawDate - a.rawDate);
-    setNotifications(newNotifs);
-  }, [reservationsData, usersData, userData]);
+    filteredNotifs.sort((a, b) => b.rawDate - a.rawDate);
+    setNotifications(filteredNotifs);
+  }, [reservationsData, usersData, userData, deletedNotifs]);
 
   // Click handler: Opens modal and marks notification as read
   const handleNotifItemClick = (notif) => {
@@ -219,6 +305,14 @@ const TopBar = ({ toggleSidebar }) => {
     setIsNotifOpen(false);
   };
 
+  // Click handler: Clears (deletes) all current notifications from view
+  const handleClearAllNotifs = () => {
+    const allCurrentIds = notifications.map(n => n.id);
+    const updatedDeleted = [...new Set([...deletedNotifs, ...allCurrentIds])];
+    setDeletedNotifs(updatedDeleted);
+    localStorage.setItem('facilityResDeletedNotifs', JSON.stringify(updatedDeleted));
+  };
+
   return (
     <>
       <header className="topbar">
@@ -229,10 +323,6 @@ const TopBar = ({ toggleSidebar }) => {
         </div>
 
         <div className="header-actions">
-          <div className="search-container">
-            <Search className="search-icon" size={18} />
-            <input type="text" placeholder="Search requests..." />
-          </div>
 
           {/* Notification Wrapper */}
           <div className="notification-wrapper" ref={notifRef}>
@@ -250,6 +340,11 @@ const TopBar = ({ toggleSidebar }) => {
               <div className="notification-dropdown">
                 <div className="dropdown-header">
                   <h3>Notifications</h3>
+                  {notifications.length > 0 && (
+                    <button className="clear-all-btn" onClick={handleClearAllNotifs} title="Clear All Notifications">
+                      <Trash2 size={18} />
+                    </button>
+                  )}
                 </div>
                 
                 <div className="dropdown-body">
@@ -266,6 +361,7 @@ const TopBar = ({ toggleSidebar }) => {
                           {notif.type === 'approved' && <div className="notif-avatar bg-green">✓</div>}
                           {notif.type === 'action' && <div className="notif-avatar bg-blue">ℹ</div>}
                           {notif.type === 'rejected' && <div className="notif-avatar bg-red">✕</div>}
+                          {notif.type === 'removed' && <div className="notif-avatar bg-red">!</div>}
                           
                           <div className="notif-content">
                             <p><strong>{notif.title}:</strong> {notif.message.replace(`${notif.title}:`, '')}</p>
@@ -306,7 +402,7 @@ const TopBar = ({ toggleSidebar }) => {
         </div>
       </header>
 
-      {/* --- MODAL POPUP (Rendered outside header layout flow) --- */}
+      {/* --- MODAL POPUP --- */}
       {selectedRequest && (
         <div className="topbar-modal-overlay"> 
             <div className="modal-wrapper">
@@ -319,7 +415,6 @@ const TopBar = ({ toggleSidebar }) => {
                     ✕
                 </button>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                    {/* Render the details using your existing component */}
                     <PendingRequest data={selectedRequest} />
                 </div>
             </div>

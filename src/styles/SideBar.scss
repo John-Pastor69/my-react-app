@@ -91,7 +91,9 @@
     flex-direction: column;
     padding: 0 1.0667rem;
     gap: 0.2667rem;
-    flex: 1; 
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
 
     .nav-link {
       display: flex;

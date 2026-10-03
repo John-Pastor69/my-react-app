@@ -104,7 +104,7 @@ export default function Login({ onLogin }) {
             <span className="globe-icon">🌐</span>
             <span className="sti-text">STI</span>
           </div>
-          <h1 className="brand-title">STI Education Services Group</h1>
+          <h1 className="brand-title">STI Reservation System</h1>
         </div>
       </div>
 

@@ -46,6 +46,17 @@ const parseTimeToDecimal = (timeStr) => {
   return hours + (minutes / 60);
 };
 
+// Name parsing helper function
+const formatName = (fullName) => {
+  if (!fullName) return '';
+  let name = fullName.replace(/\s*\(Student\)/i, '').trim();
+  if (name.includes(',')) {
+      const parts = name.split(',');
+      name = `${parts[1].trim()} ${parts[0].trim()}`;
+  }
+  return name;
+};
+
 const Reservation = () => {
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
@@ -78,6 +89,10 @@ const Reservation = () => {
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarView, setCalendarView] = useState(new Date());
 
+  // --- ENDORSER DROPDOWN STATE ---
+  const [endorsersList, setEndorsersList] = useState([]);
+  const [showEndorserDropdown, setShowEndorserDropdown] = useState(false);
+
   // --- CONNECT TO ACCOUNT (Profile Auto-Fill & Role Check) ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
@@ -90,9 +105,7 @@ const Reservation = () => {
             const userData = userSnap.data();
             setUserRole(userData.role?.toLowerCase() || 'requestor');
             
-            // Clean up name by removing "(Student)"
-            let cleanName = userData.name || '';
-            cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+            const cleanName = formatName(userData.name);
 
             setFormData(prev => ({
               ...prev,
@@ -135,7 +148,7 @@ const Reservation = () => {
     if (isDraftSaved) setIsDraftSaved(false);
   }, [formData, days, aircon, eventDate, startTime, endTime, selectedEquip]);
 
-  // --- LIVE LISTEN TO FACILITIES, EQUIPMENTS & RESERVATIONS ---
+  // --- LIVE LISTEN TO FACILITIES, EQUIPMENTS, RESERVATIONS & USERS (For Endorsers) ---
   useEffect(() => {
     const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -152,10 +165,23 @@ const Reservation = () => {
       setReservationsData(list);
     }, (error) => console.error('Failed to load reservations:', error));
 
+    const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
+      const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      // Map to clean format and filter for endorsers
+      const endorsers = users
+        .filter(user => user.role && user.role.toLowerCase() === 'endorser')
+        .map(user => ({
+          ...user,
+          cleanName: formatName(user.name)
+        }));
+      setEndorsersList(endorsers);
+    }, (error) => console.error('Failed to load users:', error));
+
     return () => {
       unsubEquipments();
       unsubFacilities();
       unsubReservations();
+      unsubUsers();
     };
   }, []);
 
@@ -191,6 +217,20 @@ const Reservation = () => {
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+
+    // Trigger Endorser Dropdown Logic
+    if (field === 'endorserName') {
+      setShowEndorserDropdown(value.length > 0);
+    }
+  };
+
+  const handleEndorserSelect = (endorser) => {
+    setFormData(prev => ({
+      ...prev,
+      endorserName: endorser.cleanName, // Populate with the cleaned First Last name
+      endorserEmail: endorser.email
+    }));
+    setShowEndorserDropdown(false);
   };
 
   const handleCheckboxArrayChange = (field, value) => {
@@ -491,15 +531,36 @@ const Reservation = () => {
               <span className="step-badge">2</span> Endorser Information
             </div>
             <div className="form-grid col-2">
-              <div className="input-group">
+              <div className="input-group endorser-autocomplete">
                 <label>Endorser's Full Name <span className="req">*</span></label>
-                <input 
-                  type="text" 
-                  value={formData.endorserName} 
-                  onChange={(e) => handleInputChange('endorserName', e.target.value)} 
-                  maxLength={50}
-                  placeholder="Faculty/Adviser name" 
-                />
+                <div style={{ position: 'relative' }}>
+                  <input 
+                    type="text" 
+                    value={formData.endorserName} 
+                    onChange={(e) => handleInputChange('endorserName', e.target.value)} 
+                    onFocus={() => setShowEndorserDropdown(formData.endorserName.length > 0)}
+                    onBlur={() => setTimeout(() => setShowEndorserDropdown(false), 200)}
+                    maxLength={50}
+                    placeholder="Faculty/Adviser name" 
+                    autoComplete="off"
+                  />
+                  {showEndorserDropdown && endorsersList.filter(e => e.cleanName.toLowerCase().includes(formData.endorserName.toLowerCase())).length > 0 && (
+                    <div className="autocomplete-dropdown">
+                      {endorsersList
+                        .filter(e => e.cleanName.toLowerCase().includes(formData.endorserName.toLowerCase()))
+                        .map(endorser => (
+                          <div 
+                            key={endorser.id} 
+                            className="autocomplete-item"
+                            onClick={() => handleEndorserSelect(endorser)}
+                          >
+                            <span className="endorser-dropdown-name">{endorser.cleanName}</span>
+                            <span className="endorser-dropdown-email">{endorser.email}</span>
+                          </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="input-group">
                 <label>Endorser's Designation <span className="req">*</span></label>
@@ -893,7 +954,7 @@ const Reservation = () => {
           </div>
         </div>
       )}
-
+  
       {/* Overlap Warning Modal */}
       {showOverlapWarning && (
         <div className="modal-overlay"> 

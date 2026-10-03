@@ -494,6 +494,13 @@ $blue-main: #3B82F6;
         color: #64748B; 
         font-size: var(--font-body);
         line-height: 1.55;
+
+        .auto-removed-list {
+          margin-top: 10px;
+          padding-left: 20px;
+          font-weight: 600;
+          color: #1e293b;
+        }
       }
 
       .modal-actions {
@@ -524,6 +531,12 @@ $blue-main: #3B82F6;
       .btn-modal-cancel {
         background: #E2E8F0;
         color: #0F172A;
+      }
+
+      .btn-modal-acknowledge {
+        background: #f1f5f9;
+        color: #0f172a;
+        border: 1px solid #cbd5e1;
       }
 
       .btn-modal-confirm {

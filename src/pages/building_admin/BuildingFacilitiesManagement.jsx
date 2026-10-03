@@ -111,8 +111,8 @@ const BuildingFacilitiesManagement = () => {
       await updateDoc(doc(db, 'facilities', editingItem.id), {
         name: editingItem.name,
         code: finalCode,
-        location: editingItem.location,
-        capacity: editingItem.capacity,
+        location: editingItem.location?.trim() || '',
+        capacity: editingItem.capacity?.toString().trim() || '',
         status: editingItem.status,
         statusClass: statusClass,
         lastUpdated: getCurrentDateTime()
@@ -138,8 +138,8 @@ const BuildingFacilitiesManagement = () => {
       await addDoc(collection(db, 'facilities'), {
         code: finalCode,
         name: newItem.name.trim() || 'Untitled Facility',
-        location: newItem.location.trim() || 'Unassigned',
-        capacity: newItem.capacity.trim() || '0',
+        location: newItem.location.trim(),
+        capacity: newItem.capacity.trim(),
         status: status,
         statusClass,
         lastUpdated: getCurrentDateTime()
@@ -420,23 +420,21 @@ const BuildingFacilitiesManagement = () => {
               </div>
 
               <div className="form-group">
-                <label>Location</label>
+                <label>Location (Optional)</label>
                 <input
                   type="text"
-                  value={editingItem.location}
+                  value={editingItem.location || ''}
                   onChange={(e) => setEditingItem({ ...editingItem, location: e.target.value })}
-                  required
                 />
               </div>
 
               <div className="form-group">
-                <label>Capacity</label>
+                <label>Capacity (Optional)</label>
                 <input
                   type="text"
                   value={editingItem.capacity ? String(editingItem.capacity).replace(/\D/g, '') : ''}
                   onChange={(e) => setEditingItem({ ...editingItem, capacity: e.target.value.replace(/\D/g, '') })}
                   placeholder="e.g. 500"
-                  required
                 />
               </div>
 
@@ -489,24 +487,22 @@ const BuildingFacilitiesManagement = () => {
               </div>
 
               <div className="form-group">
-                <label>Location</label>
+                <label>Location (Optional)</label>
                 <input
                   type="text"
                   value={newItem.location}
                   onChange={(e) => setNewItem({ ...newItem, location: e.target.value })}
                   placeholder="e.g. Block A, Floor 1"
-                  required
                 />
               </div>
 
               <div className="form-group">
-                <label>Capacity</label>
+                <label>Capacity (Optional)</label>
                 <input
                   type="text"
                   value={newItem.capacity ? String(newItem.capacity).replace(/\D/g, '') : ''}
                   onChange={(e) => setNewItem({ ...newItem, capacity: e.target.value.replace(/\D/g, '') })}
                   placeholder="e.g. 500"
-                  required
                 />
               </div>
 

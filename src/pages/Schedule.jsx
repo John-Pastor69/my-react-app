@@ -4,6 +4,46 @@ import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 
+// Helper to check if event has expired based on Date, End Time, and Duration (days)
+const isExpired = (eventDate, endTime, days = 1) => {
+  if (!eventDate) return false;
+  const now = new Date();
+  let endDateTime;
+  
+  const [month, day, year] = eventDate.split('/');
+  if (!month || !day || !year) return false;
+
+  // Calculate the actual end date by adding (days - 1)
+  const parsedDays = parseInt(days, 10) || 1;
+  const baseDate = new Date(year, month - 1, day);
+  baseDate.setDate(baseDate.getDate() + (parsedDays - 1));
+
+  const endYear = baseDate.getFullYear();
+  const endMonth = baseDate.getMonth();
+  const endDay = baseDate.getDate();
+  
+  // Parse End Time if applicable
+  if (endTime && endTime !== 'N/A') {
+    const match = endTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+    if (match) {
+      let [ , hours, minutes, modifier ] = match;
+      hours = parseInt(hours, 10);
+      if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
+      if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
+      
+      endDateTime = new Date(endYear, endMonth, endDay, hours, minutes);
+    }
+  }
+  
+  // Fallback: If no end time is specified, it expires at the very end of the final date (11:59:59 PM)
+  if (!endDateTime) {
+    endDateTime = new Date(endYear, endMonth, endDay, 23, 59, 59);
+  }
+
+  // Returns true if the current exact time is strictly greater than the event's end time
+  return now > endDateTime;
+};
+
 const Schedule = () => {
   // --- STATE MANAGEMENT ---
   const [currentPage, setCurrentPage] = useState(1);
@@ -15,6 +55,10 @@ const Schedule = () => {
   const [usersData, setUsersData] = useState([]);
   const [approverRoleKey, setApproverRoleKey] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
+  
+  // Auto-Removal Alert State
+  const [autoRemovedAlerts, setAutoRemovedAlerts] = useState([]);
+  
   const itemsPerPage = 5;
 
   // --- REAL-TIME FIRESTORE LISTENERS ---
@@ -59,6 +103,40 @@ const Schedule = () => {
     });
     return () => unsubscribeAuth();
   }, []);
+
+  // --- AUTO-REMOVE EXPIRED RESERVATIONS ---
+  useEffect(() => {
+    if (!currentUser || reservationsData.length === 0) return;
+
+    const checkExpirations = async () => {
+      const expiredEvents = [];
+
+      for (const res of reservationsData) {
+        // Only process the user's own reservations
+        if (res.userId === currentUser.uid || res.userEmail === currentUser.email) {
+           if (isExpired(res.eventDate, res.endTime, res.days)) {
+              expiredEvents.push(res.eventName || 'Untitled Event');
+              try {
+                // Delete from database completely
+                await deleteDoc(doc(db, 'reservations', res.id));
+              } catch (e) {
+                console.error("Error auto-deleting", e);
+              }
+           }
+        }
+      }
+
+      // If we deleted anything, trigger the pop-up notification
+      if (expiredEvents.length > 0) {
+         setAutoRemovedAlerts(prev => {
+           const newAlerts = expiredEvents.filter(e => !prev.includes(e));
+           return [...prev, ...newAlerts];
+         });
+      }
+    };
+
+    checkExpirations();
+  }, [reservationsData, currentUser]);
 
   // --- MAP & JOIN DATA ---
   const scheduleData = reservationsData
@@ -316,6 +394,31 @@ const Schedule = () => {
                 disabled={isDeleting}
               >
                 {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- AUTO-REMOVED NOTIFICATION MODAL --- */}
+      {autoRemovedAlerts.length > 0 && (
+        <div className="modal-overlay delete-modal-overlay">
+          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
+            <h3 className="modal-title error">Auto-Removed</h3>
+            <div className="modal-message">
+              Your schedule exceeded the given time and/or date for the following event(s):
+              <ul className="auto-removed-list">
+                {autoRemovedAlerts.map((evt, idx) => (
+                  <li key={idx}>{evt}</li>
+                ))}
+              </ul>
+            </div>
+            <div className="modal-actions">
+              <button 
+                onClick={() => setAutoRemovedAlerts([])}
+                className="modal-button btn-modal-cancel btn-modal-acknowledge"
+              >
+                Acknowledge
               </button>
             </div>
           </div>

@@ -236,7 +236,7 @@ const Profile = () => {
         >
           {isEditing && (
             <label className="edit-overlay banner-overlay">
-              <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'banner')} hidden />
+              <input type="file" accept="image/*,.gif" onChange={(e) => handleImageChange(e, 'banner')} hidden />
               <i className="ph-fill ph-camera"></i> Change Cover
             </label>
           )}
@@ -264,7 +264,7 @@ const Profile = () => {
               />
               {isEditing && (
                 <label className="edit-overlay avatar-overlay">
-                  <input type="file" accept="image/*" onChange={(e) => handleImageChange(e, 'avatar')} hidden />
+                  <input type="file" accept="image/*,.gif" onChange={(e) => handleImageChange(e, 'avatar')} hidden />
                   <i className="ph-fill ph-camera"></i>
                 </label>
               )}

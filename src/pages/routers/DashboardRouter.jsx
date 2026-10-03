@@ -1,21 +1,16 @@
 import { Suspense, lazy } from 'react';
 
-const AcadHeadDashboard = lazy(() => import('../academic_head/AcadHeadDashboard'));
-const BuildingDashboard = lazy(() => import('../building_admin/BuildingDashboard'));
-const EndorserDashboard = lazy(() => import('../endorser/EndorserDashboard'));
-const MisDashboard = lazy(() => import('../mis/MisDashboard'));
-const OsaDashboard = lazy(() => import('../osa/OsaDashboard'));
-const SchoolAdminDashboard = lazy(() => import('../school_admin/SchoolAdminDashboard'));
+const Dashboard = lazy(() => import('../Dashboard'));
 
 const DashboardRouter = ({ currentUserRole }) => {
   
   const dashboardComponents = {
-    'endorser': <EndorserDashboard />,
-    'building admin': <BuildingDashboard />,
-    'osa': <OsaDashboard />,
-    'mis': <MisDashboard />,
-    'academic head': <AcadHeadDashboard />,
-    'school admin': <SchoolAdminDashboard />,
+    'endorser': <Dashboard currentUserRole={currentUserRole} />,
+    'building admin': <Dashboard currentUserRole={currentUserRole} />,
+    'osa': <Dashboard currentUserRole={currentUserRole} />,
+    'mis': <Dashboard currentUserRole={currentUserRole} />,
+    'academic head': <Dashboard currentUserRole={currentUserRole} />,
+    'school admin': <Dashboard currentUserRole={currentUserRole} />,
 
   };
 
