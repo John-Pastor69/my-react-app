@@ -9,6 +9,7 @@ const Profile = () => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveError, setSaveError] = useState('');
 
   // --- IMAGE STATE ---
   const [avatarFile, setAvatarFile] = useState(null);
@@ -102,6 +103,7 @@ const Profile = () => {
     const file = e.target.files[0];
     if (!file) return;
 
+    setSaveError('');
     const previewUrl = URL.createObjectURL(file);
 
     if (type === 'avatar') {
@@ -116,6 +118,7 @@ const Profile = () => {
   const toggleEditMode = () => {
     setIsEditing(!isEditing);
     setSaveSuccess(false); 
+    setSaveError('');
     
     if (isEditing) {
       setAvatarPreview(null);
@@ -130,6 +133,7 @@ const Profile = () => {
     
     setIsSaving(true);
     setSaveSuccess(false);
+    setSaveError('');
 
     try {
       const user = auth.currentUser;
@@ -149,6 +153,11 @@ const Profile = () => {
           });
           
           const uploadedImage = await res.json();
+          if (!res.ok || !uploadedImage.secure_url) {
+            throw new Error(
+              uploadedImage.error?.message || 'Cloudinary could not upload this image. Check the file format, size, or upload preset.'
+            );
+          }
           return uploadedImage.secure_url;
         };
 
@@ -184,6 +193,7 @@ const Profile = () => {
       }
     } catch (error) {
       console.error("Error saving profile data:", error);
+      setSaveError(error.message || 'Could not save your profile. Please try again.');
     } finally {
       setIsSaving(false);
     }
@@ -300,6 +310,7 @@ const Profile = () => {
                 <><i className="ph ph-floppy-disk"></i> Save Changes</>
               )}
             </button>
+            {saveError && <p className="profile-save-error" role="alert">{saveError}</p>}
           </div>
         </div>
       </div>

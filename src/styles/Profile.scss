@@ -160,6 +160,14 @@ $red-main: #EF4444;
       width: 100%;
       gap: 0.8rem;
 
+      .profile-save-error {
+        width: 100%;
+        margin: 0;
+        color: $red-main;
+        font-size: 0.8667rem;
+        text-align: left;
+      }
+
       button {
         width: 100%;
         justify-content: center;
