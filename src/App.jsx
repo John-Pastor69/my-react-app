@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'; 
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
 
@@ -21,6 +21,13 @@ import FacilityRouter from './pages/routers/FacilityRouter';
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const navigate = useNavigate(); // <-- Added for programmatic navigation
+  const location = useLocation(); // <-- Added to track route changes
+
+  // --- AUTO-CLOSE SIDEBAR ON NAVIGATION ---
+  useEffect(() => {
+    setIsSidebarOpen(false);
+  }, [location.pathname]);
 
   // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
@@ -28,6 +35,7 @@ export default function App() {
   
   // Loading state to pause the app while Firebase checks the session
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+
 
   // --- GLOBAL PRESENCE, HEARTBEAT & DB STATUS WRITER ---
   useEffect(() => {
@@ -107,11 +115,19 @@ export default function App() {
     );
   }
 
-  // If not logged in, only show the Login page
+  // --- LOGIN ROUTING ---
+  // If not logged in, only show the Login page and force redirect upon manual login
   if (!isAuthenticated) {
     return <Login onLogin={(role) => {
       setIsAuthenticated(true);
       setUserRole(role);
+      
+      // Force navigation to the correct page exactly when they log in
+      if (role.toLowerCase() === 'requestor') {
+        navigate('/reserve', { replace: true });
+      } else {
+        navigate('/dashboard', { replace: true });
+      }
     }} />;
   }
 
@@ -123,6 +139,7 @@ export default function App() {
         onLogout={() => {
          setIsAuthenticated(false); 
          setUserRole('requestor'); 
+         navigate('/', { replace: true }); // Clear the URL on logout
         }} 
         userRole={userRole} 
       />
