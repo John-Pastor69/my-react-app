@@ -21,8 +21,8 @@ import FacilityRouter from './pages/routers/FacilityRouter';
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-  const navigate = useNavigate(); // <-- Added for programmatic navigation
-  const location = useLocation(); // <-- Added to track route changes
+  const navigate = useNavigate(); 
+  const location = useLocation(); 
 
   // --- AUTO-CLOSE SIDEBAR ON NAVIGATION ---
   useEffect(() => {
@@ -82,7 +82,7 @@ export default function App() {
       setIsAuthLoading(false);
     });
 
-    // 2. Write "Inactive" directly to Firestore when closing tab, refreshing, or leaving
+    // 2. Handle standard tab closures and iOS Safari tab closures
     const handleTabClose = () => {
       if (auth.currentUser) {
         updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -92,12 +92,33 @@ export default function App() {
       }
     };
 
+    // 3. Handle mobile backgrounding (minimizing app, switching tabs, locking phone)
+    const handleVisibilityChange = () => {
+      if (auth.currentUser) {
+        if (document.visibilityState === 'hidden') {
+          updateDoc(doc(db, 'users', auth.currentUser.uid), {
+            status: 'Inactive',
+            lastActive: new Date().toISOString()
+          }).catch(err => console.error("Failed to set inactive status:", err));
+        } else if (document.visibilityState === 'visible') {
+          updateDoc(doc(db, 'users', auth.currentUser.uid), {
+            status: 'Active',
+            lastActive: new Date().toISOString()
+          }).catch(err => console.error("Failed to set active status:", err));
+        }
+      }
+    };
+
     window.addEventListener('beforeunload', handleTabClose);
+    window.addEventListener('pagehide', handleTabClose); // Critical for iOS Safari
+    document.addEventListener('visibilitychange', handleVisibilityChange); // Critical for mobile phones
 
     return () => {
       unsubscribe();
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       window.removeEventListener('beforeunload', handleTabClose);
+      window.removeEventListener('pagehide', handleTabClose);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, []);
 
@@ -147,7 +168,7 @@ export default function App() {
         <div className="page-content">
           <Routes> 
             
-            {/* 1. Dynamic Login & Catch-All Redirect (Added wildcard *) */}
+            {/* 1. Dynamic Login & Catch-All Redirect */}
             <Route 
               path="*" 
               element={
@@ -157,7 +178,7 @@ export default function App() {
               } 
             />
 
-            {/* 2. Protected Dashboard Routes (Added /* to all nested routers) */}
+            {/* 2. Protected Dashboard Routes */}
             <Route 
               path="/dashboard/*" 
               element={
