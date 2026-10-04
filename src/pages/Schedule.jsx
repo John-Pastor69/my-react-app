@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
+import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 
@@ -117,6 +118,15 @@ const Schedule = () => {
            if (isExpired(res.eventDate, res.endTime, res.days)) {
               expiredEvents.push(res.eventName || 'Untitled Event');
               try {
+                // --- SEND EMAIL NOTIFICATION ---
+                await sendReservationEmail(
+                  res.userEmail, 
+                  res.fullName, 
+                  res, 
+                  "Your schedule exceeded the given time and/or date and was auto-removed."
+                );
+                // -------------------------------
+                
                 // Delete from database completely
                 await deleteDoc(doc(db, 'reservations', res.id));
               } catch (e) {

@@ -11,6 +11,7 @@ import {
   getDoc 
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
+import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/Reservation.scss';
 
 const initialFormState = {
@@ -435,6 +436,17 @@ const Reservation = () => {
         status: 'Pending',
         createdAt: new Date().toISOString()
       });
+
+      // --- SEND EMAIL NOTIFICATION TO ENDORSER ---
+      if (formData.endorserEmail) {
+        await sendReservationEmail(
+          formData.endorserEmail,
+          formData.endorserName,
+          { eventName: formData.eventName, eventDate: eventDate }, // Pass specific fields mapped for the template
+          `A new reservation request for "${formData.eventName}" has been submitted by ${formData.fullName} and requires your endorsement.`
+        );
+      }
+      // -------------------------------------------
 
       // 3. SYNC INVENTORY STATUS BACK TO DB
       const batch = writeBatch(db);

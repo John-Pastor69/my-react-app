@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, deleteField, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
+import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/PendingRequest.scss';
+
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -291,6 +293,20 @@ const PendingRequest = ({ data }) => {
       }
 
       await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
+
+      // --- SEND EMAIL NOTIFICATION ---
+      const emailMessage = isApprove 
+        ? `Your reservation has been approved by the ${approver.role}.` 
+        : `Your reservation has been rejected by the ${approver.role}. Remarks: ${remarks || 'None'}`;
+
+      await sendReservationEmail(
+        email, 
+        requestorName, 
+        currentData, 
+        emailMessage
+      );
+      // -------------------------------
+
       setRemarks(''); 
     } catch (err) {
       console.error("Error updating reservation:", err);
@@ -344,6 +360,16 @@ const PendingRequest = ({ data }) => {
       }
 
       await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
+
+      // --- SEND UNDO NOTIFICATION ---
+      await sendReservationEmail(
+        email, 
+        requestorName, 
+        currentData, 
+        `Your previous reservation decision was undone by the ${approver.role}. It is currently back to pending status.`
+      );
+      // ------------------------------
+
     } catch (err) {
       console.error("Error undoing reservation action:", err);
       setCustomAlert({
