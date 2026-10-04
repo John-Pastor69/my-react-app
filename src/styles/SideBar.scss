@@ -4,7 +4,7 @@
 
 .sidebar {
   width: 13.3333rem;
-  height: 100vh;
+  height: 100dvh; /* Changed from 100vh to 100dvh for better mobile compatibility */
   background-color: #f8f9fa;
   display: flex;
   flex-direction: column;
@@ -20,7 +20,7 @@
     left: 0;
     z-index: 100;
     width: 100vw; 
-    height: 100vh; 
+    height: 100%; /* Changed to 100% to lock exactly to the fixed window bounds */
     background-color: #ffffff; 
     
     transform: translateX(-100%); 
@@ -35,6 +35,7 @@
       align-items: center;
       padding: 1.0667rem 1.6rem;
       border-bottom: 0.0667rem solid #eaeaea;
+      flex-shrink: 0; /* Ensures mobile header is never squished */
 
       .mobile-menu-text {
         font-size: 1.2rem;
@@ -64,6 +65,7 @@
     align-items: center;
     padding: 1.6rem;
     gap: 0.8rem;
+    flex-shrink: 0; /* Ensures main header is never squished */
 
     .brand-icon {
       background-color: #3b82f6;
@@ -145,6 +147,7 @@
   .sidebar-footer {
     padding: 1.0667rem;
     border-top: 0.0667rem solid #eaeaea;
+    flex-shrink: 0; /* Prevents the footer from getting pushed off-screen */
 
     .sign-out-btn {
       display: flex;

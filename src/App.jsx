@@ -36,7 +36,6 @@ export default function App() {
   // Loading state to pause the app while Firebase checks the session
   const [isAuthLoading, setIsAuthLoading] = useState(true);
 
-
   // --- GLOBAL PRESENCE, HEARTBEAT & DB STATUS WRITER ---
   useEffect(() => {
     let heartbeatInterval = null;
@@ -148,9 +147,9 @@ export default function App() {
         <div className="page-content">
           <Routes> 
             
-            {/* 1. Dynamic Login Redirect */}
+            {/* 1. Dynamic Login & Catch-All Redirect (Added wildcard *) */}
             <Route 
-              path="/" 
+              path="*" 
               element={
                 userRole.toLowerCase() === 'requestor' 
                   ? <Navigate to="/reserve" replace /> 
@@ -158,9 +157,9 @@ export default function App() {
               } 
             />
 
-            {/* 2. Protected Dashboard Route */}
+            {/* 2. Protected Dashboard Routes (Added /* to all nested routers) */}
             <Route 
-              path="/dashboard" 
+              path="/dashboard/*" 
               element={
                 userRole.toLowerCase() === 'requestor'
                   ? <Navigate to="/reserve" replace />
@@ -169,37 +168,37 @@ export default function App() {
             />
 
             <Route 
-              path="/reserve" 
+              path="/reserve/*" 
               element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />}
             />
 
             <Route 
-              path="/schedule" 
+              path="/schedule/*" 
               element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />}
             />
 
             <Route 
-              path="/approval" 
+              path="/approval/*" 
               element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
-              path="/equipment" 
+              path="/equipment/*" 
               element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
-              path="/user" 
+              path="/user/*" 
               element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
-              path="/facility" 
+              path="/facility/*" 
               element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
-              path="/calendar" 
+              path="/calendar/*" 
               element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />}
             />
             <Route 
-              path="/account" 
+              path="/account/*" 
               element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />}
             />
           </Routes>
