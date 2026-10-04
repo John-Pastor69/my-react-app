@@ -25,4 +25,5 @@ jobs:
         env:
           # Pulls the secret you saved in Step 2 securely into the script
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TZ: 'Asia/Manila'
         run: node cleanup.cjs    
