@@ -3,11 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "homepage": "https://John-Pastor69.github.io/my-react-app",
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "predeploy": "npm run build",
+    "deploy": "gh-pages -d dist"
   },
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
@@ -25,6 +28,7 @@
     "eslint-plugin-oxlint": "^1.81.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.6",
+    "gh-pages": "^6.3.0",
     "oxlint": "^1.79.0",
     "sass-embedded": "^1.104.1",
     "vite": "^8.2.2"
@@ -33,6 +37,7 @@
     "@firebase/util@1.15.3": true,
     "protobufjs@7.6.6": true,
     "sass-embedded@1.104.1": true,
-    "@emailjs/browser@4.4.1": true
+    "@emailjs/browser@4.4.1": true,
+    "gh-pages@6.3.0": true
   }
 }
