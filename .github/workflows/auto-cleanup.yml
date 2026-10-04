@@ -25,4 +25,4 @@ jobs:
         env:
           # Pulls the secret you saved in Step 2 securely into the script
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-        run: node cleanup.js    
+        run: node cleanup.cjs    
