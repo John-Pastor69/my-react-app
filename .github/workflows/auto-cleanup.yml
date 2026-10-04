@@ -1,0 +1,29 @@
+name: Hourly Database Cleanup
+
+on:
+  schedule:
+    - cron: '0 * * * *' # Runs at minute 0 of every hour
+  workflow_dispatch: # Adds a button in GitHub to run it manually for testing
+
+jobs:
+  delete-expired-reservations:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Firebase Admin
+        # Uses --no-save so it doesn't modify your project's package.json
+        run: npm install firebase-admin --no-save
+
+      - name: Run Cleanup Script
+        env:
+          # Pulls the secret you saved in Step 2 securely into the script
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          TZ: 'Asia/Manila'
+        run: node cleanup.cjs    
