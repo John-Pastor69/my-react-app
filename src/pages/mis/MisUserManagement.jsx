@@ -64,6 +64,7 @@ const getDynamicStatus = (user) => {
 
 const MisUserManagement = () => {
   const [usersData, setUsersData] = useState([]);
+  const [searchQuery, setSearchQuery] = useState(''); // Added search state
   const [isLoading, setIsLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
@@ -144,6 +145,17 @@ const MisUserManagement = () => {
     }
   };
 
+  // Filter users based on search query
+  const filteredUsers = usersData.filter((user) => {
+    const query = searchQuery.toLowerCase();
+    return (
+      (user.name && user.name.toLowerCase().includes(query)) ||
+      (user.email && user.email.toLowerCase().includes(query)) ||
+      (user.role && user.role.toLowerCase().includes(query)) ||
+      (user.officeLocation && user.officeLocation.toLowerCase().includes(query))
+    );
+  });
+
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => getDynamicStatus(u) === 'Active').length;
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase())).length;
@@ -189,16 +201,20 @@ const MisUserManagement = () => {
           <div className="controls-right">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
-              <input type="text" placeholder="Search users..." />
+              <input 
+                type="text" 
+                placeholder="Search users..." 
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
           </div>
         </div>
 
         {actionError && <div className="error-banner">{actionError}</div>}
 
-        {/* Added overflow-x to ensure the table can scroll horizontally without squishing */}
-        <div className="table-scroll-wrapper" style={{ overflowX: 'auto' }}>
-          <table className="user-table" style={{ minWidth: '900px' }}>
+        <div className="table-scroll-wrapper">
+          <table className="user-table">
             <thead>
               <tr>
                 <th>USER</th>
@@ -209,24 +225,24 @@ const MisUserManagement = () => {
               </tr>
             </thead>
             <tbody>
-              {isLoading || loadError || usersData.length === 0 ? (
+              {isLoading || loadError || filteredUsers.length === 0 ? (
                 <tr>
                   <td colSpan={5} className="empty-state-cell">
                     <div className="empty-state">
                       <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
                       <p className="empty-state-title">
-                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users yet'}
+                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users found'}
                       </p>
                       <p className="empty-state-subtitle">
                         {isLoading
                           ? 'Fetching the latest users from the database.'
-                          : loadError || 'Users will appear here once they are registered.'}
+                          : loadError || (searchQuery ? 'Try adjusting your search filters.' : 'Users will appear here once they are registered.')}
                       </p>
                     </div>
                   </td>
                 </tr>
               ) : (
-                usersData.map((user) => {
+                filteredUsers.map((user) => {
                   const status = getDynamicStatus(user);
                   const isActive = status === 'Active';
                   
@@ -252,13 +268,7 @@ const MisUserManagement = () => {
                       </td>
                       <td>{user.officeLocation || '—'}</td>
                       <td>
-                        <span 
-                          className="status-dot"
-                          style={{ 
-                            color: isActive ? '#16a34a' : '#dc2626', 
-                            fontWeight: 600 
-                          }}
-                        >
+                        <span className={`status-dot ${isActive ? 'status-active' : 'status-inactive'}`}>
                           {status}
                         </span>
                       </td>
@@ -282,9 +292,9 @@ const MisUserManagement = () => {
 
         <div className="table-pagination">
           <span className="pagination-text">
-            {usersData.length === 0
+            {filteredUsers.length === 0
               ? 'No users to show'
-              : `Showing 1 to ${usersData.length} of ${usersData.length} users`}
+              : `Showing 1 to ${filteredUsers.length} of ${filteredUsers.length} users`}
           </span>
           <div className="pagination-buttons">
             <button className="page-btn" disabled>Prev</button>
@@ -302,17 +312,11 @@ const MisUserManagement = () => {
               Select a new role for <strong>{roleModalUser.name || roleModalUser.email}</strong>:
             </p>
             
-            <div style={{ margin: '16px 0' }}>
+            <div className="role-select-wrapper">
               <select
                 value={selectedRole}
                 onChange={(e) => setSelectedRole(e.target.value)}
-                style={{
-                  width: '100%',
-                  padding: '10px',
-                  borderRadius: '8px',
-                  border: '1px solid #e2e8f0',
-                  fontSize: '0.875rem'
-                }}
+                className="role-select"
               >
                 {ROLE_OPTIONS.map((opt) => (
                   <option key={opt.value} value={opt.value}>
@@ -332,8 +336,7 @@ const MisUserManagement = () => {
               </button>
               <button
                 type="button"
-                className="btn-danger-solid"
-                style={{ background: '#7c3aed' }}
+                className="btn-primary-solid"
                 onClick={handleSaveRole}
                 disabled={isUpdatingRole}
               >

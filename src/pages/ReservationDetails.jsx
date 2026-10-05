@@ -20,7 +20,7 @@ const ReservationDetails = ({ data }) => {
   const [equipmentMap, setEquipmentMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
 
-  // Real-time listener for this specific reservation doc[cite: 55]
+  // Real-time listener for this specific reservation doc[cite: 15]
   useEffect(() => {
     if (!data?.id) return;
     const unsubscribe = onSnapshot(doc(db, 'reservations', data.id), (docSnap) => {
@@ -31,7 +31,7 @@ const ReservationDetails = ({ data }) => {
     return () => unsubscribe();
   }, [data?.id]);
 
-  // Fetch requestor's actual role to determine if endorser should be skipped[cite: 55]
+  // Fetch requestor's actual role to determine if endorser should be skipped[cite: 15]
   useEffect(() => {
     const fetchRequestorRole = async () => {
       if (!currentData) return;
@@ -61,7 +61,7 @@ const ReservationDetails = ({ data }) => {
     fetchRequestorRole();
   }, [currentData]);
 
-  // Fetch facilities and equipments mapping[cite: 55]
+  // Fetch facilities and equipments mapping[cite: 15]
   useEffect(() => {
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
@@ -80,7 +80,7 @@ const ReservationDetails = ({ data }) => {
 
   if (!currentData) return <div className="loading-text">Loading reservation details...</div>;
 
-  // --- DYNAMIC DATA MAPPING ---[cite: 55]
+  // --- DYNAMIC DATA MAPPING ---[cite: 15]
   const refNo = currentData.refNo || 'N/A';
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
@@ -122,7 +122,7 @@ const ReservationDetails = ({ data }) => {
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
 
-  // --- HIERARCHY & TRACKER LOGIC ---[cite: 55]
+  // --- HIERARCHY & TRACKER LOGIC ---[cite: 15]
   const roleHierarchy = [
     { key: 'requestor', label: 'Requestor Submitted' },
     { key: 'endorser', label: 'Endorser' },
@@ -400,20 +400,16 @@ const ReservationDetails = ({ data }) => {
 
         <div className="history-list">
           {fullHistory.map((log, index) => {
-            const badgeBg = log.state === 'approved' ? '#10b981' : log.state === 'rejected' ? '#ef4444' : '#3b82f6';
-            const iconBg = log.state === 'approved' ? '#d1fae5' : log.state === 'rejected' ? '#fee2e2' : '#dbeafe';
-            const iconColor = log.state === 'approved' ? '#047857' : log.state === 'rejected' ? '#ef4444' : '#1d4ed8';
-
             return (
-              <div key={index} className={`history-item ${log.state}`} style={log.state === 'rejected' ? { borderLeftColor: '#ef4444' } : {}}>
-                <div className="history-icon" style={{ backgroundColor: iconBg, color: iconColor }}>
+              <div key={index} className={`history-item ${log.state}`}>
+                <div className="history-icon">
                   {log.state === 'approved' ? '✓' : log.state === 'rejected' ? '✕' : '🛡️'}
                 </div>
                 <div className="history-content">
                   <div className="history-header">
                     <strong>
                       {log.role}
-                      {log.badge && <span className="action-badge" style={{ backgroundColor: badgeBg }}>{log.badge}</span>}
+                      {log.badge && <span className="action-badge">{log.badge}</span>}
                     </strong>
                     <span className="history-date">{log.date}</span>
                   </div>

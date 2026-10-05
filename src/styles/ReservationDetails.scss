@@ -422,13 +422,30 @@ $danger-red: #ef4444;
             background-color: #d1fae5;
             color: #047857;
           }
+          .history-content .history-header .action-badge {
+            background-color: $success-green;
+          }
         }
 
-        &.pending {
+        &.pending, &.queued {
           border-left-color: $primary-blue;
           .history-icon {
             background-color: #dbeafe;
             color: #1d4ed8;
+          }
+          .history-content .history-header .action-badge {
+            background-color: $primary-blue;
+          }
+        }
+
+        &.rejected {
+          border-left-color: $danger-red;
+          .history-icon {
+            background-color: #fee2e2;
+            color: $danger-red;
+          }
+          .history-content .history-header .action-badge {
+            background-color: $danger-red;
           }
         }
 
