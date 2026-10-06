@@ -36,6 +36,28 @@ const getDatesInRange = (startDateStr, numDays) => {
   return dates;
 };
 
+// --- EVENT DATE RANGE FORMATTER HELPER ---
+const formatEventDateRange = (startDateStr, endDateStr, numDays) => {
+  if (!startDateStr) return 'N/A';
+  if (endDateStr && endDateStr !== startDateStr) {
+    return `${startDateStr} - ${endDateStr}`;
+  }
+  const daysCount = Number(numDays) || 1;
+  if (daysCount <= 1) return startDateStr;
+  
+  let parts = startDateStr.split(/[\/\-]/);
+  if (parts.length !== 3) return startDateStr;
+  const [m, d, y] = parts.map(Number);
+  const current = new Date(y, m - 1, d);
+  current.setDate(current.getDate() + (daysCount - 1));
+  const mm = String(current.getMonth() + 1).padStart(2, '0');
+  const dd = String(current.getDate()).padStart(2, '0');
+  const yy = current.getFullYear();
+  const endFormatted = `${mm}/${dd}/${yy}`;
+  
+  return `${startDateStr} - ${endFormatted}`;
+};
+
 const Calendar = () => {
   // 1. STATE
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -425,7 +447,12 @@ const Calendar = () => {
                           {historySelectedRequest.fullData.eventType ? (Array.isArray(historySelectedRequest.fullData.eventType) ? historySelectedRequest.fullData.eventType.join(', ') : historySelectedRequest.fullData.eventType) : 'N/A'}
                         </div>
                       </div>
-                      <div><div className="details-label">Event Date</div><div className="details-value">{historySelectedRequest.fullData.eventDate || 'N/A'}</div></div>
+                      <div>
+                        <div className="details-label">Event Date</div>
+                        <div className="details-value">
+                          {formatEventDateRange(historySelectedRequest.fullData.eventDate, historySelectedRequest.fullData.endDate, historySelectedRequest.fullData.days)}
+                        </div>
+                      </div>
                       <div><div className="details-label">Time</div><div className="details-value">{historySelectedRequest.time || 'N/A – N/A'}</div></div>
                       <div className="details-full-width"><div className="details-label">Expected Attendees</div><div className="details-value">{historySelectedRequest.fullData.expectedParticipants || 'N/A'}</div></div>
                       <div className="details-full-width"><div className="details-label">Event Description / Purpose</div><div className="details-value">{historySelectedRequest.fullData.purpose || 'N/A'}</div></div>
@@ -473,7 +500,12 @@ const Calendar = () => {
                     <div><div className="details-label">Reference No.</div><div className="details-value summary-ref">{historySelectedRequest.fullData.refNo || 'N/A'}</div></div>
                     <div><div className="details-label">Facility</div><div className="details-value">{historySelectedRequest.facility || 'None'}</div></div>
                     <div><div className="details-label">Equipment</div><div className="details-value">{historySelectedRequest.equipment || 'N/A'}</div></div>
-                    <div><div className="details-label">Event Date</div><div className="details-value">{historySelectedRequest.fullData.eventDate || 'N/A'}</div></div>
+                    <div>
+                      <div className="details-label">Event Date</div>
+                      <div className="details-value">
+                        {formatEventDateRange(historySelectedRequest.fullData.eventDate, historySelectedRequest.fullData.endDate, historySelectedRequest.fullData.days)}
+                      </div>
+                    </div>
                     <div><div className="details-label">Duration</div><div className="details-value">{historySelectedRequest.fullData.durationHours ? `${historySelectedRequest.fullData.durationHours} Hours` : 'N/A – N/A'}</div></div>
                     <div><div className="details-label">Attendees</div><div className="details-value">{historySelectedRequest.fullData.expectedParticipants || 'N/A'}</div></div>
                     <div><div className="details-label">Endorsed By</div><div className="details-value">{historySelectedRequest.endorser !== 'N/A' ? `${historySelectedRequest.endorser} (${historySelectedRequest.fullData.endorserDesignation || 'N/A'})` : 'N/A'}</div></div>
