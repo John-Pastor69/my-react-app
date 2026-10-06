@@ -136,14 +136,6 @@ const Calendar = () => {
       const datesRange = getDatesInRange(data.eventDate || data.date, data.days || 1);
 
       return datesRange.map((dateStr, index) => {
-        let positionClass = '';
-        const total = datesRange.length;
-        if (total > 1) {
-          if (index === 0) positionClass = 'multi-start';
-          else if (index === total - 1) positionClass = 'multi-end';
-          else positionClass = 'multi-middle';
-        }
-
         return {
           id: `${data.id}-${index}`,
           originalId: data.id,
@@ -151,11 +143,11 @@ const Calendar = () => {
           date: dateStr,
           status: uiStatusColor, 
           time: (data.startTime && data.endTime) ? `${data.startTime} - ${data.endTime}` : "N/A",
+          startTimeOnly: data.startTime || "",
           facility: facilityDisplay,
           equipment: equipmentRequested,
           requestor: formatName(data.fullName),
           endorser: data.endorserName ? formatName(data.endorserName) : 'N/A',
-          positionClass,
           isStart: index === 0,
           fullData: data 
         };
@@ -263,10 +255,12 @@ const Calendar = () => {
                 {daysEvents.map(event => (
                   <div 
                     key={event.id} 
-                    className={`event-pill pill-${event.status} ${event.positionClass}`}
-                    data-days={event.fullData.days > 1 && event.isStart ? `${event.fullData.days} Days` : ''}
+                    className={`event-pill pill-${event.status}`}
                     title={event.title}
                   >
+                    {event.startTimeOnly && event.startTimeOnly !== "N/A" && (
+                      <span className="event-pill-time">{event.startTimeOnly}</span>
+                    )}
                     <span className="event-pill-title">{event.title}</span>
                   </div>
                 ))}
@@ -279,7 +273,8 @@ const Calendar = () => {
       {/* --- RIGHT: SIDEBAR DETAILS --- */}
       <div className="calendar-sidebar">
         {(() => {
-          const sidebarEvents = events.filter(e => e.date === selectedDate && e.isStart); // Ensure we only display unique events in sidebar
+          // Display the reservation details no matter which spanned day was clicked
+          const sidebarEvents = events.filter(e => e.date === selectedDate); 
           const approvedCount = sidebarEvents.filter(e => e.status === 'green').length;
           const pendingCount = sidebarEvents.filter(e => e.status === 'yellow').length;
           const rejectedCount = sidebarEvents.filter(e => e.status === 'red').length;

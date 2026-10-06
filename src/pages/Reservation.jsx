@@ -91,7 +91,7 @@ const Reservation = () => {
 
   // --- FORM STATES ---
   const [formData, setFormData] = useState(initialFormState);
-  const [days, setDays] = useState(1); // Default to 1 day
+  const [days, setDays] = useState(0); // Default to 0 days
   const [aircon, setAircon] = useState(false); // Default to off
   const [eventDate, setEventDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -267,7 +267,7 @@ const Reservation = () => {
     }));
   };
 
-  const updateDays = (amount) => setDays(prev => Math.max(1, prev + amount));
+  const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount)); // Changed to 0 minimum
 
   const updateEquip = (item, delta) => {
     if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
@@ -355,7 +355,7 @@ const Reservation = () => {
   // --- ACTION HANDLERS ---
   const handleDiscard = () => {
     setFormData(initialFormState);
-    setDays(1);
+    setDays(0); // Reset to 0
     setAircon(false);
     setEventDate('');
     setStartTime('');
