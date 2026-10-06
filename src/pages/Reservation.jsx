@@ -58,6 +58,32 @@ const formatName = (fullName) => {
   return name;
 };
 
+// Helper to generate all date strings in a multi-day range (MM/DD/YYYY)
+const getDatesInRange = (startDateStr, numDays) => {
+  const dates = [];
+  if (!startDateStr) return dates;
+  const [m, d, y] = startDateStr.split('/').map(Number);
+  if (!m || !d || !y) return [startDateStr];
+  
+  const current = new Date(y, m - 1, d);
+  const totalDays = Math.max(1, numDays);
+  
+  for (let i = 0; i < totalDays; i++) {
+    const mm = String(current.getMonth() + 1).padStart(2, '0');
+    const dd = String(current.getDate()).padStart(2, '0');
+    const yy = current.getFullYear();
+    dates.push(`${mm}/${dd}/${yy}`);
+    current.setDate(current.getDate() + 1);
+  }
+  return dates;
+};
+
+// Helper to calculate end date string from start date and days
+const calculateEndDate = (startDateStr, numDays) => {
+  const dates = getDatesInRange(startDateStr, numDays);
+  return dates[dates.length - 1] || startDateStr;
+};
+
 const Reservation = () => {
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
@@ -65,7 +91,7 @@ const Reservation = () => {
 
   // --- FORM STATES ---
   const [formData, setFormData] = useState(initialFormState);
-  const [days, setDays] = useState(0);
+  const [days, setDays] = useState(1); // Default to 1 day
   const [aircon, setAircon] = useState(false); // Default to off
   const [eventDate, setEventDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -168,7 +194,6 @@ const Reservation = () => {
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
-      // Map to clean format and filter for endorsers
       const endorsers = users
         .filter(user => user.role && user.role.toLowerCase() === 'endorser')
         .map(user => ({
@@ -219,7 +244,6 @@ const Reservation = () => {
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
 
-    // Trigger Endorser Dropdown Logic
     if (field === 'endorserName') {
       setShowEndorserDropdown(value.length > 0);
     }
@@ -228,7 +252,7 @@ const Reservation = () => {
   const handleEndorserSelect = (endorser) => {
     setFormData(prev => ({
       ...prev,
-      endorserName: endorser.cleanName, // Populate with the cleaned First Last name
+      endorserName: endorser.cleanName,
       endorserEmail: endorser.email
     }));
     setShowEndorserDropdown(false);
@@ -243,7 +267,7 @@ const Reservation = () => {
     }));
   };
 
-  const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount));
+  const updateDays = (amount) => setDays(prev => Math.max(1, prev + amount));
 
   const updateEquip = (item, delta) => {
     if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
@@ -251,6 +275,18 @@ const Reservation = () => {
     const newSelected = currentSelected + delta;
     if (newSelected < 0 || newSelected > item.computedAvailable) return;
     setSelectedEquip(prev => ({ ...prev, [item.id]: newSelected }));
+  };
+
+  const handleEquipInputChange = (item, val) => {
+    if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
+    if (val === '') {
+      setSelectedEquip(prev => ({ ...prev, [item.id]: 0 }));
+      return;
+    }
+    const num = parseInt(val, 10);
+    if (isNaN(num) || num < 0) return;
+    const capped = Math.min(num, item.computedAvailable);
+    setSelectedEquip(prev => ({ ...prev, [item.id]: capped }));
   };
 
   const handleDateChange = (e) => {
@@ -319,7 +355,7 @@ const Reservation = () => {
   // --- ACTION HANDLERS ---
   const handleDiscard = () => {
     setFormData(initialFormState);
-    setDays(0);
+    setDays(1);
     setAircon(false);
     setEventDate('');
     setStartTime('');
@@ -351,7 +387,6 @@ const Reservation = () => {
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
     const hasFacility = formData.facilities.length > 0;
 
-    // Required Fields Validation (Schedule is optional if no facility is booked)
     if (!formData.fullName || !formData.emailAddress || !eventDate || (hasFacility && (!startTime || !endTime))) {
       setCustomAlert({
         title: 'Missing Fields',
@@ -363,7 +398,15 @@ const Reservation = () => {
       return;
     }
 
-    // Endorser Validation for Requestors
+    if (aircon && (!formData.airconOnTime || !formData.airconOffTime)) {
+      setCustomAlert({
+        title: 'Aircon Schedule Required',
+        message: 'Please provide both the Aircon ON Time and Aircon OFF Time since air conditioning is enabled.',
+        isSuccess: false
+      });
+      return;
+    }
+
     if (userRole === 'requestor' || userRole === 'user') {
       if (!formData.endorserName || !formData.endorserDesignation || !formData.endorserEmail) {
         setCustomAlert({
@@ -375,7 +418,6 @@ const Reservation = () => {
       }
     }
 
-    // Selection Validation
     if (!hasFacility && !hasEquipment) {
       setCustomAlert({
         title: 'Selection Required',
@@ -386,14 +428,21 @@ const Reservation = () => {
     }
 
     try {
-      // 1. OVERLAP CHECK (Only if facility is booked)
+      // 1. MULTI-DAY OVERLAP CHECK (Only if facility is booked)
       if (hasFacility && startTime && endTime) {
-        const q = query(collection(db, 'reservations'), where('eventDate', '==', eventDate));
-        const snap = await getDocs(q);
+        const newReservationDates = getDatesInRange(eventDate, days);
+        const snap = await getDocs(collection(db, 'reservations'));
         
         const isOverlapping = snap.docs.some(d => {
           const res = d.data();
           if (res.status === 'Rejected' || res.status === 'Cancelled') return false;
+
+          const existingDays = res.days || 1;
+          const existingDates = getDatesInRange(res.eventDate, existingDays);
+          
+          // Check if any date overlaps between the two reservations
+          const dateOverlap = newReservationDates.some(date => existingDates.includes(date));
+          if (!dateOverlap) return false;
 
           const startA = parseTimeToDecimal(startTime);
           const endA = parseTimeToDecimal(endTime);
@@ -416,10 +465,10 @@ const Reservation = () => {
         }
       }
 
-      // Generate a Unique Reference Number (e.g. RES-2026-0814)
       const generatedRefNo = `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+      const calculatedEndDate = calculateEndDate(eventDate, days);
 
-      // 2. SUBMIT RESERVATION WITH REFERENCE NUMBER
+      // 2. SUBMIT RESERVATION WITH END DATE
       await addDoc(collection(db, 'reservations'), {
         refNo: generatedRefNo,
         ...formData,
@@ -427,6 +476,7 @@ const Reservation = () => {
         userEmail: currentUser.email,   
         userRole: userRole,
         eventDate,
+        endDate: calculatedEndDate,
         startTime: startTime || 'N/A',
         endTime: endTime || 'N/A',
         durationHours,
@@ -437,27 +487,28 @@ const Reservation = () => {
         createdAt: new Date().toISOString()
       });
 
-      // --- SEND EMAIL NOTIFICATION TO ENDORSER ---
       if (formData.endorserEmail) {
         await sendReservationEmail(
           formData.endorserEmail,
           formData.endorserName,
-          { eventName: formData.eventName, eventDate: eventDate }, // Pass specific fields mapped for the template
+          { eventName: formData.eventName, eventDate: eventDate },
           `A new reservation request for "${formData.eventName}" has been submitted by ${formData.fullName} and requires your endorsement.`
         );
       }
-      // -------------------------------------------
 
-      // 3. SYNC INVENTORY STATUS BACK TO DB
-      const batch = writeBatch(db);
-      const updateTimestamp = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
-      
-      for (const [eqId, qty] of Object.entries(selectedEquip)) {
-        if (qty > 0) {
-          batch.update(doc(db, 'equipments', eqId), { lastUpdated: updateTimestamp });
+      try {
+        const batch = writeBatch(db);
+        const updateTimestamp = new Date().toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
+        
+        for (const [eqId, qty] of Object.entries(selectedEquip)) {
+          if (qty > 0) {
+            batch.update(doc(db, 'equipments', eqId), { lastUpdated: updateTimestamp });
+          }
         }
+        await batch.commit();
+      } catch (inventoryErr) {
+        console.warn("Inventory update skipped due to permissions:", inventoryErr);
       }
-      await batch.commit();
 
       handleDiscard(); 
       setCustomAlert({
@@ -745,7 +796,7 @@ const Reservation = () => {
         <div className="info-box green duration-box">
           <i className="ph ph-info"></i>
           <div>
-            <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s)</strong>
+            <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s) {eventDate && days > 1 ? `(Ends: ${calculateEndDate(eventDate, days)})` : ''}</strong>
           </div>
         </div>
       </div>
@@ -845,7 +896,13 @@ const Reservation = () => {
                         onClick={() => updateEquip(item, -1)}
                         disabled={count <= 0 || isLocked}
                       >-</button>
-                      <input type="text" value={count} readOnly />
+                      <input 
+                        type="text" 
+                        inputMode="numeric"
+                        value={count} 
+                        onChange={(e) => handleEquipInputChange(item, e.target.value)}
+                        disabled={isLocked} 
+                      />
                       <button 
                         type="button" 
                         onClick={() => updateEquip(item, 1)}
@@ -881,7 +938,7 @@ const Reservation = () => {
 
             <div className="time-inputs">
               <div className="input-group">
-                <label>Aircon ON Time</label>
+                <label>Aircon ON Time {aircon && <span className="req">*</span>}</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
                   <input 
@@ -899,7 +956,7 @@ const Reservation = () => {
               <i className="ph ph-arrow-right arrow"></i>
               
               <div className="input-group">
-                <label>Aircon OFF Time</label>
+                <label>Aircon OFF Time {aircon && <span className="req">*</span>}</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
                   <input 
@@ -973,7 +1030,7 @@ const Reservation = () => {
           <div className="modal-card">
             <h3 className="modal-title error">Schedule Conflict</h3>
             <p className="modal-message">
-              The selected facility or room is already reserved on <strong>{eventDate}</strong> during an overlapping time window. Please adjust your <strong>Start/End Time</strong> or select a different facility.
+              The selected facility or room is already reserved during the selected multi-day time window. Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
             </p>
             <div className="modal-actions">
               <button onClick={() => setShowOverlapWarning(false)} className="modal-button">

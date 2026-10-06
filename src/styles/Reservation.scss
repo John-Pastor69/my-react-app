@@ -782,6 +782,7 @@ $orange-main: #F59E0B;
   z-index: 40; 
 }
 
+/* FIX: Constrain popup sizing and grid layouts to prevent over-stretching */
 .custom-calendar-popup {
   position: absolute; 
   top: calc(100% + 8px); 
@@ -793,6 +794,9 @@ $orange-main: #F59E0B;
   border-radius: 9px; 
   background: #fff;
   box-shadow: 0 12px 28px rgba(15,23,42,.14);
+  
+  /* Prevent child grids from growing abnormally tall */
+  height: auto;
 
   .calendar-header { 
     display: flex; 
@@ -819,7 +823,9 @@ $orange-main: #F59E0B;
 
   .calendar-grid { 
     display: grid; 
-    grid-template-columns: repeat(7,minmax(0,1fr)); 
+    grid-template-columns: repeat(7, minmax(0, 1fr)); 
+    /* Fix row height instead of letting it default to auto-stretch */
+    grid-auto-rows: max-content; 
     gap: 0.25rem; 
     text-align: center;
 
@@ -835,6 +841,9 @@ $orange-main: #F59E0B;
       border-radius: 6px; 
       font-size: var(--font-body); 
       cursor: pointer; 
+      /* Keep cells compact */
+      height: fit-content;
+      line-height: 1;
 
       &:hover:not(.empty) { 
         background: #EFF6FF; 

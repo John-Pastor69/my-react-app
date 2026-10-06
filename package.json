@@ -15,6 +15,7 @@
   "dependencies": {
     "@emailjs/browser": "^4.4.1",
     "firebase": "^12.18.0",
+    "html2pdf.js": "^0.14.0",
     "lucide-react": "^1.46.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
@@ -38,6 +39,7 @@
     "protobufjs@7.6.6": true,
     "sass-embedded@1.104.1": true,
     "@emailjs/browser@4.4.1": true,
-    "gh-pages@6.3.0": true
+    "gh-pages@6.3.0": true,
+    "html2pdf.js@0.14.0": true
   }
 }

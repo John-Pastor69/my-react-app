@@ -4,7 +4,7 @@ import { db } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
 
 const ROLE_OPTIONS = [
-  { value: 'mis', label: 'MIS Admin' },
+  { value: 'mis', label: 'MIS' },
   { value: 'building admin', label: 'Building Admin' },
   { value: 'school admin', label: 'School Admin' },
   { value: 'academic head', label: 'Academic Head' },
@@ -14,8 +14,8 @@ const ROLE_OPTIONS = [
 ];
 
 const ROLE_LABELS = {
-  'mis': 'MIS Admin',
-  'mis admin': 'MIS Admin',
+  'mis': 'MIS',
+  'mis admin': 'MIS',
   'building admin': 'Building Admin',
   'school admin': 'School Admin',
   'academic head': 'Academic Head',
@@ -25,7 +25,7 @@ const ROLE_LABELS = {
   'user': 'Requestor'
 };
 
-const ADMIN_ROLES = ['mis', 'mis admin', 'building admin', 'school admin'];
+const ADMIN_ROLES = ['mis', 'mis admin'];
 
 const formatRole = (role) => {
   if (!role) return 'Requestor';
@@ -83,6 +83,12 @@ const MisUserManagement = () => {
             // Automatically strip out "(Student)" from the name
             let cleanName = data.name || '';
             cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+            
+            // Format name from "Last, First Middle" to "First Middle Last"
+            if (cleanName.includes(',')) {
+              const parts = cleanName.split(',');
+              cleanName = `${parts[1].trim()} ${parts[0].trim()}`;
+            }
 
             return { id: d.id, ...data, name: cleanName };
           })
@@ -158,7 +164,7 @@ const MisUserManagement = () => {
 
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => getDynamicStatus(u) === 'Active').length;
-  const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase())).length;
+  const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase().trim())).length;
 
   return (
     <div className="user-management-content">

@@ -1,3 +1,4 @@
+import html2pdf from 'html2pdf.js';
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../Firebase';
@@ -12,6 +13,27 @@ const formatName = (fullName) => {
     name = `${parts[1].trim()} ${parts[0].trim()}`;
   }
   return name;
+};
+
+// --- EVENT DATE RANGE FORMATTER HELPER ---
+const formatEventDateRange = (startDateStr, numDays) => {
+  if (!startDateStr) return 'N/A';
+  let parts = startDateStr.split(/[\/\-]/);
+  if (parts.length !== 3) return startDateStr;
+  const [m, d, y] = parts.map(Number);
+  const startFormatted = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}-${y}`;
+  
+  const daysCount = Number(numDays) || 1;
+  if (daysCount <= 1) return startFormatted;
+
+  const current = new Date(y, m - 1, d);
+  current.setDate(current.getDate() + (daysCount - 1));
+  const mm = String(current.getMonth() + 1).padStart(2, '0');
+  const dd = String(current.getDate()).padStart(2, '0');
+  const yy = current.getFullYear();
+  const endFormatted = `${mm}-${dd}-${yy}`;
+
+  return `${startFormatted} - ${endFormatted}`;
 };
 
 const ReservationDetails = ({ data }) => {
@@ -84,7 +106,7 @@ const ReservationDetails = ({ data }) => {
   const refNo = currentData.refNo || 'N/A';
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
-  const eventDate = currentData.eventDate || 'N/A';
+  const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
   const eventTime = `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
@@ -191,6 +213,7 @@ const ReservationDetails = ({ data }) => {
     role: 'Requestor',
     badge: 'Submitted',
     date: dateSubmitted,
+    approverName: requestorName,
     text: `Reservation request submitted for ${eventName}.`,
     state: 'approved'
   }];
@@ -198,6 +221,7 @@ const ReservationDetails = ({ data }) => {
   const fullHistory = [...baseHistory, ...dbHistoryLogs];
 
   const bannerStatusClass = currentData.status === 'Approved' ? 'approved' : currentData.status === 'Rejected' ? 'rejected' : 'pending';
+  const isApprovedStatus = currentData.status === 'Approved';
 
   return (
     <div className="mis-reservation-details-content">
@@ -363,6 +387,73 @@ const ReservationDetails = ({ data }) => {
               )}
             </div>
           </div>
+
+          {/* Download PDF Button */}
+          <button 
+            className={`download-pdf-btn ${isApprovedStatus ? 'is-approved' : ''}`}
+            disabled={!isApprovedStatus}
+            onClick={() => {
+              if (isApprovedStatus) {
+                const element = document.querySelector('.mis-reservation-details-content');
+
+                // Create a temporary copy specifically for the PDF
+                const pdfElement = element.cloneNode(true);
+
+                // Remove sections that should not be included
+                pdfElement.querySelector('.tracker-card')?.remove();
+                pdfElement.querySelector('.history-card')?.remove();
+                pdfElement.querySelector('.download-pdf-btn')?.remove();
+
+                // Create an isolated PDF container
+                const pdfContainer = document.createElement('div');
+
+                pdfContainer.style.position = 'fixed';
+                pdfContainer.style.left = '-10000px';
+                pdfContainer.style.top = '0';
+                pdfContainer.style.width = `${element.offsetWidth}px`;
+                pdfContainer.style.background = '#ffffff';
+                pdfContainer.style.padding = '20px';
+                pdfContainer.style.zIndex = '-1';
+
+                pdfContainer.appendChild(pdfElement);
+                document.body.appendChild(pdfContainer);
+
+                const options = {
+                  margin: 10,
+                  filename: `${refNo}.pdf`,
+                  image: {
+                    type: 'jpeg',
+                    quality: 0.98
+                  },
+                  html2canvas: {
+                    scale: 2,
+                    useCORS: true,
+                    backgroundColor: '#ffffff',
+                    logging: false
+                  },
+                  jsPDF: {
+                    unit: 'mm',
+                    format: 'a4',
+                    orientation: 'portrait'
+                  }
+                };
+
+                html2pdf()
+                  .set(options)
+                  .from(pdfElement)
+                  .save()
+                  .then(() => {
+                    document.body.removeChild(pdfContainer);
+                  })
+                  .catch((error) => {
+                    console.error('PDF generation failed:', error);
+                    document.body.removeChild(pdfContainer);
+                  });
+              }
+            }}
+          >
+            📄 Download PDF
+          </button>
         </div>
       </div>
 
@@ -411,7 +502,10 @@ const ReservationDetails = ({ data }) => {
                       {log.role}
                       {log.badge && <span className="action-badge">{log.badge}</span>}
                     </strong>
-                    <span className="history-date">{log.date}</span>
+                    <div className="history-meta-right">
+                      <span className="history-date">{log.date}</span>
+                      {log.approverName && <div className="history-approver-name">{log.approverName}</div>}
+                    </div>
                   </div>
                   <p className="word-break">{log.text}</p>
                 </div>
@@ -420,14 +514,16 @@ const ReservationDetails = ({ data }) => {
           })}
           {fullHistory.length === 1 && currentData.status !== 'Rejected' && currentData.status !== 'Approved' && (
              <div className="history-item pending">
-               <div className="history-icon">🛡️</div>
+               <div className="history-icon">🛡</div>
                <div className="history-content">
                  <div className="history-header">
                    <strong>
                      Pending Next Action
                      <span className="action-badge">Pending</span>
                    </strong>
-                   <span className="history-date">Awaiting</span>
+                   <div className="history-meta-right">
+                     <span className="history-date">Awaiting</span>
+                   </div>
                  </div>
                  <p>Reviewing facility booking and awaiting next approval.</p>
                </div>

@@ -5,7 +5,6 @@ import "../styles/Approval.scss";
 import PendingRequest from './PendingRequest';
 
 // --- NAME FORMATTER HELPER ---
-// Converts "LastName, FirstName MiddleName (Student)" to "FirstName MiddleName LastName"
 const formatName = (fullName) => {
     if (!fullName) return 'Unknown User';
     let name = fullName.replace(/\s*\(Student\)/i, '').trim();
@@ -29,13 +28,11 @@ const Approval = () => {
 
     // --- REAL-TIME FIRESTORE LISTENERS ---
     useEffect(() => {
-        // Listen to all reservations
         const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
             const resList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             setReservationsData(resList);
         }, (error) => console.error('Failed to load reservations:', error));
 
-        // Listen to all users
         const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
             const usersList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             setUsersData(usersList);
@@ -67,6 +64,11 @@ const Approval = () => {
         return () => unsubscribeAuth();
     }, []);
 
+    // --- GET CURRENT LOGGED-IN USER NAME ---
+    const currentUser = auth.currentUser;
+    const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};
+    const currentUserName = formatName(currentUserDoc.name || '');
+
     // --- MAP & JOIN DATA ---
     const approvalData = reservationsData.map((res) => {
         const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
@@ -97,24 +99,31 @@ const Approval = () => {
         const determineUserStatus = () => {
             if (!approverRoleKey) return null;
             
-            // Check if current user already acted
             const myRecord = res.approvals?.[approverRoleKey];
             if (myRecord?.status === 'approved') return 'approved';
             if (myRecord?.status === 'rejected') return 'rejected';
 
-            // If overall is completed, no pending action needed
             if (res.status === 'Rejected' || res.status === 'Approved') return null;
+
+            const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
+            const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
+
+            // Endorser specific check: matches the endorser name set up on the reservation, and must NOT be a staff requestor
+            if (approverRoleKey === 'endorser') {
+                if (isStaffRequestor) return null;
+                if (!res.endorserName) return null;
+                const cleanEndorserName = formatName(res.endorserName);
+                if (cleanEndorserName.toLowerCase() !== currentUserName.toLowerCase()) {
+                    return null;
+                }
+                return 'your-turn';
+            }
 
             const roleHierarchy = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
             const myIndex = roleHierarchy.indexOf(approverRoleKey);
             if (myIndex <= 0) return null;
 
-            const reqRole = (requestor.role || 'requestor').toLowerCase().trim();
-            const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
             const hasEndorser = !!res.endorserName;
-
-            // FIX: If current user is an endorser and it's a staff/endorser requestor, skip endorser step
-            if (approverRoleKey === 'endorser' && isStaffRequestor) return null;
 
             const prevStepKey = roleHierarchy[myIndex - 1];
             let prevIsApproved = false;
@@ -151,12 +160,11 @@ const Approval = () => {
             rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
             fullData: res 
         };
-    }).sort((a, b) => b.rawDate - a.rawDate); 
+    }).filter(req => req.userActionStatus === 'your-turn')
+      .sort((a, b) => b.rawDate - a.rawDate); 
 
-    // --- COUNTS FOR SUMMARY CARDS (Based purely on User's Individual Action) ---
-    const pendingCount = approvalData.filter((req) => req.userActionStatus === 'your-turn').length;
-    const approvedCount = approvalData.filter((req) => req.userActionStatus === 'approved').length;
-    const rejectedCount = approvalData.filter((req) => req.userActionStatus === 'rejected').length;
+    // --- COUNTS FOR SUMMARY CARDS ---
+    const pendingCount = approvalData.length;
 
     // --- SEARCH & FILTER LOGIC ---
     const handleSearch = (e) => {
@@ -190,22 +198,6 @@ const Approval = () => {
                     <div className="summary-info">
                         <span>Pending</span>
                         <strong>{pendingCount}</strong>
-                    </div>
-                </div>
-
-                <div className="summary-card">
-                    <div className="summary-icon approved">✓</div>
-                    <div className="summary-info">
-                        <span>Approved</span>
-                        <strong>{approvedCount}</strong>
-                    </div>
-                </div>
-
-                <div className="summary-card">
-                    <div className="summary-icon rejected">×</div>
-                    <div className="summary-info">
-                        <span>Rejected</span>
-                        <strong>{rejectedCount}</strong>
                     </div>
                 </div>
             </div>
@@ -248,8 +240,6 @@ const Approval = () => {
                                             <strong>
                                                 {request.event}
                                                 {request.userActionStatus === 'your-turn' && <span className="status-dot pending" title="Your Turn to Approve"></span>}
-                                                {request.userActionStatus === 'approved' && <span className="status-dot approved" title="You Approved"></span>}
-                                                {request.userActionStatus === 'rejected' && <span className="status-dot rejected" title="You Rejected"></span>}
                                             </strong>
                                             <p>Submitted {request.submit} · {request.equip}</p>
                                         </div>

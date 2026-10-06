@@ -43,43 +43,29 @@ export default function App() {
     // 1. Detect existing Firebase session on load/refresh
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
+        setIsAuthenticated(true);
+        setIsAuthLoading(false); // Dismiss loading screen immediately
+
+        // Run Firestore read and status update in the background without blocking the UI
         try {
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
 
           if (userSnap.exists()) {
-            const userData = userSnap.data();
-            setUserRole(userData.role || 'requestor');
-            setIsAuthenticated(true);
-
-            // Set status to Active in Firestore on session load
-            await updateDoc(userRef, {
-              status: 'Active',
-              lastActive: new Date().toISOString()
-            });
-
-            // Heartbeat: Ping Firestore every 30 seconds to keep Active fresh
-            heartbeatInterval = setInterval(async () => {
-              if (auth.currentUser) {
-                await updateDoc(doc(db, 'users', auth.currentUser.uid), {
-                  status: 'Active',
-                  lastActive: new Date().toISOString()
-                }).catch(err => console.error("Heartbeat failed:", err));
-              }
-            }, 30000);
-
-          } else {
-            setIsAuthenticated(false);
+            setUserRole(userSnap.data().role || 'requestor');
           }
+
+          await updateDoc(userRef, {
+            status: 'Active',
+            lastActive: new Date().toISOString()
+          });
         } catch (error) {
-          console.error("Error fetching user session:", error);
-          setIsAuthenticated(false);
+          console.error("Error updating background session:", error);
         }
       } else {
         setIsAuthenticated(false);
+        setIsAuthLoading(false);
       }
-      
-      setIsAuthLoading(false);
     });
 
     // 2. Handle standard tab closures and iOS Safari tab closures

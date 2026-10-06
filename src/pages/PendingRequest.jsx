@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, deleteField, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, updateDoc, setDoc, arrayUnion, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/PendingRequest.scss';
-
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -14,6 +13,27 @@ const formatName = (fullName) => {
     name = `${parts[1].trim()} ${parts[0].trim()}`;
   }
   return name;
+};
+
+// --- EVENT DATE RANGE FORMATTER HELPER ---
+const formatEventDateRange = (startDateStr, numDays) => {
+  if (!startDateStr) return 'N/A';
+  let parts = startDateStr.split(/[\/\-]/);
+  if (parts.length !== 3) return startDateStr;
+  const [m, d, y] = parts.map(Number);
+  const startFormatted = `${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}-${y}`;
+  
+  const daysCount = Number(numDays) || 1;
+  if (daysCount <= 1) return startFormatted;
+
+  const current = new Date(y, m - 1, d);
+  current.setDate(current.getDate() + (daysCount - 1));
+  const mm = String(current.getMonth() + 1).padStart(2, '0');
+  const dd = String(current.getDate()).padStart(2, '0');
+  const yy = current.getFullYear();
+  const endFormatted = `${mm}-${dd}-${yy}`;
+
+  return `${startFormatted} - ${endFormatted}`;
 };
 
 const PendingRequest = ({ data }) => {
@@ -27,7 +47,7 @@ const PendingRequest = ({ data }) => {
   const [remarks, setRemarks] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [customAlert, setCustomAlert] = useState(null); 
-  const [showUndoConfirm, setShowUndoConfirm] = useState(false);
+  const [pendingAction, setPendingAction] = useState(null); // 'approved' or 'rejected' for confirmation modal
   
   // State for the currently logged-in user (Approver)
   const [approver, setApprover] = useState({
@@ -92,7 +112,6 @@ const PendingRequest = ({ data }) => {
             const cleanName = formatName(userData.name);
             const rawRole = userData.role || 'user';
             
-            // Format Role for display 
             let displayRole = rawRole.replace(/_/g, ' ').toLowerCase().trim();
             if (displayRole === 'mis' || displayRole === 'osa') {
               displayRole = displayRole.toUpperCase();
@@ -133,13 +152,13 @@ const PendingRequest = ({ data }) => {
     return () => { unsubFac(); unsubEq(); };
   }, []);
 
-  if (!currentData) return <div style={{ padding: '24px' }}>Loading request details...</div>;
+  if (!currentData) return <div className="loading-container">Loading request details...</div>;
 
   // --- DYNAMIC DATA MAPPING ---
   const refNo = currentData.refNo || 'N/A';
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
-  const eventDate = currentData.eventDate || 'N/A';
+  const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
   const eventTime = `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
@@ -230,7 +249,7 @@ const PendingRequest = ({ data }) => {
         prevIsApproved = currentData.approvals?.[prevStepKey]?.status === 'approved';
       }
 
-      if (prevIsApproved && step.key === approver.roleKey) {
+      if (prevIsApproved && step.key === approver.roleKey && currentData.status !== 'Rejected') {
         state = 'your-turn';
         statusText = 'Your Turn';
       } else if (!prevIsApproved) {
@@ -239,11 +258,11 @@ const PendingRequest = ({ data }) => {
       }
     }
 
-    return { label: step.label, status: statusText, date: isApproved ? actionDate : 'Pending', state: state };
+    return { label: step.label, status: statusText, date: isApproved || isRejected ? actionDate : 'Pending', state: state };
   });
 
   const myStepIndex = roleHierarchy.findIndex(s => s.key === approver.roleKey);
-  const canAct = myStepIndex !== -1 && trackerSteps[myStepIndex].state === 'your-turn';
+  const canAct = myStepIndex !== -1 && trackerSteps[myStepIndex].state === 'your-turn' && !currentData.approvals?.[approver.roleKey];
 
   const myApprovalRecord = currentData.approvals?.[approver.roleKey];
   const myApprovalStatus = myApprovalRecord?.status;
@@ -252,6 +271,7 @@ const PendingRequest = ({ data }) => {
     role: 'Requestor',
     badge: 'Submitted',
     date: dateSubmitted,
+    approverName: requestorName,
     text: `Reservation request submitted for ${eventName}.`,
     state: 'approved'
   }];
@@ -260,7 +280,8 @@ const PendingRequest = ({ data }) => {
 
   // --- ACTION HANDLERS ---
   const handleAction = async (actionType) => {
-    if ((!canAct && !myApprovalStatus) || isProcessing) return;
+    setPendingAction(null);
+    if (!canAct || isProcessing) return;
     setIsProcessing(true);
 
     try {
@@ -276,6 +297,7 @@ const PendingRequest = ({ data }) => {
         role: approver.role,
         badge: isApprove ? 'Approved' : 'Rejected',
         date: dateTimeString,
+        approverName: approver.name,
         text: remarks.trim() ? remarks : (isApprove ? 'Approved reservation request without remarks.' : 'Rejected reservation request.'),
         state: isApprove ? 'approved' : 'rejected'
       };
@@ -293,6 +315,23 @@ const PendingRequest = ({ data }) => {
       }
 
       await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
+
+      // --- AUTO-SYNC TO HISTORY COLLECTION UPON SCHOOL ADMIN APPROVAL ---
+      if (isApprove && approver.roleKey === 'school admin') {
+        try {
+          const updatedResData = {
+            ...currentData,
+            status: 'Approved'
+          };
+          const { id, approvals, historyLogs, ...cleanHistoryData } = updatedResData;
+
+          // Writes/overwrites directly to the history collection excluding approvals and historyLogs, using the same reservation ID
+          await setDoc(doc(db, 'history', currentData.id), cleanHistoryData, { merge: true });
+        } catch (historyErr) {
+          console.error('Failed to backup approved reservation to history:', historyErr);
+        }
+      }
+      // -----------------------------------------------------------------
 
       // --- SEND EMAIL NOTIFICATION ---
       const emailMessage = isApprove 
@@ -313,68 +352,6 @@ const PendingRequest = ({ data }) => {
       setCustomAlert({
         title: 'Error',
         message: 'Failed to process the reservation update.',
-        isSuccess: false
-      });
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  const handleUndo = async () => {
-    if (isProcessing) return;
-    setIsProcessing(true);
-    setShowUndoConfirm(false);
-
-    try {
-      const now = new Date();
-      const dateString = now.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      const timeString = now.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      const dateTimeString = `${dateString} at ${timeString}`;
-
-      const newLog = {
-        id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-        role: approver.role,
-        badge: 'Undone',
-        date: dateTimeString,
-        text: `Undid previous ${myApprovalStatus} decision.`,
-        state: 'pending'
-      };
-
-      const updatePayload = {
-        [`approvals.${approver.roleKey}`]: deleteField(),
-        historyLogs: arrayUnion(newLog)
-      };
-
-      const myRoleIndex = roleHierarchy.findIndex(s => s.key === approver.roleKey);
-      if (myRoleIndex !== -1) {
-        for (let i = myRoleIndex + 1; i < roleHierarchy.length; i++) {
-          const subsequentKey = roleHierarchy[i].key;
-          if (currentData.approvals?.[subsequentKey]) {
-            updatePayload[`approvals.${subsequentKey}`] = deleteField();
-          }
-        }
-      }
-
-      if (currentData.status === 'Rejected' || currentData.status === 'Approved') {
-        updatePayload.status = 'Pending';
-      }
-
-      await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
-
-      // --- SEND UNDO NOTIFICATION ---
-      await sendReservationEmail(
-        email, 
-        requestorName, 
-        currentData, 
-        `Your previous reservation decision was undone by the ${approver.role}. It is currently back to pending status.`
-      );
-      // ------------------------------
-
-    } catch (err) {
-      console.error("Error undoing reservation action:", err);
-      setCustomAlert({
-        title: 'Error',
-        message: 'Failed to undo the reservation update.',
         isSuccess: false
       });
     } finally {
@@ -407,7 +384,7 @@ const PendingRequest = ({ data }) => {
             <div className="info-grid">
               <div>
                 <label>EVENT NAME</label>
-                <div className="val font-bold" style={{ wordBreak: 'break-word' }}>{eventName}</div>
+                <div className="val font-bold">{eventName}</div>
               </div>
               <div>
                 <label>EVENT TYPE</label>
@@ -428,7 +405,7 @@ const PendingRequest = ({ data }) => {
             </div>
             <div className="full-width-field">
               <label>EVENT DESCRIPTION / PURPOSE</label>
-              <div className="val desc-text" style={{ wordBreak: 'break-word' }}>{description}</div>
+              <div className="val desc-text">{description}</div>
             </div>
           </div>
 
@@ -446,7 +423,7 @@ const PendingRequest = ({ data }) => {
               </div>
               <div>
                 <label>FLOOR / LOCATION</label>
-                <div className="val" style={{ wordBreak: 'break-word' }}>{locationDisplay}</div>
+                <div className="val">{locationDisplay}</div>
               </div>
               <div>
                 <label>AIRCON</label>
@@ -456,7 +433,7 @@ const PendingRequest = ({ data }) => {
                     : "OFF"}
                 </div>
               </div>
-              <div style={{ gridColumn: '1 / -1' }}>
+              <div className="equipment-grid-col">
                 <label>EQUIPMENT REQUESTED</label>
                 <div className="val">{equipmentRequested}</div>
               </div>
@@ -469,15 +446,15 @@ const PendingRequest = ({ data }) => {
             <div className="info-grid">
               <div>
                 <label>FULL NAME</label>
-                <div className="val font-bold" style={{ wordBreak: 'break-word' }}>{requestorName}</div>
+                <div className="val font-bold">{requestorName}</div>
               </div>
               <div>
                 <label>CONTACT NUMBER</label>
-                <div className="val" style={{ wordBreak: 'break-word' }}>{contactNumber}</div>
+                <div className="val">{contactNumber}</div>
               </div>
               <div>
                 <label>EMAIL ADDRESS</label>
-                <div className="val" style={{ wordBreak: 'break-word' }}>{email}</div>
+                <div className="val">{email}</div>
               </div>
               <div>
                 <label>DATE SUBMITTED</label>
@@ -496,15 +473,15 @@ const PendingRequest = ({ data }) => {
               <div className="info-grid col-2">
                 <div>
                   <label>ENDORSER'S FULL NAME</label>
-                  <div className="val font-bold" style={{ wordBreak: 'break-word' }}>{endorserName}</div>
+                  <div className="val font-bold">{endorserName}</div>
                 </div>
                 <div>
                   <label>DESIGNATION</label>
-                  <div className="val" style={{ wordBreak: 'break-word' }}>{endorserDesignation}</div>
+                  <div className="val">{endorserDesignation}</div>
                 </div>
                 <div className="full-width-field endorser-full-width">
                   <label>CONTACT EMAIL</label>
-                  <div className="val" style={{ wordBreak: 'break-word' }}>{endorserEmail}</div>
+                  <div className="val">{endorserEmail}</div>
                 </div>
               </div>
             </div>
@@ -545,7 +522,7 @@ const PendingRequest = ({ data }) => {
               {hasEndorser && (
                 <div className="summary-item">
                   <span className="label">Endorsed By</span>
-                  <span className="val" style={{ wordBreak: 'break-word' }}>{endorsedBy}</span>
+                  <span className="val">{endorsedBy}</span>
                 </div>
               )}
             </div>
@@ -561,13 +538,13 @@ const PendingRequest = ({ data }) => {
             <div className="user-profile-box">
               <div className="user-details">
                 {approver.avatarUrl ? (
-                  <img src={approver.avatarUrl} alt="Avatar" className="avatar" style={{ objectFit: 'cover' }} />
+                  <img src={approver.avatarUrl} alt="Avatar" className="avatar avatar-cover" />
                 ) : (
                   <div className="avatar">{approver.initials}</div>
                 )}
                 <div>
                   <span className="sub-text">Approving as</span>
-                  <strong style={{ wordBreak: 'break-word' }}>{approver.name}</strong>
+                  <strong>{approver.name}</strong>
                 </div>
               </div>
               <span className="role-tag">{approver.role}</span>
@@ -580,37 +557,30 @@ const PendingRequest = ({ data }) => {
                 name="approvalRemarks"
                 value={remarks}
                 onChange={(e) => setRemarks(e.target.value)}
-                placeholder={canAct || myApprovalStatus ? "Add your administrative remarks or conditions here..." : "You can only add remarks when it is your turn to approve."}
+                placeholder={canAct ? "Add your administrative remarks or conditions here..." : "You can only add remarks when it is your turn to approve."}
                 rows={3}
-                disabled={(!canAct && !myApprovalStatus) || isProcessing || !!myApprovalStatus}
+                disabled={!canAct || isProcessing || !!myApprovalStatus}
               />
             </div>
 
             <div className="action-buttons">
               {myApprovalStatus ? (
-                <button 
-                  className="btn-undo" 
-                  onClick={() => setShowUndoConfirm(true)}
-                  disabled={isProcessing}
-                  style={{ width: '100%', padding: '10px', borderRadius: '6px', background: '#64748B', color: '#FFFFFF', border: 'none', fontWeight: '600', cursor: 'pointer' }}
-                >
-                  {isProcessing ? 'Processing...' : `↩ Undo ${myApprovalStatus === 'approved' ? 'Approval' : 'Rejection'}`}
-                </button>
+                <div className={`already-acted-msg ${myApprovalStatus}`}>
+                  You have already {myApprovalStatus} this request.
+                </div>
               ) : (
                 <>
                   <button 
                     className="btn-approve" 
-                    onClick={() => handleAction('approved')}
+                    onClick={() => setPendingAction('approved')}
                     disabled={!canAct || isProcessing}
-                    style={{ opacity: !canAct ? 0.5 : 1, cursor: !canAct ? 'not-allowed' : 'pointer' }}
                   >
                     {isProcessing ? 'Processing...' : '✓ Approve Reservation'}
                   </button>
                   <button 
                     className="btn-reject" 
-                    onClick={() => handleAction('rejected')}
+                    onClick={() => setPendingAction('rejected')}
                     disabled={!canAct || isProcessing}
-                    style={{ opacity: !canAct ? 0.5 : 1, cursor: !canAct ? 'not-allowed' : 'pointer' }}
                   >
                     {isProcessing ? 'Processing...' : '✕ Reject Reservation'}
                   </button>
@@ -619,7 +589,7 @@ const PendingRequest = ({ data }) => {
             </div>
             
             {!canAct && !myApprovalStatus && currentData.status !== 'Rejected' && currentData.status !== 'Approved' && (
-              <div style={{ marginTop: '12px', fontSize: '11px', color: '#64748B', textAlign: 'center' }}>
+              <div className="hierarchy-disabled-hint">
                 Buttons are disabled because it is not currently your turn in the approval hierarchy.
               </div>
             )}
@@ -667,7 +637,7 @@ const PendingRequest = ({ data }) => {
             const iconColor = log.state === 'approved' ? '#047857' : log.state === 'rejected' ? '#ef4444' : '#1d4ed8';
 
             return (
-              <div key={index} className={`history-item ${log.state}`} style={log.state === 'rejected' ? { borderLeftColor: '#ef4444' } : {}}>
+              <div key={index} className={`history-item ${log.state}`}>
                 <div className="history-icon" style={{ backgroundColor: iconBg, color: iconColor }}>
                   {log.state === 'approved' ? '✓' : log.state === 'rejected' ? '✕' : '🛡️'}
                 </div>
@@ -677,9 +647,12 @@ const PendingRequest = ({ data }) => {
                       {log.role}
                       {log.badge && <span className="action-badge" style={{ backgroundColor: badgeBg }}>{log.badge}</span>}
                     </strong>
-                    <span className="history-date">{log.date}</span>
+                    <div className="history-meta-right">
+                      <span className="history-date">{log.date}</span>
+                      {log.approverName && <div className="history-approver-name">{log.approverName}</div>}
+                    </div>
                   </div>
-                  <p style={{ wordBreak: 'break-word' }}>{log.text}</p>
+                  <p>{log.text}</p>
                 </div>
               </div>
             );
@@ -693,7 +666,9 @@ const PendingRequest = ({ data }) => {
                      Pending Next Action
                      <span className="action-badge">Pending</span>
                    </strong>
-                   <span className="history-date">Awaiting</span>
+                   <div className="history-meta-right">
+                     <span className="history-date">Awaiting</span>
+                   </div>
                  </div>
                  <p>Reviewing facility booking and awaiting next approval.</p>
                </div>
@@ -702,28 +677,28 @@ const PendingRequest = ({ data }) => {
         </div>
       </div>
 
-      {/* --- UNDO CONFIRMATION MODAL --- */}
-      {showUndoConfirm && (
-        <div className="modal-overlay" style={{ zIndex: 10003 }}>
+      {/* --- ACTION CONFIRMATION MODAL --- */}
+      {pendingAction && (
+        <div className="modal-overlay high-z">
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modal-title error">Confirm Undo</h3>
+            <h3 className={`modal-title ${pendingAction === 'rejected' ? 'error' : 'success'}`}>
+              Confirm {pendingAction === 'approved' ? 'Approval' : 'Rejection'}
+            </h3>
             <p className="modal-message">
-              Are you sure you want to undo your previous <strong>{myApprovalStatus}</strong> decision? This will revert the request status back to pending for your role.
+              This action will update the status and notify the requestor.
             </p>
-            <div className="modal-actions" style={{ display: 'flex', gap: '10px', justifyContent: 'flex-end' }}>
+            <div className="modal-actions">
               <button 
-                onClick={() => setShowUndoConfirm(false)}
-                className="modal-button"
-                style={{ background: '#E2E8F0', color: '#0F172A' }}
+                onClick={() => setPendingAction(null)}
+                className="modal-button cancel-btn"
               >
                 Cancel
               </button>
               <button 
-                onClick={handleUndo}
-                className="modal-button"
-                style={{ background: '#64748B', color: '#FFFFFF' }}
+                onClick={() => handleAction(pendingAction)}
+                className={`modal-button ${pendingAction === 'rejected' ? 'confirm-reject-btn' : 'confirm-approve-btn'}`}
               >
-                Yes, Undo
+                {pendingAction === 'approved' ? 'Approve' : 'Reject'}
               </button>
             </div>
           </div>
@@ -731,7 +706,7 @@ const PendingRequest = ({ data }) => {
       )}
 
       {customAlert && (
-        <div className="modal-overlay" style={{ zIndex: 10002 }}>
+        <div className="modal-overlay alert-z">
           <div className="modal-card">
             <h3 className={customAlert.isSuccess ? 'modal-title success' : 'modal-title error'}>
               {customAlert.title}
@@ -740,7 +715,7 @@ const PendingRequest = ({ data }) => {
               {customAlert.message}
             </p>
             <div className="modal-actions">
-              <button onClick={() => setCustomAlert(null)} className="modal-button" style={{ background: '#3B82F6' }}>
+              <button onClick={() => setCustomAlert(null)} className="modal-button understood-btn">
                 Understood
               </button>
             </div>
