@@ -78,7 +78,7 @@ const isExpired = (eventDate, endDate, startTime, endTime, status, days = 1) => 
 };
 
 const Schedule = () => {
-  // --- STATE MANAGEMENT ---[cite: 34]
+  // --- STATE MANAGEMENT ---
   const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -89,12 +89,12 @@ const Schedule = () => {
   const [approverRoleKey, setApproverRoleKey] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
   
-  // Auto-Removal Alert State[cite: 34]
+  // Auto-Removal Alert State
   const [autoRemovedAlerts, setAutoRemovedAlerts] = useState([]);
   
   const itemsPerPage = 5;
 
-  // --- REAL-TIME FIRESTORE LISTENERS ---[cite: 34]
+  // --- REAL-TIME FIRESTORE LISTENERS ---
   useEffect(() => {
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const resList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
@@ -112,7 +112,7 @@ const Schedule = () => {
     };
   }, []);
 
-  // --- FETCH CURRENT USER ROLE & DATA ---[cite: 34]
+  // --- FETCH CURRENT USER ROLE & DATA ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
       if (user) {
@@ -135,7 +135,7 @@ const Schedule = () => {
     return () => unsubscribeAuth();
   }, []);
 
-  // --- AUTO-REMOVE EXPIRED RESERVATIONS ---[cite: 34]
+  // --- AUTO-REMOVE EXPIRED RESERVATIONS ---
   useEffect(() => {
     if (!currentUser || reservationsData.length === 0) return;
 
@@ -173,7 +173,7 @@ const Schedule = () => {
     checkExpirations();
   }, [reservationsData, currentUser]);
 
-  // --- MAP & JOIN DATA ---[cite: 34]
+  // --- MAP & JOIN DATA ---
   const scheduleData = reservationsData
     .filter(res => currentUser && (res.userId === currentUser.uid || res.userEmail === currentUser.email))
     .map((res, index) => {
@@ -236,7 +236,7 @@ const Schedule = () => {
       };
     }).sort((a, b) => b.rawDate - a.rawDate); 
 
-  // --- SEARCH & FILTER LOGIC ---[cite: 34]
+  // --- SEARCH & FILTER LOGIC ---
   const handleSearch = (e) => {
     setSearchQuery(e.target.value);
     setCurrentPage(1); 
@@ -248,7 +248,7 @@ const Schedule = () => {
     row.role.toLowerCase().includes(searchQuery.toLowerCase())
   );
 
-  // --- PAGINATION LOGIC ---[cite: 34]
+  // --- PAGINATION LOGIC ---
   const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
   const startIndex = (currentPage - 1) * itemsPerPage;
   const currentData = filteredData.slice(startIndex, startIndex + itemsPerPage);
@@ -261,7 +261,7 @@ const Schedule = () => {
     if (currentPage < totalPages) setCurrentPage(currentPage + 1);
   };
 
-  // --- DELETION LOGIC ---[cite: 34]
+  // --- DELETION LOGIC ---
   const confirmDelete = async () => {
     if (!deleteModalData) return;
     setIsDeleting(true);
@@ -387,7 +387,7 @@ const Schedule = () => {
         </div>
       </div>
 
-      {/* --- MODAL POPUP --- */}[cite: 34]
+      {/* --- MODAL POPUP --- */}
       {selectedRequest && (
         <div className="modal-overlay">
           <div className="modal-wrapper">
@@ -401,7 +401,7 @@ const Schedule = () => {
         </div>
       )}
 
-      {/* --- DELETE CONFIRMATION MODAL --- */}[cite: 34]
+      {/* --- DELETE CONFIRMATION MODAL --- */}
       {deleteModalData && (
         <div className="modal-overlay delete-modal-overlay">
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
@@ -428,7 +428,7 @@ const Schedule = () => {
         </div>
       )}
 
-      {/* --- AUTO-REMOVED NOTIFICATION MODAL --- */}[cite: 34]
+      {/* --- AUTO-REMOVED NOTIFICATION MODAL --- */}
       {autoRemovedAlerts.length > 0 && (
         <div className="modal-overlay delete-modal-overlay">
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
