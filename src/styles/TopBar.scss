@@ -20,7 +20,7 @@
     margin-right: 1.0667rem;
     color: #111827;
 
-    @media (max-width: 80rem) {
+    @media (max-width: 64rem) {
       display: flex; 
       align-items: center;
       justify-content: center;
@@ -261,7 +261,7 @@
   }
 
   /* --- RESPONSIVE MEDIA QUERIES --- */
-  @media (max-width: 68.2667rem) {
+  @media (max-width: 64rem) { //(max-width: 68.2667rem) old 68.2667rem
     .mobile-menu-btn {
       display: flex;
       align-items: center;
