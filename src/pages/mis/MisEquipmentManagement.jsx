@@ -71,7 +71,12 @@ const MisEquipmentManagement = () => {
     });
 
     const total = Number(item.totalCount) || 0;
-    const availableCount = Math.max(0, total - reservedCount);
+    let availableCount = Math.max(0, total - reservedCount);
+
+    // If status is manually set to Unavailable, treat available count as 0 for metrics and summary
+    if (item.status === 'Unavailable') {
+      availableCount = 0;
+    }
 
     return {
       ...item,
@@ -140,20 +145,18 @@ const MisEquipmentManagement = () => {
     let newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
     let status = editingItem.status;
 
-    // Auto-switch to Unavailable if stock drops to 0 naturally
+    // Auto-switch to Unavailable only if stock drops to 0 naturally; otherwise respect MIS user's explicit status choice
     if (newAvailable === 0 && status !== 'Maintenance') {
       status = 'Unavailable';
-    } else if (newAvailable > 0 && status === 'Unavailable') {
-      status = 'Available';
     }
 
     let statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     try {
-      // Sync the true availableCount back to DB so other files (like Reservation.jsx) see the correct number
+      // Sync the true availableCount back to DB so other files see the correct number
       await updateDoc(doc(db, 'equipments', editingItem.id), {
         totalCount: newTotal,
-        availableCount: newAvailable,
+        availableCount: status === 'Unavailable' ? 0 : newAvailable,
         status: status,
         statusClass: statusClass,
         lastUpdated: getCurrentDateTime()
@@ -182,7 +185,7 @@ const MisEquipmentManagement = () => {
       await addDoc(collection(db, 'equipments'), {
         name: newItem.name.trim() || 'Untitled Equipment',
         sku: newItem.sku.trim() || `SKU: NEW-${Date.now().toString().slice(-4)}`,
-        availableCount: newAvailable,
+        availableCount: status === 'Unavailable' ? 0 : newAvailable,
         totalCount: newTotal,
         status: status,
         statusClass,
@@ -271,7 +274,7 @@ const MisEquipmentManagement = () => {
               onClick={handleDeleteSelected}
               disabled={selectedIds.length === 0}
             >
-              🗑 Delete{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
+              🗑️ Delete{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
             </button>
             <button className="btn-primary" onClick={handleAddClick}>+ Add Equipment</button>
           </div>
@@ -302,7 +305,7 @@ const MisEquipmentManagement = () => {
               <tr>
                 <td colSpan={7} className="empty-state-cell">
                   <div className="empty-state">
-                    <span className="empty-state-icon">📭</span>
+                    <span className="empty-state-icon">📦</span>
                     <p className="empty-state-title">{searchQuery ? 'No matching equipment found' : 'No equipment yet'}</p>
                     <p className="empty-state-subtitle">{searchQuery ? 'Try adjusting your search query.' : 'Add your first item to start tracking inventory.'}</p>
                   </div>
@@ -335,7 +338,7 @@ const MisEquipmentManagement = () => {
                   <td>
                     <div className="action-buttons">
                       <button className="action-btn" onClick={() => handleEditClick(item)}>
-                        ✏ Edit
+                        ✏️ Edit
                       </button>
                     </div>
                   </td>

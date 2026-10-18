@@ -450,8 +450,8 @@ const Reservation = () => {
       setCustomAlert({
         title: 'Missing Fields',
         message: hasFacility 
-          ? 'Please fill in all required fields including Full Name, Email, Event Date, Start Time, and End Time.'
-          : 'Please fill in all required fields including Full Name, Email, and Event Date.',
+          ? 'Please fill in all required fields including Full Name, Email, Start Date, Start Time, and End Time.'
+          : 'Please fill in all required fields including Full Name, Email, and Start Date.',
         isSuccess: false
       });
       return;
@@ -730,50 +730,7 @@ const Reservation = () => {
             />
           </div>
           
-          {/* Row 1 Right: Event Date */}
-          <div className="input-group">
-            <label>Event Date <span>*</span></label>
-            <div className="calendar-field">
-              <div className="input-with-icon left-icon">
-                <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowCalendar(!showCalendar)}></i>
-                <input 
-                  type="text" 
-                  value={eventDate} 
-                  onChange={handleDateChange} 
-                  maxLength={10}
-                  placeholder="MM/DD/YYYY" 
-                  onClick={() => setShowCalendar(true)} 
-                  className={dateError ? 'input-error' : ''}
-                />
-              </div>
-              {dateError && <span className="field-error">{dateError}</span>}
-              
-              {showCalendar && (
-                <>
-                  <div className="calendar-overlay" onClick={() => setShowCalendar(false)}></div>
-                  <div className="custom-calendar-popup">
-                    <div className="calendar-header">
-                      <button type="button" onClick={handlePrevMonth}><i className="ph ph-caret-left"></i></button>
-                      <span>{calendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-                      <button type="button" onClick={handleNextMonth}><i className="ph ph-caret-right"></i></button>
-                    </div>
-                    <div className="calendar-grid">
-                      <div className="calendar-day-name">Su</div>
-                      <div className="calendar-day-name">Mo</div>
-                      <div className="calendar-day-name">Tu</div>
-                      <div className="calendar-day-name">We</div>
-                      <div className="calendar-day-name">Th</div>
-                      <div className="calendar-day-name">Fr</div>
-                      <div className="calendar-day-name">Sa</div>
-                      {renderCalendarDays()}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Row 2 Left: Expected Number of Participants */}
+          {/* Row 1 Right: Expected Number of Participants */}
           <div className="input-group">
             <label>Expected Number of Participants <span>*</span></label>
             <div className="input-with-icon left-icon">
@@ -787,50 +744,7 @@ const Reservation = () => {
             </div>
           </div>
 
-          {/* Row 2 Right: Number of Days (Below Event Date, Calendar Format) */}
-          <div className="input-group">
-            <label>Number of Days *</label>
-            <div className="calendar-field">
-              <div className="input-with-icon left-icon">
-                <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowDaysCalendar(!showDaysCalendar)}></i>
-                <input 
-                  type="text" 
-                  value={endDateInput} 
-                  onChange={handleDaysDateChange} 
-                  maxLength={10}
-                  placeholder="MM/DD/YYYY" 
-                  onClick={() => setShowDaysCalendar(true)} 
-                  className={daysDateError ? 'input-error' : ''}
-                />
-              </div>
-              {daysDateError && <span className="field-error">{daysDateError}</span>}
-              
-              {showDaysCalendar && (
-                <>
-                  <div className="calendar-overlay" onClick={() => setShowDaysCalendar(false)}></div>
-                  <div className="custom-calendar-popup">
-                    <div className="calendar-header">
-                      <button type="button" onClick={handleDaysPrevMonth}><i className="ph ph-caret-left"></i></button>
-                      <span>{daysCalendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
-                      <button type="button" onClick={handleDaysNextMonth}><i className="ph ph-caret-right"></i></button>
-                    </div>
-                    <div className="calendar-grid">
-                      <div className="calendar-day-name">Su</div>
-                      <div className="calendar-day-name">Mo</div>
-                      <div className="calendar-day-name">Tu</div>
-                      <div className="calendar-day-name">We</div>
-                      <div className="calendar-day-name">Th</div>
-                      <div className="calendar-day-name">Fr</div>
-                      <div className="calendar-day-name">Sa</div>
-                      {renderDaysCalendarDays()}
-                    </div>
-                  </div>
-                </>
-              )}
-            </div>
-          </div>
-
-          {/* Row 3 Left: Event Type (Below Expected Number of Participants) */}
+          {/* Row 2 Left: Event Type */}
           <div className="input-group">
             <label>Event Type <span>*</span></label>
             <div className="event-type-grid">
@@ -847,7 +761,96 @@ const Reservation = () => {
             </div>
           </div>
 
-          {/* Row 3 Right: Start Time (Under Number of Days) & End Time (Under Start Time) */}
+          {/* Row 2 Right Column: Start Date & End Date Stacked */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            {/* Start Date (Formerly Event Date) */}
+            <div className="input-group">
+              <label>Start Date *</label>
+              <div className="calendar-field">
+                <div className="input-with-icon left-icon">
+                  <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowCalendar(!showCalendar)}></i>
+                  <input 
+                    type="text" 
+                    value={eventDate} 
+                    onChange={handleDateChange} 
+                    maxLength={10}
+                    placeholder="MM/DD/YYYY" 
+                    onClick={() => setShowCalendar(true)} 
+                    className={dateError ? 'input-error' : ''}
+                  />
+                </div>
+                {dateError && <span className="field-error">{dateError}</span>}
+                
+                {showCalendar && (
+                  <>
+                    <div className="calendar-overlay" onClick={() => setShowCalendar(false)}></div>
+                    <div className="custom-calendar-popup">
+                      <div className="calendar-header">
+                        <button type="button" onClick={handlePrevMonth}><i className="ph ph-caret-left"></i></button>
+                        <span>{calendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                        <button type="button" onClick={handleNextMonth}><i className="ph ph-caret-right"></i></button>
+                      </div>
+                      <div className="calendar-grid">
+                        <div className="calendar-day-name">Su</div>
+                        <div className="calendar-day-name">Mo</div>
+                        <div className="calendar-day-name">Tu</div>
+                        <div className="calendar-day-name">We</div>
+                        <div className="calendar-day-name">Th</div>
+                        <div className="calendar-day-name">Fr</div>
+                        <div className="calendar-day-name">Sa</div>
+                        {renderCalendarDays()}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+
+            {/* End Date (Formerly Number of Days) */}
+            <div className="input-group">
+              <label>End Date *</label>
+              <div className="calendar-field">
+                <div className="input-with-icon left-icon">
+                  <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowDaysCalendar(!showDaysCalendar)}></i>
+                  <input 
+                    type="text" 
+                    value={endDateInput} 
+                    onChange={handleDaysDateChange} 
+                    maxLength={10}
+                    placeholder="MM/DD/YYYY" 
+                    onClick={() => setShowDaysCalendar(true)} 
+                    className={daysDateError ? 'input-error' : ''}
+                  />
+                </div>
+                {daysDateError && <span className="field-error">{daysDateError}</span>}
+                
+                {showDaysCalendar && (
+                  <>
+                    <div className="calendar-overlay" onClick={() => setShowDaysCalendar(false)}></div>
+                    <div className="custom-calendar-popup">
+                      <div className="calendar-header">
+                        <button type="button" onClick={handleDaysPrevMonth}><i className="ph ph-caret-left"></i></button>
+                        <span>{daysCalendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                        <button type="button" onClick={handleDaysNextMonth}><i className="ph ph-caret-right"></i></button>
+                      </div>
+                      <div className="calendar-grid">
+                        <div className="calendar-day-name">Su</div>
+                        <div className="calendar-day-name">Mo</div>
+                        <div className="calendar-day-name">Tu</div>
+                        <div className="calendar-day-name">We</div>
+                        <div className="calendar-day-name">Th</div>
+                        <div className="calendar-day-name">Fr</div>
+                        <div className="calendar-day-name">Sa</div>
+                        {renderDaysCalendarDays()}
+                      </div>
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+
+          {/* Row 3 Right Column: Start Time & End Time Stacked */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             <div className="input-group">
               <label>Start Time *</label>
