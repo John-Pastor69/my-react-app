@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from "../Firebase";
 import { collection, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore"; 
 import "../styles/Calendar.scss";
@@ -59,7 +59,7 @@ const formatEventDateRange = (startDateStr, endDateStr, numDays) => {
 };
 
 const Calendar = () => {
-  // 1. STATE
+  // 1. STATE & REFS
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
   const [reservationsData, setReservationsData] = useState([]);
@@ -69,12 +69,25 @@ const Calendar = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [userRole, setUserRole] = useState('');
   
+  // Ref for auto-scrolling to the bottom events container in mobile agenda view
+  const sidebarRef = useRef(null);
+
   // STATE: For the history modal
   const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
   const [historyDate, setHistoryDate] = useState(new Date());
   
   // STATE: For the specific history "View Details" click
   const [historySelectedRequest, setHistorySelectedRequest] = useState(null);
+
+  // Handle date click & smooth scroll on mobile/agenda view
+  const handleDateClick = (dateStr) => {
+    setSelectedDate(dateStr);
+    if (!window.matchMedia('(min-width: 51.2rem)').matches && sidebarRef.current) {
+      setTimeout(() => {
+        sidebarRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 50);
+    }
+  };
 
   // 1.5. FETCH CURRENT USER ROLE
   useEffect(() => {
@@ -270,7 +283,7 @@ const Calendar = () => {
             return (
               <div 
                 key={index} 
-                onClick={() => setSelectedDate(day.date)}
+                onClick={() => handleDateClick(day.date)}
                 className={`day-cell ${isEmpty ? 'empty-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
               >
                 <span className="date"><span>{day.name}</span> {day.num}</span>
@@ -293,7 +306,7 @@ const Calendar = () => {
       </div>
 
       {/* --- RIGHT: SIDEBAR DETAILS --- */}
-      <div className="calendar-sidebar">
+      <div className="calendar-sidebar" ref={sidebarRef}>
         {(() => {
           // Display the reservation details no matter which spanned day was clicked
           const sidebarEvents = events.filter(e => e.date === selectedDate); 

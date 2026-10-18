@@ -91,8 +91,24 @@ $red-light: #FEE2E2;
   .day-cell {
     display: flex;
     flex-direction: column;
+    padding: 0.5333rem;
+    border-radius: 0.5333rem;
+    transition: background-color 0.2s ease;
     
     &.empty-day { display: none; } 
+
+    /* Grayish hover & tap indication for mobile agenda view */
+    &:hover, &:active {
+      background-color: #F1F5F9;
+      
+      .event-pill {
+        background-color: #E2E8F0;
+      }
+    }
+
+    &.active-day {
+      background-color: #F1F5F9;
+    }
 
     .date {
       display: flex;
@@ -119,6 +135,11 @@ $red-light: #FEE2E2;
       border-left: 0.2667rem solid;
       font-size: var(--font-body);
       font-weight: 600;
+      transition: background-color 0.2s ease;
+
+      &:hover, &:active {
+        background-color: #CBD5E1 !important;
+      }
 
       &.pill-green { border-left-color: $green-main; color: $text-dark; }
       &.pill-yellow { border-left-color: $yellow-main; color: $text-dark; }
@@ -129,6 +150,8 @@ $red-light: #FEE2E2;
 
 /* Sidebar Details */
 .calendar-sidebar {
+  scroll-margin-top: 1rem;
+
   .sidebar-header {
     display: flex;
     justify-content: space-between;
@@ -256,10 +279,15 @@ $red-light: #FEE2E2;
       min-height: 8rem;
       height: auto;
       padding: 0.5333rem;
+      border-radius: 0;
       border-right: 0.0667rem solid $border-color;
       border-bottom: 0.0667rem solid $border-color;
       
       &.empty-day { display: flex; } 
+
+      &:hover, &:active {
+        background-color: transparent;
+      }
       
       .date {
         font-size: 0.9333rem; font-weight: 500; color: $text-dark; margin-bottom: 0.5333rem;
@@ -272,6 +300,7 @@ $red-light: #FEE2E2;
       
       &.active-day {
         background: $blue-light;
+        &:hover { background: $blue-light; }
         .date { background: $blue-main; color: white; border-radius: 50%; }
       }
 
@@ -305,9 +334,21 @@ $red-light: #FEE2E2;
           color: $text-dark;
         }
 
-        &.pill-green { background: $green-light; border-left-color: $green-main; }
-        &.pill-yellow { background: $yellow-light; border-left-color: $yellow-main; }
-        &.pill-red { background: $red-light; border-left-color: $red-main; }
+        &.pill-green { 
+          background: $green-light; 
+          border-left-color: $green-main; 
+          &:hover, &:active { background: $green-light !important; }
+        }
+        &.pill-yellow { 
+          background: $yellow-light; 
+          border-left-color: $yellow-main; 
+          &:hover, &:active { background: $yellow-light !important; }
+        }
+        &.pill-red { 
+          background: $red-light; 
+          border-left-color: $red-main; 
+          &:hover, &:active { background: $red-light !important; }
+        }
       }
     }
   }
@@ -638,4 +679,4 @@ $red-light: #FEE2E2;
 
 .summary-ref {
   color: $blue-main;
-}
+}                 

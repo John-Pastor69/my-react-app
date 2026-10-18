@@ -92,6 +92,7 @@ const Reservation = () => {
   // --- FORM STATES ---
   const [formData, setFormData] = useState(initialFormState);
   const [days, setDays] = useState(0); // Default to 0 days
+  const [endDateInput, setEndDateInput] = useState('');
   const [aircon, setAircon] = useState(false); // Default to off
   const [eventDate, setEventDate] = useState('');
   const [startTime, setStartTime] = useState('');
@@ -113,8 +114,11 @@ const Reservation = () => {
   const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
   const [dateError, setDateError] = useState('');
+  const [daysDateError, setDaysDateError] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
   const [calendarView, setCalendarView] = useState(new Date());
+  const [showDaysCalendar, setShowDaysCalendar] = useState(false);
+  const [daysCalendarView, setDaysCalendarView] = useState(new Date());
 
   // --- ENDORSER DROPDOWN STATE ---
   const [endorsersList, setEndorsersList] = useState([]);
@@ -159,6 +163,7 @@ const Reservation = () => {
         const parsed = JSON.parse(draft);
         if (parsed.formData) setFormData(prev => ({ ...prev, ...parsed.formData }));
         if (parsed.days !== undefined) setDays(parsed.days);
+        if (parsed.endDateInput !== undefined) setEndDateInput(parsed.endDateInput);
         if (parsed.aircon !== undefined) setAircon(parsed.aircon);
         if (parsed.eventDate) setEventDate(parsed.eventDate);
         if (parsed.startTime) setStartTime(parsed.startTime);
@@ -173,7 +178,24 @@ const Reservation = () => {
   // Reset Draft toggle when form changes
   useEffect(() => {
     if (isDraftSaved) setIsDraftSaved(false);
-  }, [formData, days, aircon, eventDate, startTime, endTime, selectedEquip]);
+  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, selectedEquip]);
+
+  // Automatically calculate `days` from `eventDate` and `endDateInput`
+  useEffect(() => {
+    const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
+    if (dateRegex.test(eventDate) && dateRegex.test(endDateInput)) {
+      const [m1, d1, y1] = eventDate.split('/').map(Number);
+      const [m2, d2, y2] = endDateInput.split('/').map(Number);
+      const startObj = new Date(y1, m1 - 1, d1);
+      const endObj = new Date(y2, m2 - 1, d2);
+      const diffDays = Math.floor((endObj - startObj) / (1000 * 60 * 60 * 24)) + 1;
+      setDays(diffDays > 0 ? diffDays : 0);
+    } else if (dateRegex.test(eventDate) && !endDateInput) {
+      setDays(1);
+    } else {
+      setDays(0);
+    }
+  }, [eventDate, endDateInput]);
 
   // --- LIVE LISTEN TO FACILITIES, EQUIPMENTS, RESERVATIONS & USERS (For Endorsers) ---
   useEffect(() => {
@@ -267,8 +289,6 @@ const Reservation = () => {
     }));
   };
 
-  const updateDays = (amount) => setDays(prev => Math.max(0, prev + amount)); // Changed to 0 minimum
-
   const updateEquip = (item, delta) => {
     if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
     const currentSelected = selectedEquip[item.id] || 0;
@@ -297,6 +317,16 @@ const Reservation = () => {
     setEventDate(val);
     const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
     setDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
+  };
+
+  const handleDaysDateChange = (e) => {
+    let val = e.target.value.replace(/\D/g, '');
+    if (val.length >= 3 && val.length <= 4) val = val.slice(0, 2) + '/' + val.slice(2);
+    else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
+    
+    setEndDateInput(val);
+    const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
+    setDaysDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
   };
 
   const handleTimeBlur = (e, setter, fieldKey = null) => {
@@ -352,10 +382,39 @@ const Reservation = () => {
     return [...blanks, ...renderDays];
   };
 
+  const handleDaysPrevMonth = () => setDaysCalendarView(new Date(daysCalendarView.getFullYear(), daysCalendarView.getMonth() - 1, 1));
+  const handleDaysNextMonth = () => setDaysCalendarView(new Date(daysCalendarView.getFullYear(), daysCalendarView.getMonth() + 1, 1));
+
+  const selectDaysDate = (day) => {
+    const month = String(daysCalendarView.getMonth() + 1).padStart(2, '0');
+    const formattedDay = String(day).padStart(2, '0');
+    setEndDateInput(`${month}/${formattedDay}/${daysCalendarView.getFullYear()}`);
+    setDaysDateError('');
+    setShowDaysCalendar(false);
+  };
+
+  const renderDaysCalendarDays = () => {
+    const year = daysCalendarView.getFullYear();
+    const month = daysCalendarView.getMonth();
+    const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const firstDayIndex = new Date(year, month, 1).getDay(); 
+    
+    const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
+      <div key={`blank-days-${i}`} className="calendar-day empty"></div>
+    ));
+    
+    const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
+      <div key={day} className="calendar-day" onClick={() => selectDaysDate(day)}>{day}</div>
+    ));
+    
+    return [...blanks, ...renderDays];
+  };
+
   // --- ACTION HANDLERS ---
   const handleDiscard = () => {
     setFormData(initialFormState);
     setDays(0); // Reset to 0
+    setEndDateInput('');
     setAircon(false);
     setEventDate('');
     setStartTime('');
@@ -367,7 +426,7 @@ const Reservation = () => {
   };
 
   const handleSaveDraft = () => {
-    const draftData = { formData, days, aircon, eventDate, startTime, endTime, selectedEquip };
+    const draftData = { formData, days, endDateInput, aircon, eventDate, startTime, endTime, selectedEquip };
     localStorage.setItem('reservationDraft', JSON.stringify(draftData));
     setIsDraftSaved(true);
   };
@@ -466,7 +525,7 @@ const Reservation = () => {
       }
 
       const generatedRefNo = `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
-      const calculatedEndDate = calculateEndDate(eventDate, days);
+      const calculatedEndDate = endDateInput || calculateEndDate(eventDate, days);
 
       // 2. SUBMIT RESERVATION WITH END DATE
       await addDoc(collection(db, 'reservations'), {
@@ -659,6 +718,7 @@ const Reservation = () => {
           <span className="step-badge">3</span> Event Information
         </div>
         <div className="form-grid col-2">
+          {/* Row 1 Left: Event Name */}
           <div className="input-group">
             <label>Event Name <span>*</span></label>
             <input 
@@ -670,6 +730,7 @@ const Reservation = () => {
             />
           </div>
           
+          {/* Row 1 Right: Event Date */}
           <div className="input-group">
             <label>Event Date <span>*</span></label>
             <div className="calendar-field">
@@ -712,6 +773,7 @@ const Reservation = () => {
             </div>
           </div>
 
+          {/* Row 2 Left: Expected Number of Participants */}
           <div className="input-group">
             <label>Expected Number of Participants <span>*</span></label>
             <div className="input-with-icon left-icon">
@@ -725,6 +787,50 @@ const Reservation = () => {
             </div>
           </div>
 
+          {/* Row 2 Right: Number of Days (Below Event Date, Calendar Format) */}
+          <div className="input-group">
+            <label>Number of Days *</label>
+            <div className="calendar-field">
+              <div className="input-with-icon left-icon">
+                <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowDaysCalendar(!showDaysCalendar)}></i>
+                <input 
+                  type="text" 
+                  value={endDateInput} 
+                  onChange={handleDaysDateChange} 
+                  maxLength={10}
+                  placeholder="MM/DD/YYYY" 
+                  onClick={() => setShowDaysCalendar(true)} 
+                  className={daysDateError ? 'input-error' : ''}
+                />
+              </div>
+              {daysDateError && <span className="field-error">{daysDateError}</span>}
+              
+              {showDaysCalendar && (
+                <>
+                  <div className="calendar-overlay" onClick={() => setShowDaysCalendar(false)}></div>
+                  <div className="custom-calendar-popup">
+                    <div className="calendar-header">
+                      <button type="button" onClick={handleDaysPrevMonth}><i className="ph ph-caret-left"></i></button>
+                      <span>{daysCalendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                      <button type="button" onClick={handleDaysNextMonth}><i className="ph ph-caret-right"></i></button>
+                    </div>
+                    <div className="calendar-grid">
+                      <div className="calendar-day-name">Su</div>
+                      <div className="calendar-day-name">Mo</div>
+                      <div className="calendar-day-name">Tu</div>
+                      <div className="calendar-day-name">We</div>
+                      <div className="calendar-day-name">Th</div>
+                      <div className="calendar-day-name">Fr</div>
+                      <div className="calendar-day-name">Sa</div>
+                      {renderDaysCalendarDays()}
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Row 3 Left: Event Type (Below Expected Number of Participants) */}
           <div className="input-group">
             <label>Event Type <span>*</span></label>
             <div className="event-type-grid">
@@ -741,6 +847,37 @@ const Reservation = () => {
             </div>
           </div>
 
+          {/* Row 3 Right: Start Time (Under Number of Days) & End Time (Under Start Time) */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+            <div className="input-group">
+              <label>Start Time *</label>
+              <div className="input-with-icon left-icon">
+                <i className="ph ph-clock"></i>
+                <input 
+                  type="text" 
+                  value={startTime}
+                  onChange={(e) => setStartTime(e.target.value)}
+                  onBlur={(e) => handleTimeBlur(e, setStartTime)}
+                  placeholder="08:00 AM" 
+                />
+              </div>
+            </div>
+            <div className="input-group">
+              <label>End Time *</label>
+              <div className="input-with-icon left-icon">
+                <i className="ph ph-clock"></i>
+                <input 
+                  type="text" 
+                  value={endTime}
+                  onChange={(e) => setEndTime(e.target.value)}
+                  onBlur={(e) => handleTimeBlur(e, setEndTime)}
+                  placeholder="05:00 PM" 
+                />
+              </div>
+            </div>
+          </div>
+
+          {/* Full Width: Purpose / Description */}
           <div className="input-group full-width">
             <label>Purpose / Description <span>*</span></label>
             <textarea 
@@ -750,64 +887,22 @@ const Reservation = () => {
             ></textarea>
           </div>
         </div>
-      </div>
 
-      {/* SECTION 4: Facility Usage Schedule */}
-      <div className="form-card">
-        <div className="section-header">
-          <span className="step-badge">4</span> Facility Usage Schedule <span className="optional-badge">(Optional if only booking equipment)</span>
-        </div>
-        <div className="form-grid col-3">
-          <div className="input-group">
-            <label>Number of Days</label>
-            <div className="day-stepper">
-              <button type="button" className="stepper-btn" onClick={() => updateDays(-1)}>-</button>
-              <input type="text" value={days} readOnly className="stepper-value" />
-              <button type="button" className="stepper-btn" onClick={() => updateDays(1)}>+</button>
-            </div>
-          </div>
-          <div className="input-group">
-            <label>Start Time</label>
-            <div className="input-with-icon left-icon">
-              <i className="ph ph-clock"></i>
-              <input 
-                type="text" 
-                value={startTime}
-                onChange={(e) => setStartTime(e.target.value)}
-                onBlur={(e) => handleTimeBlur(e, setStartTime)}
-                placeholder="08:00 AM" 
-              />
-            </div>
-          </div>
-          <div className="input-group">
-            <label>End Time</label>
-            <div className="input-with-icon left-icon">
-              <i className="ph ph-clock"></i>
-              <input 
-                type="text" 
-                value={endTime}
-                onChange={(e) => setEndTime(e.target.value)}
-                onBlur={(e) => handleTimeBlur(e, setEndTime)}
-                placeholder="05:00 PM" 
-              />
-            </div>
-          </div>
-        </div>
         <div className="info-box green duration-box">
           <i className="ph ph-info"></i>
           <div>
-            <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s) {eventDate && days > 1 ? `(Ends: ${calculateEndDate(eventDate, days)})` : ''}</strong>
+            <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s) {eventDate && days > 1 ? `(Ends: ${endDateInput || calculateEndDate(eventDate, days)})` : ''}</strong>
           </div>
         </div>
       </div>
 
-      {/* SECTIONS 5: Facilities & Equipment */}
+      {/* SECTIONS 4: Facilities & Equipment */}
       <div className="split-cards">
         
         {/* Facilities Needed */}
         <div className="form-card">
           <div className="section-header">
-            <span className="step-badge">5</span> Facilities Needed
+            <span className="step-badge">4</span> Facilities Needed
           </div>
           
           <div className="checkbox-grid facility-list">
