@@ -1,4 +1,4 @@
-import html2pdf from 'html2pdf.js';
+import { jsPDF } from 'jspdf';
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../Firebase';
@@ -42,7 +42,7 @@ const ReservationDetails = ({ data }) => {
   const [equipmentMap, setEquipmentMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
 
-  // Real-time listener for this specific reservation doc[cite: 15]
+  // Real-time listener for this specific reservation doc
   useEffect(() => {
     if (!data?.id) return;
     const unsubscribe = onSnapshot(doc(db, 'reservations', data.id), (docSnap) => {
@@ -53,7 +53,7 @@ const ReservationDetails = ({ data }) => {
     return () => unsubscribe();
   }, [data?.id]);
 
-  // Fetch requestor's actual role to determine if endorser should be skipped[cite: 15]
+  // Fetch requestor's actual role to determine if endorser should be skipped
   useEffect(() => {
     const fetchRequestorRole = async () => {
       if (!currentData) return;
@@ -83,7 +83,7 @@ const ReservationDetails = ({ data }) => {
     fetchRequestorRole();
   }, [currentData]);
 
-  // Fetch facilities and equipments mapping[cite: 15]
+  // Fetch facilities and equipments mapping
   useEffect(() => {
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
@@ -102,7 +102,7 @@ const ReservationDetails = ({ data }) => {
 
   if (!currentData) return <div className="loading-text">Loading reservation details...</div>;
 
-  // --- DYNAMIC DATA MAPPING ---[cite: 15]
+  // --- DYNAMIC DATA MAPPING ---
   const refNo = currentData.refNo || 'N/A';
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
@@ -144,7 +144,7 @@ const ReservationDetails = ({ data }) => {
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
 
-  // --- HIERARCHY & TRACKER LOGIC ---[cite: 15]
+  // --- HIERARCHY & TRACKER LOGIC ---
   const roleHierarchy = [
     { key: 'requestor', label: 'Requestor Submitted' },
     { key: 'endorser', label: 'Endorser' },
@@ -223,6 +223,171 @@ const ReservationDetails = ({ data }) => {
   const bannerStatusClass = currentData.status === 'Approved' ? 'approved' : currentData.status === 'Rejected' ? 'rejected' : 'pending';
   const isApprovedStatus = currentData.status === 'Approved';
 
+  const airconDisplay = currentData.aircon 
+    ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
+    : "OFF";
+
+  // --- PROGRAMMATIC VECTOR PDF GENERATOR (NO SCREENSHOTS) ---
+  const handleDownloadPDF = () => {
+    if (!isApprovedStatus) return;
+
+    const pdf = new jsPDF('p', 'mm', 'a4');
+    const pageWidth = pdf.internal.pageSize.getWidth();
+    const pageHeight = pdf.internal.pageSize.getHeight();
+    const margin = 15;
+    const contentWidth = pageWidth - margin * 2;
+    const colWidth = (contentWidth - 8) / 2;
+    let y = 18;
+
+    const checkPageBreak = (neededHeight) => {
+      if (y + neededHeight > pageHeight - 15) {
+        pdf.addPage();
+        y = 18;
+      }
+    };
+
+    // 1. Formal Institutional Header
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(14);
+    pdf.setTextColor(15, 23, 42);
+    pdf.text('STI COLLEGE GLOBAL CITY', pageWidth / 2, y, { align: 'center' });
+    y += 6;
+
+    pdf.setFontSize(11);
+    pdf.text('FACILITY AND EQUIPMENT RESERVATION SLIP', pageWidth / 2, y, { align: 'center' });
+    y += 5;
+
+    pdf.setDrawColor(15, 23, 42);
+    pdf.setLineWidth(0.6);
+    pdf.line(margin, y, pageWidth - margin, y);
+    y += 7;
+
+    // 2. Top Reference & Status Bar
+    pdf.setFillColor(240, 253, 244);
+    pdf.setDrawColor(167, 243, 208);
+    pdf.setLineWidth(0.3);
+    pdf.roundedRect(margin, y, contentWidth, 12, 2, 2, 'FD');
+
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(9.5);
+    pdf.setTextColor(6, 95, 70);
+    pdf.text(`REFERENCE NO: ${refNo}`, margin + 4, y + 7.5);
+    pdf.text(`STATUS: ${(currentData.status || 'APPROVED').toUpperCase()}`, pageWidth - margin - 4, y + 7.5, { align: 'right' });
+    y += 18;
+
+    // Helper: Draw Section Title
+    const drawSectionHeader = (title) => {
+      checkPageBreak(14);
+      pdf.setFillColor(241, 245, 249);
+      pdf.setDrawColor(203, 213, 225);
+      pdf.setLineWidth(0.3);
+      pdf.rect(margin, y, contentWidth, 8, 'FD');
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(10);
+      pdf.setTextColor(30, 41, 59);
+      pdf.text(title.toUpperCase(), margin + 3, y + 5.5);
+      y += 13;
+    };
+
+    // Helper: Draw 2-Column Row
+    const drawTwoColRow = (label1, val1, label2, val2) => {
+      const text1 = pdf.splitTextToSize(String(val1 || 'N/A'), colWidth - 2);
+      const text2 = label2 ? pdf.splitTextToSize(String(val2 || 'N/A'), colWidth - 2) : [];
+      const maxLines = Math.max(text1.length, text2.length, 1);
+      const rowHeight = 5 + maxLines * 4.5 + 3;
+
+      checkPageBreak(rowHeight);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(label1.toUpperCase(), margin + 2, y);
+      if (label2) {
+        pdf.text(label2.toUpperCase(), margin + colWidth + 6, y);
+      }
+
+      y += 4.5;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(text1, margin + 2, y);
+      if (label2) {
+        pdf.text(text2, margin + colWidth + 6, y);
+      }
+
+      y += maxLines * 4.5 + 3;
+    };
+
+    // Helper: Draw Full-Width Row
+    const drawFullRow = (label, val) => {
+      const textLines = pdf.splitTextToSize(String(val || 'N/A'), contentWidth - 4);
+      const rowHeight = 5 + textLines.length * 4.5 + 3;
+
+      checkPageBreak(rowHeight);
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text(label.toUpperCase(), margin + 2, y);
+
+      y += 4.5;
+      pdf.setFont('helvetica', 'normal');
+      pdf.setFontSize(9.5);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(textLines, margin + 2, y);
+
+      y += textLines.length * 4.5 + 4;
+    };
+
+    // 3. Section: Event Information
+    drawSectionHeader('1. Event Information');
+    drawTwoColRow('Event Name', eventName, 'Event Type', eventType);
+    drawTwoColRow('Event Date', eventDate, 'Time', eventTime.replace('–', '-'));
+    drawTwoColRow('Expected Attendees', expectedAttendees, '', '');
+    drawFullRow('Event Description / Purpose', description);
+    y += 2;
+
+    // 4. Section: Facility & Equipment Details
+    drawSectionHeader('2. Facility & Equipment Details');
+    drawTwoColRow('Facility Name', facilityDisplay, 'Room Capacity', capacityDisplay);
+    drawTwoColRow('Floor / Location', locationDisplay, 'Aircon', airconDisplay);
+    drawFullRow('Equipment Requested', equipmentRequested);
+    y += 2;
+
+    // 5. Section: Requestor Information
+    drawSectionHeader('3. Requestor Information');
+    drawTwoColRow('Full Name', requestorName, 'Contact Number', contactNumber);
+    drawTwoColRow('Email Address', email, 'Date Submitted', dateSubmitted);
+    y += 2;
+
+    // 6. Section: Endorser Information (if applicable)
+    if (hasEndorser) {
+      drawSectionHeader('4. Endorser Information');
+      drawTwoColRow("Endorser's Full Name", endorserName, 'Designation', endorserDesignation);
+      drawFullRow('Contact Email', endorserEmail);
+      y += 2;
+    }
+
+    // 7. Footer Timestamp
+    checkPageBreak(15);
+    y += 4;
+    pdf.setDrawColor(203, 213, 225);
+    pdf.line(margin, y, pageWidth - margin, y);
+    y += 5;
+    pdf.setFont('helvetica', 'italic');
+    pdf.setFontSize(8);
+    pdf.setTextColor(100, 116, 139);
+    pdf.text(
+      `Generated on ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} — Official Reservation Slip (${refNo})`,
+      pageWidth / 2,
+      y,
+      { align: 'center' }
+    );
+
+    pdf.save(`${refNo}.pdf`);
+  };
+
   return (
     <div className="mis-reservation-details-content">
       {/* Top Banner */}
@@ -288,11 +453,7 @@ const ReservationDetails = ({ data }) => {
               </div>
               <div>
                 <label>AIRCON</label>
-                <div className="val">
-                  {currentData.aircon 
-                    ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
-                    : "OFF"}
-                </div>
+                <div className="val">{airconDisplay}</div>
               </div>
               <div className="equipment-requested-field">
                 <label>EQUIPMENT REQUESTED</label>
@@ -392,65 +553,7 @@ const ReservationDetails = ({ data }) => {
           <button 
             className={`download-pdf-btn ${isApprovedStatus ? 'is-approved' : ''}`}
             disabled={!isApprovedStatus}
-            onClick={() => {
-              if (isApprovedStatus) {
-                const element = document.querySelector('.mis-reservation-details-content');
-
-                // Create a temporary copy specifically for the PDF
-                const pdfElement = element.cloneNode(true);
-
-                // Remove sections that should not be included
-                pdfElement.querySelector('.tracker-card')?.remove();
-                pdfElement.querySelector('.history-card')?.remove();
-                pdfElement.querySelector('.download-pdf-btn')?.remove();
-
-                // Create an isolated PDF container
-                const pdfContainer = document.createElement('div');
-
-                pdfContainer.style.position = 'fixed';
-                pdfContainer.style.left = '-10000px';
-                pdfContainer.style.top = '0';
-                pdfContainer.style.width = `${element.offsetWidth}px`;
-                pdfContainer.style.background = '#ffffff';
-                pdfContainer.style.padding = '20px';
-                pdfContainer.style.zIndex = '-1';
-
-                pdfContainer.appendChild(pdfElement);
-                document.body.appendChild(pdfContainer);
-
-                const options = {
-                  margin: 10,
-                  filename: `${refNo}.pdf`,
-                  image: {
-                    type: 'jpeg',
-                    quality: 0.98
-                  },
-                  html2canvas: {
-                    scale: 2,
-                    useCORS: true,
-                    backgroundColor: '#ffffff',
-                    logging: false
-                  },
-                  jsPDF: {
-                    unit: 'mm',
-                    format: 'a4',
-                    orientation: 'portrait'
-                  }
-                };
-
-                html2pdf()
-                  .set(options)
-                  .from(pdfElement)
-                  .save()
-                  .then(() => {
-                    document.body.removeChild(pdfContainer);
-                  })
-                  .catch((error) => {
-                    console.error('PDF generation failed:', error);
-                    document.body.removeChild(pdfContainer);
-                  });
-              }
-            }}
+            onClick={handleDownloadPDF}
           >
             📄 Download PDF
           </button>
