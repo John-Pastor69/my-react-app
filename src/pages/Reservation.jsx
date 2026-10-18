@@ -98,6 +98,7 @@ const Reservation = () => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [durationHours, setDurationHours] = useState(0);
+  const [isSubmitting, setIsSubmitting] = useState(false);
   
   // DYNAMIC SELECTION CARTS
   const [selectedEquip, setSelectedEquip] = useState({});
@@ -432,7 +433,7 @@ const Reservation = () => {
   };
 
   const handleSubmit = async () => {
-    if (!certified) return;
+    if (!certified || isSubmitting) return;
     
     if (!currentUser) {
       setCustomAlert({
@@ -486,6 +487,8 @@ const Reservation = () => {
       return;
     }
 
+    setIsSubmitting(true);
+
     try {
       // 1. MULTI-DAY OVERLAP CHECK (Only if facility is booked)
       if (hasFacility && startTime && endTime) {
@@ -520,6 +523,7 @@ const Reservation = () => {
 
         if (isOverlapping) {
           setShowOverlapWarning(true);
+          setIsSubmitting(false);
           return;
         }
       }
@@ -583,6 +587,8 @@ const Reservation = () => {
         message: 'Failed to submit reservation.',
         isSuccess: false
       });
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -1096,9 +1102,9 @@ const Reservation = () => {
           <button 
             className="btn-primary" 
             onClick={handleSubmit} 
-            disabled={!certified}
+            disabled={!certified || isSubmitting}
           >
-            Submit Reservation
+            {isSubmitting ? 'Submitting...' : 'Submit Reservation'}
           </button>
         </div>
       </div>
