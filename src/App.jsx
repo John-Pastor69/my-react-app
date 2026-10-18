@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'; 
+import { useState, useEffect, lazy, Suspense } from 'react'; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { doc, updateDoc, getDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
@@ -9,15 +9,15 @@ import './App.css';
 
 import Login from './pages/Login';
 
-import DashboardRouter from './pages/routers/DashboardRouter';
-import CalendarRouter from './pages/routers/CalendarRouter';
-import ApprovalRouter from './pages/routers/ApprovalRouter';
-import UserManagementRouter from './pages/routers/UserManagementRouter';
-import EquipmentManagementRouter from './pages/routers/EquipmentRouter';
-import ProfileRouter from './pages/routers/ProfileRouter';
-import ReservationRouter from './pages/routers/ReservationRouter';
-import ScheduleRouter from './pages/routers/ScheduleRouter';
-import FacilityRouter from './pages/routers/FacilityRouter';
+const DashboardRouter = lazy(() => import('./pages/routers/DashboardRouter'));
+const CalendarRouter = lazy(() => import('./pages/routers/CalendarRouter'));
+const ApprovalRouter = lazy(() => import('./pages/routers/ApprovalRouter'));
+const UserManagementRouter = lazy(() => import('./pages/routers/UserManagementRouter'));
+const EquipmentManagementRouter = lazy(() => import('./pages/routers/EquipmentRouter'));
+const ProfileRouter = lazy(() => import('./pages/routers/ProfileRouter'));
+const ReservationRouter = lazy(() => import('./pages/routers/ReservationRouter'));
+const ScheduleRouter = lazy(() => import('./pages/routers/ScheduleRouter'));
+const FacilityRouter = lazy(() => import('./pages/routers/FacilityRouter'));
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -152,63 +152,66 @@ export default function App() {
       <div className="main-content">
         <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
         <div className="page-content">
-          <Routes> 
+          <Suspense fallback={<div className="loading-text">Loading page...</div>}>
+
+            <Routes> 
             
-            {/* 1. Dynamic Login & Catch-All Redirect */}
-            <Route 
-              path="*" 
-              element={
-                userRole.toLowerCase() === 'requestor' 
-                  ? <Navigate to="/reserve" replace /> 
-                  : <Navigate to="/dashboard" replace />
-              } 
-            />
+              {/* 1. Dynamic Login & Catch-All Redirect */}
+              <Route 
+                path="*" 
+                element={
+                  userRole.toLowerCase() === 'requestor' 
+                    ? <Navigate to="/reserve" replace /> 
+                    : <Navigate to="/dashboard" replace />
+                } 
+              />
 
-            {/* 2. Protected Dashboard Routes */}
-            <Route 
-              path="/dashboard/*" 
-              element={
-                userRole.toLowerCase() === 'requestor'
-                  ? <Navigate to="/reserve" replace />
-                  : <DashboardRouter currentUserRole={userRole.toLowerCase()} />
-              }
-            />
+              {/* 2. Protected Dashboard Routes */}
+              <Route 
+                path="/dashboard/*" 
+                element={
+                  userRole.toLowerCase() === 'requestor'
+                    ? <Navigate to="/reserve" replace />
+                    : <DashboardRouter currentUserRole={userRole.toLowerCase()} />
+                }
+              />
 
-            <Route 
-              path="/reserve/*" 
-              element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />}
-            />
+              <Route 
+                path="/reserve/*" 
+                element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />}
+              />
 
-            <Route 
-              path="/schedule/*" 
-              element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />}
-            />
+              <Route 
+                path="/schedule/*" 
+                element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />}
+              />
 
-            <Route 
-              path="/approval/*" 
-              element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />}
-            />
-            <Route 
-              path="/equipment/*" 
-              element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />}
-            />
-            <Route 
-              path="/user/*" 
-              element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />}
-            />
-            <Route 
-              path="/facility/*" 
-              element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />}
-            />
-            <Route 
-              path="/calendar/*" 
-              element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />}
-            />
-            <Route 
-              path="/account/*" 
-              element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />}
-            />
-          </Routes>
+              <Route 
+                path="/approval/*" 
+                element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />}
+              />
+              <Route 
+                path="/equipment/*" 
+                element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />}
+              />
+              <Route 
+                path="/user/*" 
+                element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />}
+              />
+              <Route 
+                path="/facility/*" 
+                element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />}
+              />
+              <Route 
+                path="/calendar/*" 
+                element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />}
+              />
+              <Route 
+                path="/account/*" 
+                element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />}
+              />
+            </Routes>
+          </Suspense>
         </div>
       </div>
     </div>
