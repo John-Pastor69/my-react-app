@@ -31,6 +31,7 @@ const Profile = () => {
     lastName: '',
     email: '',
     officeLocation: '',
+    department: '',
     phone: '',
     role: '',
     status: 'Active',
@@ -80,6 +81,7 @@ const Profile = () => {
               status: data.status || 'Active',
               dateJoined: joinedDate || 'N/A', 
               officeLocation: data.officeLocation || '',
+              department: data.department || '',
               phone: data.phone || '',
               avatarUrl: data.avatarUrl || '',
               bannerUrl: data.bannerUrl || ''
@@ -182,6 +184,7 @@ const Profile = () => {
         await updateDoc(userDocRef, {
           phone: formData.phone,
           officeLocation: formData.officeLocation,
+          department: formData.department,
           avatarUrl: updatedAvatarUrl,
           bannerUrl: updatedBannerUrl
         });
@@ -361,6 +364,12 @@ const Profile = () => {
                 <div className="input-group">
                   <label>OFFICE LOCATION</label>
                   <input type="text" name="officeLocation" value={formData.officeLocation} onChange={handleInputChange} readOnly={!isEditing} placeholder="e.g. Floor A, Room 102" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
+                </div>
+              )}
+              {formData.role?.toLowerCase() === 'endorser' && (
+                <div className="input-group">
+                  <label>DEPARTMENT</label>
+                  <input type="text" name="department" value={formData.department} onChange={handleInputChange} readOnly={!isEditing} placeholder="e.g. SHS, MIS" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
                 </div>
               )}
             </div>

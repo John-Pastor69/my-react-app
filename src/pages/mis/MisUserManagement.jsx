@@ -87,7 +87,17 @@ const MisUserManagement = () => {
             // Format name from "Last, First Middle" to "First Middle Last"
             if (cleanName.includes(',')) {
               const parts = cleanName.split(',');
-              cleanName = `${parts[1].trim()} ${parts[0].trim()}`;
+              let lastName = parts[0].trim();
+              let firstNames = parts[1].trim();
+              
+              // Extract any parenthesized title like (Faculty) and move it to the end
+              const titleMatch = firstNames.match(/(\(.*?\))/);
+              if (titleMatch) {
+                firstNames = firstNames.replace(titleMatch[1], '').trim();
+                cleanName = `${firstNames} ${lastName} ${titleMatch[1]}`;
+              } else {
+                cleanName = `${firstNames} ${lastName}`;
+              }
             }
 
             return { id: d.id, ...data, name: cleanName };
