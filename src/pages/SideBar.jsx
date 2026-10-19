@@ -3,7 +3,7 @@ import { signOut } from 'firebase/auth';
 import { doc, updateDoc } from 'firebase/firestore'; 
 import { auth, db } from '../Firebase';
 import { 
-  LayoutDashboard, 
+  LayoutDashboard,  
   PlusCircle, 
   List,       
   CheckCircle2, 
@@ -15,7 +15,7 @@ import {
   LogOut,
   X
 } from 'lucide-react';
-import '../styles/Sidebar.scss'; 
+import '../styles/SideBar.scss'; 
 
 // Roles that have elevated access beyond a standard requestor
 const ELEVATED_ROLES = [

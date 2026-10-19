@@ -3,7 +3,7 @@ import { Bell, Menu, Trash2 } from 'lucide-react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { auth, db } from '../Firebase'; 
 import PendingRequest from './PendingRequest';
-import '../styles/Topbar.scss'; 
+import '../styles/TopBar.scss'; 
 
 // Helper function to format timestamp into "X ago"
 const timeAgo = (dateInput) => {
