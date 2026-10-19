@@ -153,11 +153,11 @@ const Calendar = () => {
   // 3. REUSABLE MAPPING FUNCTION WITH RANGE EXPANSION
   const mapToEvents = (sourceData) => {
     return sourceData.flatMap(data => {
-      const status = (data.status || 'pending').toLowerCase();
+      const status = (data.status || 'pending').toLowerCase().trim();
+      if (status === 'rejected') return [];
       
       let uiStatusColor = 'yellow'; 
       if (status === 'approved') uiStatusColor = 'green';
-      if (status === 'rejected') uiStatusColor = 'red';
       if (status === 'pending') uiStatusColor = 'yellow';
 
       const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
@@ -268,7 +268,6 @@ const Calendar = () => {
           <div className="calendar-legend">
             <span className="legend-item"><span className="dot dot-yellow"></span> Pending</span>
             <span className="legend-item"><span className="dot dot-green"></span> Approved</span>
-            <span className="legend-item"><span className="dot dot-red"></span> Rejected</span>
           </div>
         </div>
 
@@ -312,7 +311,6 @@ const Calendar = () => {
           const sidebarEvents = events.filter(e => e.date === selectedDate); 
           const approvedCount = sidebarEvents.filter(e => e.status === 'green').length;
           const pendingCount = sidebarEvents.filter(e => e.status === 'yellow').length;
-          const rejectedCount = sidebarEvents.filter(e => e.status === 'red').length;
           const displayDate = selectedDate ? new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'short', day: 'numeric' }) : "Select a date";
 
           return (
@@ -328,8 +326,6 @@ const Calendar = () => {
                 <div className="stat-box"><span className="stat-num text-green">{approvedCount}</span><span className="stat-label">Approved</span></div>
                 <div className="stat-divider"></div>
                 <div className="stat-box"><span className="stat-num text-yellow">{pendingCount}</span><span className="stat-label">Pending</span></div>
-                <div className="stat-divider"></div>
-                <div className="stat-box"><span className="stat-num text-red">{rejectedCount}</span><span className="stat-label">Rejected</span></div>
               </div>
               <div className="event-cards">
                 {sidebarEvents.length === 0 ? (
@@ -339,7 +335,7 @@ const Calendar = () => {
                     <div key={event.id} className="event-card">
                       <div className="card-top">
                         <span className={`status-badge bg-${event.status}`}>
-                          {event.status === 'green' ? 'Approved' : event.status === 'red' ? 'Rejected' : 'Pending'}
+                          {event.status === 'green' ? 'Approved' : 'Pending'}
                         </span>
                         <h4>{event.title}</h4>
                       </div>

@@ -63,7 +63,8 @@ const MisEquipmentManagement = () => {
     
     // Sum all active reservations for this specific equipment ID
     reservationsData.forEach(res => {
-      if (res.status !== 'Rejected' && res.status !== 'Cancelled') {
+      const statusLower = (res.status || '').toLowerCase().trim();
+      if (statusLower !== 'rejected' && statusLower !== 'cancelled') {
         if (res.selectedEquip && res.selectedEquip[item.id]) {
           reservedCount += Number(res.selectedEquip[item.id]);
         }
@@ -78,8 +79,13 @@ const MisEquipmentManagement = () => {
       availableCount = 0;
     }
 
+    const effectiveStatus = availableCount === 0 ? 'Unavailable' : (item.status || 'Available');
+    const effectiveStatusClass = effectiveStatus === 'Unavailable' ? 'status-unavailable' : 'status-available';
+
     return {
       ...item,
+      status: effectiveStatus,
+      statusClass: effectiveStatusClass,
       computedReserved: reservedCount,
       computedAvailable: availableCount
     };
@@ -145,8 +151,8 @@ const MisEquipmentManagement = () => {
     let newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
     let status = editingItem.status;
 
-    // Auto-switch to Unavailable only if stock drops to 0 naturally; otherwise respect MIS user's explicit status choice
-    if (newAvailable === 0 && status !== 'Maintenance') {
+    // Auto-switch to Unavailable if stock drops to 0
+    if (newAvailable === 0) {
       status = 'Unavailable';
     }
 
@@ -436,7 +442,17 @@ const MisEquipmentManagement = () => {
                 <input
                   type="number"
                   value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0}
-                  onChange={(e) => setEditingItem({ ...editingItem, adjustment: e.target.value })}
+                  onChange={(e) => {
+                    const adj = e.target.value;
+                    const adjTotal = parseInt(adj, 10) || 0;
+                    const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal);
+                    const newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
+                    setEditingItem({
+                      ...editingItem,
+                      adjustment: adj,
+                      status: newAvailable === 0 ? 'Unavailable' : 'Available'
+                    });
+                  }}
                   style={{
                     border: '1px solid #E2E8F0', 
                     borderRadius: '6px', 
@@ -518,7 +534,14 @@ const MisEquipmentManagement = () => {
                   type="number"
                   min="0"
                   value={newItem.quantity}
-                  onChange={(e) => setNewItem({ ...newItem, quantity: e.target.value })}
+                  onChange={(e) => {
+                    const qty = e.target.value;
+                    setNewItem({
+                      ...newItem,
+                      quantity: qty,
+                      status: (qty !== '' && Number(qty) === 0) ? 'Unavailable' : 'Available'
+                    });
+                  }}
                   required
                 />
               </div>

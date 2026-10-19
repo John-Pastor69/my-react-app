@@ -108,6 +108,7 @@ const Reservation = () => {
   
   // --- MODAL STATES ---
   const [showOverlapWarning, setShowOverlapWarning] = useState(false);
+  const [conflictEvent, setConflictEvent] = useState(null);
   const [customAlert, setCustomAlert] = useState(null); 
 
   // --- UI & VALIDATION STATES ---
@@ -154,7 +155,8 @@ const Reservation = () => {
               ...prev,
               fullName: prev.fullName || cleanName,
               contactNumber: prev.contactNumber || userData.phone || '',
-              emailAddress: prev.emailAddress || userData.email || user.email || '' 
+              emailAddress: prev.emailAddress || userData.email || user.email || '',
+              endorserDesignation: prev.endorserDesignation || userData.department || ''
             }));
           }
         } catch (err) {
@@ -249,15 +251,17 @@ const Reservation = () => {
   const mappedEquipmentList = inventoryEquipments.map(item => {
     let reservedCount = 0;
     reservationsData.forEach(res => {
-      if (res.status !== 'Rejected' && res.status !== 'Cancelled') {
+      const statusLower = (res.status || '').toLowerCase().trim();
+      if (statusLower !== 'rejected' && statusLower !== 'cancelled') {
         if (res.selectedEquip && res.selectedEquip[item.id]) {
           reservedCount += Number(res.selectedEquip[item.id]);
         }
       }
     });
     const total = Number(item.totalCount) || 0;
-    const availableCount = Math.max(0, total - reservedCount);
-    return { ...item, computedReserved: reservedCount, computedAvailable: availableCount };
+    const availableCount = item.status === 'Unavailable' ? 0 : Math.max(0, total - reservedCount);
+    const effectiveStatus = availableCount === 0 ? 'Unavailable' : item.status;
+    return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
 
   // --- CALCULATE DURATION ---
@@ -276,7 +280,22 @@ const Reservation = () => {
 
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
-    setFormData(prev => ({ ...prev, [field]: value }));
+    setFormData(prev => {
+      const updated = { ...prev, [field]: value };
+
+      if (field === 'endorserName') {
+        const matchedEndorser = endorsersList.find(
+          e => e.cleanName.toLowerCase() === value.trim().toLowerCase()
+        );
+        if (matchedEndorser && matchedEndorser.department) {
+          updated.endorserDesignation = matchedEndorser.department;
+          clearMissingField('endorserDesignation');
+        }
+      }
+
+      return updated;
+    });
+
     if (value && String(value).trim() !== '') {
       clearMissingField(field);
     }
@@ -290,9 +309,13 @@ const Reservation = () => {
     setFormData(prev => ({
       ...prev,
       endorserName: endorser.cleanName,
+      endorserDesignation: endorser.department || prev.endorserDesignation,
       endorserEmail: endorser.email
     }));
     clearMissingField('endorserName');
+    if (endorser.department) {
+      clearMissingField('endorserDesignation');
+    }
     clearMissingField('endorserEmail');
     setShowEndorserDropdown(false);
   };
@@ -620,9 +643,13 @@ const Reservation = () => {
         const newReservationDates = getDatesInRange(eventDate, days);
         const snap = await getDocs(collection(db, 'reservations'));
         
-        const isOverlapping = snap.docs.some(d => {
+        const conflictingDoc = snap.docs.find(d => {
           const res = d.data();
-          if (res.status === 'Rejected' || res.status === 'Cancelled') return false;
+          const statusLower = (res.status || '').toLowerCase().trim();
+          const hasRejectedApproval = res.approvals && Object.values(res.approvals).some(
+            a => (typeof a === 'string' && a.toLowerCase() === 'rejected') || (a && typeof a.status === 'string' && a.status.toLowerCase() === 'rejected')
+          );
+          if (statusLower === 'rejected' || statusLower === 'cancelled' || hasRejectedApproval) return false;
 
           const existingDays = res.days || 1;
           const existingDates = getDatesInRange(res.eventDate, existingDays);
@@ -646,7 +673,16 @@ const Reservation = () => {
           return timeOverlap && (hasFacilityOverlap || hasRoomOverlap);
         });
 
-        if (isOverlapping) {
+        if (conflictingDoc) {
+          const conflictData = conflictingDoc.data();
+          const conflictDateDisplay = conflictData.endDate && conflictData.endDate !== conflictData.eventDate
+            ? `${conflictData.eventDate} - ${conflictData.endDate}`
+            : (conflictData.eventDate || 'N/A');
+          setConflictEvent({
+            eventName: conflictData.eventName || 'Untitled Event',
+            date: conflictDateDisplay,
+            time: `${conflictData.startTime || 'N/A'} - ${conflictData.endTime || 'N/A'}`
+          });
           setShowOverlapWarning(true);
           setIsSubmitting(false);
           return;
@@ -1318,10 +1354,13 @@ const Reservation = () => {
           <div className="modal-card">
             <h3 className="modal-title error">Schedule Conflict</h3>
             <p className="modal-message">
-              The selected facility or room is already reserved during the selected multi-day time window. Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
+              The selected facility or room is already reserved during the selected multi-day time window
+              {conflictEvent && (
+                <> by <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time})</>
+              )}. Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
             </p>
             <div className="modal-actions">
-              <button onClick={() => setShowOverlapWarning(false)} className="modal-button">
+              <button onClick={() => { setShowOverlapWarning(false); setConflictEvent(null); }} className="modal-button">
                 Understood
               </button>
             </div>
