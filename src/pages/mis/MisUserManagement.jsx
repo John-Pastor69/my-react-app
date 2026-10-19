@@ -80,9 +80,7 @@ const MisUserManagement = () => {
         const list = snapshot.docs
           .map((d) => {
             const data = d.data();
-            // Automatically strip out "(Student)" from the name
-            let cleanName = data.name || '';
-            cleanName = cleanName.replace(/\s*\(Student\)/i, '').trim();
+            let cleanName = (data.name || '').trim();
             
             // Format name from "Last, First Middle" to "First Middle Last"
             if (cleanName.includes(',')) {
