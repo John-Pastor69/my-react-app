@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { 
   collection, 
   onSnapshot, 
@@ -110,7 +110,7 @@ const Reservation = () => {
   const [showOverlapWarning, setShowOverlapWarning] = useState(false);
   const [customAlert, setCustomAlert] = useState(null); 
 
-  // --- UI STATES ---
+  // --- UI & VALIDATION STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
   const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
@@ -120,10 +120,21 @@ const Reservation = () => {
   const [calendarView, setCalendarView] = useState(new Date());
   const [showDaysCalendar, setShowDaysCalendar] = useState(false);
   const [daysCalendarView, setDaysCalendarView] = useState(new Date());
+  const [missingFields, setMissingFields] = useState({});
+  const fieldRefs = useRef({});
 
   // --- ENDORSER DROPDOWN STATE ---
   const [endorsersList, setEndorsersList] = useState([]);
   const [showEndorserDropdown, setShowEndorserDropdown] = useState(false);
+
+  const clearMissingField = (fieldKey) => {
+    setMissingFields(prev => {
+      if (!prev[fieldKey]) return prev;
+      const updated = { ...prev };
+      delete updated[fieldKey];
+      return updated;
+    });
+  };
 
   // --- CONNECT TO ACCOUNT (Profile Auto-Fill & Role Check) ---
   useEffect(() => {
@@ -266,6 +277,9 @@ const Reservation = () => {
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
     setFormData(prev => ({ ...prev, [field]: value }));
+    if (value && String(value).trim() !== '') {
+      clearMissingField(field);
+    }
 
     if (field === 'endorserName') {
       setShowEndorserDropdown(value.length > 0);
@@ -278,16 +292,24 @@ const Reservation = () => {
       endorserName: endorser.cleanName,
       endorserEmail: endorser.email
     }));
+    clearMissingField('endorserName');
+    clearMissingField('endorserEmail');
     setShowEndorserDropdown(false);
   };
 
   const handleCheckboxArrayChange = (field, value) => {
-    setFormData(prev => ({
-      ...prev,
-      [field]: prev[field].includes(value)
+    setFormData(prev => {
+      const updated = prev[field].includes(value)
         ? prev[field].filter(item => item !== value)
-        : [...prev[field], value]
-    }));
+        : [...prev[field], value];
+      if (updated.length > 0) {
+        clearMissingField(field);
+      }
+      return {
+        ...prev,
+        [field]: updated
+      };
+    });
   };
 
   const updateEquip = (item, delta) => {
@@ -318,6 +340,7 @@ const Reservation = () => {
     setEventDate(val);
     const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
     setDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
+    if (isValid) clearMissingField('eventDate');
   };
 
   const handleDaysDateChange = (e) => {
@@ -328,9 +351,50 @@ const Reservation = () => {
     setEndDateInput(val);
     const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
     setDaysDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
+    if (isValid) clearMissingField('endDateInput');
   };
 
-  const handleTimeBlur = (e, setter, fieldKey = null) => {
+  // Restricts input strictly to 12-hour AM/PM time (disallows 13:00, 00:00, etc.)
+  const handleTimeInput = (e, setter, stateKey, isFormData = false) => {
+    const val = e.target.value;
+    if (val === '') {
+      if (isFormData) {
+        setFormData(prev => ({ ...prev, [stateKey]: '' }));
+      } else {
+        setter('');
+      }
+      return;
+    }
+
+    if (!/^[0-9:aApPmM\s]*$/.test(val) || val.length > 8) return;
+
+    const timePart = val.replace(/[aApPmM\s]/g, '');
+    const parts = timePart.split(':');
+    if (parts.length > 2) return;
+
+    const [hStr, mStr] = parts;
+    if (hStr && hStr.length > 2) return;
+    if (mStr && mStr.length > 2) return;
+
+    if (hStr) {
+      const h = parseInt(hStr, 10);
+      if (h > 12 || (hStr.length === 2 && h === 0)) return;
+    }
+
+    if (mStr) {
+      const m = parseInt(mStr, 10);
+      if (m > 59) return;
+    }
+
+    if (isFormData) {
+      handleInputChange(stateKey, val);
+    } else {
+      setter(val);
+      if (val.trim() !== '') clearMissingField(stateKey);
+    }
+  };
+
+  const handleTimeBlur = (e, setter, fieldKey = null, missingKey = null) => {
     let val = e.target.value.trim().toUpperCase();
     if (!val) return;
     const match = val.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/);
@@ -338,19 +402,35 @@ const Reservation = () => {
       let [ , h, m, mod ] = match;
       h = parseInt(h, 10);
       m = m || '00';
+      const mins = parseInt(m, 10);
+
+      if (h < 1 || h > 12 || mins < 0 || mins > 59) {
+        if (fieldKey) {
+          setFormData(prev => ({ ...prev, [fieldKey]: '' }));
+        } else {
+          setter('');
+        }
+        return;
+      }
+
       if (!mod) {
-        if (h > 12) { mod = 'PM'; h -= 12; }
-        else if (h === 12) { mod = 'PM'; }
-        else if (h === 0) { h = 12; mod = 'AM'; }
-        else { mod = 'AM'; }
+        mod = h === 12 ? 'PM' : 'AM';
       }
       
-      const formattedTime = `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')} ${mod}`;
+      const formattedTime = `${String(h).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${mod}`;
       
       if (fieldKey) {
         setFormData(prev => ({ ...prev, [fieldKey]: formattedTime }));
+        clearMissingField(fieldKey);
       } else {
         setter(formattedTime);
+        if (missingKey) clearMissingField(missingKey);
+      }
+    } else {
+      if (fieldKey) {
+        setFormData(prev => ({ ...prev, [fieldKey]: '' }));
+      } else {
+        setter('');
       }
     }
   };
@@ -363,6 +443,7 @@ const Reservation = () => {
     const formattedDay = String(day).padStart(2, '0');
     setEventDate(`${month}/${formattedDay}/${calendarView.getFullYear()}`);
     setDateError('');
+    clearMissingField('eventDate');
     setShowCalendar(false); 
   };
 
@@ -371,14 +452,27 @@ const Reservation = () => {
     const month = calendarView.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-${i}`} className="calendar-day empty"></div>
     ));
     
-    const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
-      <div key={day} className="calendar-day" onClick={() => selectDate(day)}>{day}</div>
-    ));
+    const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+      const cellDate = new Date(year, month, day);
+      const isPast = cellDate < today;
+      return (
+        <div 
+          key={day} 
+          className={`calendar-day ${isPast ? 'disabled' : ''}`} 
+          onClick={() => !isPast && selectDate(day)}
+        >
+          {day}
+        </div>
+      );
+    });
     
     return [...blanks, ...renderDays];
   };
@@ -391,6 +485,7 @@ const Reservation = () => {
     const formattedDay = String(day).padStart(2, '0');
     setEndDateInput(`${month}/${formattedDay}/${daysCalendarView.getFullYear()}`);
     setDaysDateError('');
+    clearMissingField('endDateInput');
     setShowDaysCalendar(false);
   };
 
@@ -399,14 +494,27 @@ const Reservation = () => {
     const month = daysCalendarView.getMonth();
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-days-${i}`} className="calendar-day empty"></div>
     ));
     
-    const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => (
-      <div key={day} className="calendar-day" onClick={() => selectDaysDate(day)}>{day}</div>
-    ));
+    const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
+      const cellDate = new Date(year, month, day);
+      const isPast = cellDate < today;
+      return (
+        <div 
+          key={day} 
+          className={`calendar-day ${isPast ? 'disabled' : ''}`} 
+          onClick={() => !isPast && selectDaysDate(day)}
+        >
+          {day}
+        </div>
+      );
+    });
     
     return [...blanks, ...renderDays];
   };
@@ -423,6 +531,7 @@ const Reservation = () => {
     setSelectedEquip({});
     setCertified(false);
     setIsDraftSaved(false);
+    setMissingFields({});
     localStorage.removeItem('reservationDraft');
   };
 
@@ -447,35 +556,51 @@ const Reservation = () => {
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
     const hasFacility = formData.facilities.length > 0;
 
-    if (!formData.fullName || !formData.emailAddress || !eventDate || (hasFacility && (!startTime || !endTime))) {
-      setCustomAlert({
-        title: 'Missing Fields',
-        message: hasFacility 
-          ? 'Please fill in all required fields including Full Name, Email, Start Date, Start Time, and End Time.'
-          : 'Please fill in all required fields including Full Name, Email, and Start Date.',
-        isSuccess: false
-      });
-      return;
-    }
+    // Validate all required fields in top-to-bottom order
+    const requiredOrder = [
+      { key: 'fullName', missing: !formData.fullName.trim() },
+      { key: 'contactNumber', missing: !formData.contactNumber.trim() },
+      { key: 'emailAddress', missing: !formData.emailAddress.trim() },
+      ...((userRole === 'requestor' || userRole === 'user') ? [
+        { key: 'endorserName', missing: !formData.endorserName.trim() },
+        { key: 'endorserDesignation', missing: !formData.endorserDesignation.trim() },
+        { key: 'endorserEmail', missing: !formData.endorserEmail.trim() }
+      ] : []),
+      { key: 'eventName', missing: !formData.eventName.trim() },
+      { key: 'expectedParticipants', missing: !formData.expectedParticipants.trim() },
+      { key: 'eventType', missing: formData.eventType.length === 0 },
+      { key: 'eventDate', missing: !eventDate.trim() || !!dateError },
+      { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError },
+      { key: 'startTime', missing: !startTime.trim() },
+      { key: 'endTime', missing: !endTime.trim() },
+      { key: 'purpose', missing: !formData.purpose.trim() },
+      ...(aircon ? [
+        { key: 'airconOnTime', missing: !formData.airconOnTime.trim() },
+        { key: 'airconOffTime', missing: !formData.airconOffTime.trim() }
+      ] : [])
+    ];
 
-    if (aircon && (!formData.airconOnTime || !formData.airconOffTime)) {
-      setCustomAlert({
-        title: 'Aircon Schedule Required',
-        message: 'Please provide both the Aircon ON Time and Aircon OFF Time since air conditioning is enabled.',
-        isSuccess: false
-      });
-      return;
-    }
+    const newMissing = {};
+    let firstMissingKey = null;
 
-    if (userRole === 'requestor' || userRole === 'user') {
-      if (!formData.endorserName || !formData.endorserDesignation || !formData.endorserEmail) {
-        setCustomAlert({
-          title: 'Endorser Required',
-          message: 'Please complete all Endorser Information fields to proceed with your reservation.',
-          isSuccess: false
-        });
-        return;
+    requiredOrder.forEach(({ key, missing }) => {
+      if (missing) {
+        newMissing[key] = true;
+        if (!firstMissingKey) firstMissingKey = key;
       }
+    });
+
+    if (firstMissingKey) {
+      setMissingFields(newMissing);
+      const targetEl = fieldRefs.current[firstMissingKey];
+      if (targetEl) {
+        targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        const inputEl = targetEl.querySelector('input:not([type="checkbox"]), textarea');
+        if (inputEl && firstMissingKey !== 'eventDate' && firstMissingKey !== 'endDateInput') {
+          inputEl.focus({ preventScroll: true });
+        }
+      }
+      return;
     }
 
     if (!hasFacility && !hasEquipment) {
@@ -611,8 +736,11 @@ const Reservation = () => {
         </div>
 
         <div className="form-grid col-2">
-          <div className="input-group">
-            <label>Full Name <span>*</span></label>
+          <div 
+            className={`input-group ${missingFields.fullName ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.fullName = el}
+          >
+            <label>Full Name <span className="req">*</span></label>
             <div className="input-with-icon right-icon">
               <input 
                 type="text" 
@@ -620,11 +748,15 @@ const Reservation = () => {
                 onChange={(e) => handleInputChange('fullName', e.target.value)} 
                 maxLength={50}
                 placeholder="Enter your full name" 
+                className={missingFields.fullName ? 'input-error' : ''}
               />
             </div>
           </div>
-          <div className="input-group">
-            <label>Contact Number <span>*</span></label>
+          <div 
+            className={`input-group ${missingFields.contactNumber ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.contactNumber = el}
+          >
+            <label>Contact Number <span className="req">*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-phone"></i>
               <input 
@@ -633,11 +765,15 @@ const Reservation = () => {
                 onChange={(e) => handleInputChange('contactNumber', e.target.value.replace(/\D/g, '').slice(0, 11))} 
                 maxLength={11}
                 placeholder="09XX XXX XXXX" 
+                className={missingFields.contactNumber ? 'input-error' : ''}
               />
             </div>
           </div>
-          <div className="input-group full-width">
-            <label>Email Address <span>*</span></label>
+          <div 
+            className={`input-group full-width ${missingFields.emailAddress ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.emailAddress = el}
+          >
+            <label>Email Address <span className="req">*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph-fill ph-envelope-simple"></i>
               <input 
@@ -646,6 +782,7 @@ const Reservation = () => {
                 onChange={(e) => handleInputChange('emailAddress', e.target.value)} 
                 maxLength={50}
                 placeholder="your.email@domain.com" 
+                className={missingFields.emailAddress ? 'input-error' : ''}
               />
             </div>
           </div>
@@ -659,7 +796,10 @@ const Reservation = () => {
               <span className="step-badge">2</span> Endorser Information
             </div>
             <div className="form-grid col-2">
-              <div className="input-group endorser-autocomplete">
+              <div 
+                className={`input-group endorser-autocomplete ${missingFields.endorserName ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.endorserName = el}
+              >
                 <label>Endorser's Full Name <span className="req">*</span></label>
                 <div style={{ position: 'relative' }}>
                   <input 
@@ -671,6 +811,7 @@ const Reservation = () => {
                     maxLength={50}
                     placeholder="Faculty/Adviser name" 
                     autoComplete="off"
+                    className={missingFields.endorserName ? 'input-error' : ''}
                   />
                   {showEndorserDropdown && endorsersList.filter(e => e.cleanName.toLowerCase().includes(formData.endorserName.toLowerCase())).length > 0 && (
                     <div className="autocomplete-dropdown">
@@ -690,17 +831,24 @@ const Reservation = () => {
                   )}
                 </div>
               </div>
-              <div className="input-group">
-                <label>Endorser's Designation <span className="req">*</span></label>
+              <div 
+                className={`input-group ${missingFields.endorserDesignation ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.endorserDesignation = el}
+              >
+                <label>Department <span className="req">*</span></label>
                 <input 
                   type="text" 
                   value={formData.endorserDesignation} 
                   onChange={(e) => handleInputChange('endorserDesignation', e.target.value)} 
                   maxLength={50}
                   placeholder="e.g. Dean, Faculty Adviser" 
+                  className={missingFields.endorserDesignation ? 'input-error' : ''}
                 />
               </div>
-              <div className="input-group full-width">
+              <div 
+                className={`input-group full-width ${missingFields.endorserEmail ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.endorserEmail = el}
+              >
                 <label>Endorser's Contact Email <span className="req">*</span></label>
                 <div className="input-with-icon left-icon">
                   <i className="ph-fill ph-envelope-simple"></i>
@@ -710,6 +858,7 @@ const Reservation = () => {
                     onChange={(e) => handleInputChange('endorserEmail', e.target.value)} 
                     maxLength={50}
                     placeholder="endorser@university.edu.ph" 
+                    className={missingFields.endorserEmail ? 'input-error' : ''}
                   />
                 </div>
               </div>
@@ -725,20 +874,27 @@ const Reservation = () => {
         </div>
         <div className="form-grid col-2">
           {/* Row 1 Left: Event Name */}
-          <div className="input-group">
-            <label>Event Name <span>*</span></label>
+          <div 
+            className={`input-group ${missingFields.eventName ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.eventName = el}
+          >
+            <label>Event Name <span className="req">*</span></label>
             <input 
               type="text" 
               value={formData.eventName} 
               onChange={(e) => handleInputChange('eventName', e.target.value)} 
               maxLength={75}
               placeholder="e.g. Annual General Assembly" 
+              className={missingFields.eventName ? 'input-error' : ''}
             />
           </div>
           
           {/* Row 1 Right: Expected Number of Participants */}
-          <div className="input-group">
-            <label>Expected Number of Participants <span>*</span></label>
+          <div 
+            className={`input-group ${missingFields.expectedParticipants ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.expectedParticipants = el}
+          >
+            <label>Expected Number of Participants <span className="req">*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-users"></i>
               <input 
@@ -746,13 +902,17 @@ const Reservation = () => {
                 value={formData.expectedParticipants} 
                 onChange={(e) => handleInputChange('expectedParticipants', e.target.value.replace(/\D/g, ''))} 
                 placeholder="e.g. 150" 
+                className={missingFields.expectedParticipants ? 'input-error' : ''}
               />
             </div>
           </div>
 
           {/* Row 2 Left: Event Type */}
-          <div className="input-group">
-            <label>Event Type <span>*</span></label>
+          <div 
+            className={`input-group ${missingFields.eventType ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.eventType = el}
+          >
+            <label>Event Type <span className="req">*</span></label>
             <div className="event-type-grid">
               {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map(type => (
                 <label key={type} className="checkbox-option">
@@ -770,8 +930,11 @@ const Reservation = () => {
           {/* Row 2 Right Column: Start Date & End Date Stacked */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
             {/* Start Date (Formerly Event Date) */}
-            <div className="input-group">
-              <label>Start Date *</label>
+            <div 
+              className={`input-group ${missingFields.eventDate ? 'field-missing' : ''}`}
+              ref={el => fieldRefs.current.eventDate = el}
+            >
+              <label>Start Date <span className="req">*</span></label>
               <div className="calendar-field">
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowCalendar(!showCalendar)}></i>
@@ -782,7 +945,7 @@ const Reservation = () => {
                     maxLength={10}
                     placeholder="MM/DD/YYYY" 
                     onClick={() => setShowCalendar(true)} 
-                    className={dateError ? 'input-error' : ''}
+                    className={(dateError || missingFields.eventDate) ? 'input-error' : ''}
                   />
                 </div>
                 {dateError && <span className="field-error">{dateError}</span>}
@@ -813,8 +976,11 @@ const Reservation = () => {
             </div>
 
             {/* End Date (Formerly Number of Days) */}
-            <div className="input-group">
-              <label>End Date *</label>
+            <div 
+              className={`input-group ${missingFields.endDateInput ? 'field-missing' : ''}`}
+              ref={el => fieldRefs.current.endDateInput = el}
+            >
+              <label>End Date <span className="req">*</span></label>
               <div className="calendar-field">
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowDaysCalendar(!showDaysCalendar)}></i>
@@ -825,7 +991,7 @@ const Reservation = () => {
                     maxLength={10}
                     placeholder="MM/DD/YYYY" 
                     onClick={() => setShowDaysCalendar(true)} 
-                    className={daysDateError ? 'input-error' : ''}
+                    className={(daysDateError || missingFields.endDateInput) ? 'input-error' : ''}
                   />
                 </div>
                 {daysDateError && <span className="field-error">{daysDateError}</span>}
@@ -858,41 +1024,53 @@ const Reservation = () => {
 
           {/* Row 3 Right Column: Start Time & End Time Stacked */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
-            <div className="input-group">
-              <label>Start Time *</label>
+            <div 
+              className={`input-group ${missingFields.startTime ? 'field-missing' : ''}`}
+              ref={el => fieldRefs.current.startTime = el}
+            >
+              <label>Start Time <span className="req">*</span></label>
               <div className="input-with-icon left-icon">
                 <i className="ph ph-clock"></i>
                 <input 
                   type="text" 
                   value={startTime}
-                  onChange={(e) => setStartTime(e.target.value)}
-                  onBlur={(e) => handleTimeBlur(e, setStartTime)}
+                  onChange={(e) => handleTimeInput(e, setStartTime, 'startTime', false)}
+                  onBlur={(e) => handleTimeBlur(e, setStartTime, null, 'startTime')}
                   placeholder="08:00 AM" 
+                  className={missingFields.startTime ? 'input-error' : ''}
                 />
               </div>
             </div>
-            <div className="input-group">
-              <label>End Time *</label>
+            <div 
+              className={`input-group ${missingFields.endTime ? 'field-missing' : ''}`}
+              ref={el => fieldRefs.current.endTime = el}
+            >
+              <label>End Time <span className="req">*</span></label>
               <div className="input-with-icon left-icon">
                 <i className="ph ph-clock"></i>
                 <input 
                   type="text" 
                   value={endTime}
-                  onChange={(e) => setEndTime(e.target.value)}
-                  onBlur={(e) => handleTimeBlur(e, setEndTime)}
+                  onChange={(e) => handleTimeInput(e, setEndTime, 'endTime', false)}
+                  onBlur={(e) => handleTimeBlur(e, setEndTime, null, 'endTime')}
                   placeholder="05:00 PM" 
+                  className={missingFields.endTime ? 'input-error' : ''}
                 />
               </div>
             </div>
           </div>
 
           {/* Full Width: Purpose / Description */}
-          <div className="input-group full-width">
-            <label>Purpose / Description <span>*</span></label>
+          <div 
+            className={`input-group full-width ${missingFields.purpose ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.purpose = el}
+          >
+            <label>Purpose / Description <span className="req">*</span></label>
             <textarea 
               value={formData.purpose} 
               onChange={(e) => handleInputChange('purpose', e.target.value)} 
               placeholder="Briefly describe the purpose and objectives of your event..."
+              className={missingFields.purpose ? 'input-error' : ''}
             ></textarea>
           </div>
         </div>
@@ -1041,36 +1219,42 @@ const Reservation = () => {
             </div>
 
             <div className="time-inputs">
-              <div className="input-group">
+              <div 
+                className={`input-group ${missingFields.airconOnTime ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.airconOnTime = el}
+              >
                 <label>Aircon ON Time {aircon && <span className="req">*</span>}</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
                   <input 
                     type="text" 
                     value={formData.airconOnTime} 
-                    onChange={(e) => handleInputChange('airconOnTime', e.target.value)}
+                    onChange={(e) => handleTimeInput(e, null, 'airconOnTime', true)}
                     onBlur={(e) => handleTimeBlur(e, null, 'airconOnTime')}
                     placeholder="08:00 AM" 
                     disabled={!aircon} 
-                    className={!aircon ? 'input-disabled' : ''} 
+                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOnTime ? 'input-error' : ''}`.trim()} 
                   />
                 </div>
               </div>
               
               <i className="ph ph-arrow-right arrow"></i>
               
-              <div className="input-group">
+              <div 
+                className={`input-group ${missingFields.airconOffTime ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.airconOffTime = el}
+              >
                 <label>Aircon OFF Time {aircon && <span className="req">*</span>}</label>
                 <div className="input-with-icon left-icon">
                   <i className="ph ph-clock"></i>
                   <input 
                     type="text" 
                     value={formData.airconOffTime} 
-                    onChange={(e) => handleInputChange('airconOffTime', e.target.value)}
+                    onChange={(e) => handleTimeInput(e, null, 'airconOffTime', true)}
                     onBlur={(e) => handleTimeBlur(e, null, 'airconOffTime')}
                     placeholder="05:00 PM" 
                     disabled={!aircon} 
-                    className={!aircon ? 'input-disabled' : ''} 
+                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOffTime ? 'input-error' : ''}`.trim()} 
                   />
                 </div>
               </div>

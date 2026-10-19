@@ -122,9 +122,20 @@ $orange-main: #F59E0B;
       font-size: var(--font-body); 
       font-weight: 600; 
 
-      .req { 
+      .req, span { 
         color: $red-main; 
       } 
+    }
+
+    &.field-missing {
+      label {
+        color: $red-main;
+      }
+
+      .event-type-grid .checkbox-option {
+        border-color: $red-main;
+        background: #FEF2F2;
+      }
     }
 
     input[type='text'], 
@@ -161,6 +172,8 @@ $orange-main: #F59E0B;
 
       &.input-error { 
         border-color: $red-main; 
+        background: #FEF2F2;
+        box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
       }
 
       &.input-disabled { 
@@ -845,7 +858,7 @@ $orange-main: #F59E0B;
       height: fit-content;
       line-height: 1;
 
-      &:hover:not(.empty) { 
+      &:hover:not(.empty):not(.disabled) { 
         background: #EFF6FF; 
         color: $blue-main; 
       } 
@@ -853,6 +866,12 @@ $orange-main: #F59E0B;
       &.empty { 
         cursor: default; 
       } 
+
+      &.disabled {
+        color: #CBD5E1;
+        cursor: not-allowed;
+        pointer-events: none;
+      }
     }
   }
 }
