@@ -1,6 +1,6 @@
 import { useState, useEffect, Suspense, useRef } from 'react'; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { signOut, getRedirectResult } from 'firebase/auth';
+import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
 
@@ -46,10 +46,17 @@ export default function App() {
     let heartbeatInterval = null;
 
     // Catch any errors from the Microsoft SSO redirect before auth state changes
-    getRedirectResult(auth).catch(err => console.error("Redirect Error:", err));
+    getRedirectResult(auth).then((result) => {
+      if (result) {
+        console.log("Successfully logged in via redirect!", result.user);
+      }
+    }).catch(err => {
+      console.error("Redirect Error:", err);
+      setLoginError("Login failed during redirect: " + err.message);
+    });
 
     // 1. Let Firebase automatically detect the returned session
-    const unsubscribe = auth.onAuthStateChanged(async (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
         const isStiEmail = user.email && (
           user.email.endsWith('@globalcity.sti.edu.ph') || 
