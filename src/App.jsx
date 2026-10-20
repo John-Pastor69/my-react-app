@@ -1,6 +1,7 @@
-import { useState, useEffect, lazy, Suspense } from 'react'; 
+import { useState, useEffect, Suspense } from 'react'; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { doc, updateDoc, getDoc } from 'firebase/firestore';
+import { signOut } from 'firebase/auth';
+import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
 
 import SideBar from './pages/SideBar';
@@ -9,15 +10,15 @@ import './App.css';
 
 import Login from './pages/Login';
 
-const DashboardRouter = lazy(() => import('./pages/routers/DashboardRouter'));
-const CalendarRouter = lazy(() => import('./pages/routers/CalendarRouter'));
-const ApprovalRouter = lazy(() => import('./pages/routers/ApprovalRouter'));
-const UserManagementRouter = lazy(() => import('./pages/routers/UserManagementRouter'));
-const EquipmentManagementRouter = lazy(() => import('./pages/routers/EquipmentRouter'));
-const ProfileRouter = lazy(() => import('./pages/routers/ProfileRouter'));
-const ReservationRouter = lazy(() => import('./pages/routers/ReservationRouter'));
-const ScheduleRouter = lazy(() => import('./pages/routers/ScheduleRouter'));
-const FacilityRouter = lazy(() => import('./pages/routers/FacilityRouter'));
+import DashboardRouter from './pages/routers/DashboardRouter';
+import CalendarRouter from './pages/routers/CalendarRouter';
+import ApprovalRouter from './pages/routers/ApprovalRouter';
+import UserManagementRouter from './pages/routers/UserManagementRouter';
+import EquipmentManagementRouter from './pages/routers/EquipmentRouter';
+import ProfileRouter from './pages/routers/ProfileRouter';
+import ReservationRouter from './pages/routers/ReservationRouter';
+import ScheduleRouter from './pages/routers/ScheduleRouter';
+import FacilityRouter from './pages/routers/FacilityRouter';
 
 export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
@@ -33,36 +34,87 @@ export default function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
   const [userRole, setUserRole] = useState('requestor');
   
-  // Loading state to pause the app while Firebase checks the session
+  // Loading state to pause the app until Firebase auth AND user role/layout data are fully ready
   const [isAuthLoading, setIsAuthLoading] = useState(true);
+  
+  // State to hold login errors passed back to the Login component
+  const [loginError, setLoginError] = useState('');
 
   // --- GLOBAL PRESENCE, HEARTBEAT & DB STATUS WRITER ---
   useEffect(() => {
     let heartbeatInterval = null;
+    let initialRedirectDone = false; // Prevent multiple redirects on mount
 
-    // 1. Detect existing Firebase session on load/refresh
+    // 1. Let Firebase automatically detect the returned session
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
-        setIsAuthenticated(true);
-        setIsAuthLoading(false); // Dismiss loading screen immediately
+        const isStiEmail = user.email && (
+          user.email.endsWith('@globalcity.sti.edu.ph') || 
+          user.email.endsWith('@sti.edu.ph')
+        );
 
-        // Run Firestore read and status update in the background without blocking the UI
+        if (!isStiEmail) {
+          await signOut(auth);
+          setLoginError("Access denied. Only STI institutional accounts are allowed.");
+          setIsAuthenticated(false);
+          setIsAuthLoading(false);
+          return;
+        }
+
         try {
           const userRef = doc(db, 'users', user.uid);
           const userSnap = await getDoc(userRef);
+          const nowIso = new Date().toISOString();
+
+          let resolvedRole = 'requestor';
 
           if (userSnap.exists()) {
-            setUserRole(userSnap.data().role || 'requestor');
+            resolvedRole = userSnap.data().role || 'requestor';
+            await updateDoc(userRef, {
+              status: 'Active',
+              lastActive: nowIso
+            });
+          } else {
+            const d = new Date();
+            const month = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            const liveDate = `${month}/${day}/${d.getFullYear()}`;
+
+            await setDoc(userRef, {
+              email: user.email,
+              name: user.displayName || "Unknown User",
+              role: 'requestor',
+              uid: user.uid,
+              dateJoined: liveDate,
+              officeLocation: '',
+              phone: '',
+              status: 'Active',
+              lastActive: nowIso
+            });
           }
 
-          await updateDoc(userRef, {
-            status: 'Active',
-            lastActive: new Date().toISOString()
-          });
+          setUserRole(resolvedRole);
+          setIsAuthenticated(true);
+          
+          // Only redirect if they are sitting on the login page ("/")
+          if (!initialRedirectDone && location.pathname === '/') {
+             if (resolvedRole.toLowerCase() === 'requestor') {
+                navigate('/reserve', { replace: true });
+             } else {
+                navigate('/dashboard', { replace: true });
+             }
+             initialRedirectDone = true;
+          }
+
         } catch (error) {
-          console.error("Error updating background session:", error);
+          console.error("Error loading user session:", error);
+          setLoginError("Failed to initialize user session.");
+          setIsAuthenticated(false); // Force re-login if DB fails
+        } finally {
+          setIsAuthLoading(false);
         }
       } else {
+        // No user is logged in
         setIsAuthenticated(false);
         setIsAuthLoading(false);
       }
@@ -106,7 +158,7 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, []);
+  }, [navigate, location.pathname]);
 
   // --- LOADING SCREEN ---
   if (isAuthLoading) {
@@ -122,19 +174,9 @@ export default function App() {
   }
 
   // --- LOGIN ROUTING ---
-  // If not logged in, only show the Login page and force redirect upon manual login
+  // If not logged in, only show the Login page
   if (!isAuthenticated) {
-    return <Login onLogin={(role) => {
-      setIsAuthenticated(true);
-      setUserRole(role);
-      
-      // Force navigation to the correct page exactly when they log in
-      if (role.toLowerCase() === 'requestor') {
-        navigate('/reserve', { replace: true });
-      } else {
-        navigate('/dashboard', { replace: true });
-      }
-    }} />;
+    return <Login error={loginError} setError={setLoginError} />;
   }
 
   return (

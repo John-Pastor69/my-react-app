@@ -1,90 +1,39 @@
 import React, { useState } from 'react';
-import { signInWithPopup, signOut } from 'firebase/auth';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { auth, db, microsoftProvider } from '../Firebase';
+import { signInWithRedirect } from 'firebase/auth';
+import { auth, microsoftProvider } from '../Firebase';
 import '../styles/Login.scss';
 
-export default function Login({ onLogin }) {
+export default function Login({ error, setError }) {
   const [showForm, setShowForm] = useState(false);
-  const [error, setError] = useState('');
 
   const openModal = () => {
     setShowForm(true);
-    setError('');
+    if (setError) setError('');
   };
 
   const closeModal = () => {
     setShowForm(false);
-    setError('');
+    if (setError) setError('');
   };
 
   const handleMicrosoftLogin = async (e) => {
     e.preventDefault();
-    setError('');
+    if (setError) setError('');
     try {
-      // 1. Authenticate via Microsoft SSO
-      const result = await signInWithPopup(auth, microsoftProvider);
-      const user = result.user;
-      
-      // 2. Verify if the email belongs to the STI domain
-      const isStiEmail = user.email && (
-        user.email.endsWith('@globalcity.sti.edu.ph') || 
-        user.email.endsWith('@sti.edu.ph')
-      );
-
-      if (!isStiEmail) {
-        await signOut(auth);
-        setError("Access denied. Only STI institutional accounts are allowed.");
-        return;
-      }
-
-      // 3. Check Firestore for the user's role
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-
-      let assignedRole = 'Requestor'; // Set default to 'requestor'
-      const nowIso = new Date().toISOString(); // Get current timestamp for lastActive
-
-      if (userDoc.exists()) {
-        assignedRole = userDoc.data().role; 
-        
-        // --- SET STATUS TO ACTIVE ON LOGIN ---
-        await updateDoc(userDocRef, {
-          status: 'Active',
-          lastActive: nowIso
-        });
-
-      } else {
-        // Format live date as MM/DD/YYYY (e.g., 09/26/2026)
-        const d = new Date();
-        const month = String(d.getMonth() + 1).padStart(2, '0');
-        const day = String(d.getDate()).padStart(2, '0');
-        const liveDate = `${month}/${day}/${d.getFullYear()}`;
-
-        // Add the new user to Firestore WITH active status
-        await setDoc(userDocRef, {
-          email: user.email,
-          name: user.displayName || "Unknown User",
-          role: 'requestor',
-          uid: user.uid,
-          dateJoined: liveDate,
-          officeLocation: '',
-          phone: '',
-          status: 'Active',
-          lastActive: nowIso
-        });
-      }
-
-      console.log(`Successfully logged in as ${user.email} with role: ${assignedRole}`);
-      
-      // 4. Pass the role to App.jsx!
-      onLogin(assignedRole); 
-      
-    } catch (error) {
-      console.error("Error signing in with Microsoft:", error.message);
-      setError("Microsoft login failed. Please try again.");
+      // Authenticate via Microsoft SSO Redirect
+      await signInWithRedirect(auth, microsoftProvider);
+    } catch (err) {
+      console.error("Error signing in with Microsoft:", err.message);
+      if (setError) setError("Microsoft login failed. Please try again.");
     }
   };
+
+  // If there's an external error passed in (e.g., from App.jsx after a failed redirect), auto-open the modal
+  React.useEffect(() => {
+    if (error) {
+      setShowForm(true);
+    }
+  }, [error]);
 
   return (
     <div className="landing-page">

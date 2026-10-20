@@ -27,11 +27,12 @@ const ELEVATED_ROLES = [
   'school admin'
 ];
 
-// Roles with specific management tabs
-const FACILITY_ADMIN_ROLES = ['building admin'];
-const SYSTEM_ADMIN_ROLES = ['mis'];
+// Roles with specific management tabs (Both MIS and Building Admin see all management tabs)
+const FACILITY_ADMIN_ROLES = ['building admin', 'mis'];
+const SYSTEM_ADMIN_ROLES = ['mis', 'building admin'];
 
 const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
+  const normalizedRole = (userRole || '').toLowerCase().trim();
 
   const handleSignOut = async () => {
     try {
@@ -71,7 +72,7 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
       <nav className="sidebar-nav">
         
         {/* --- DASHBOARD (Hidden from Requestor) --- */}
-        {ELEVATED_ROLES.includes(userRole) && (
+        {ELEVATED_ROLES.includes(normalizedRole) && (
           <NavLink to="/dashboard" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
             <LayoutDashboard className="nav-icon" size={20} />
             <span className="nav-label">Dashboard</span>
@@ -90,23 +91,23 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
         </NavLink>
 
         {/* --- APPROVAL (Hidden from Requestor) --- */}
-        {ELEVATED_ROLES.includes(userRole) && (
+        {ELEVATED_ROLES.includes(normalizedRole) && (
           <NavLink to="/approval" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
             <CheckCircle2 className="nav-icon" size={20} />
             <span className="nav-label">Approval</span>
           </NavLink>
         )}
 
-        {/* --- FACILITY MANAGEMENT (Only Building Admin) --- */}
-        {FACILITY_ADMIN_ROLES.includes(userRole) && (
+        {/* --- FACILITY MANAGEMENT (Building Admin & MIS) --- */}
+        {FACILITY_ADMIN_ROLES.includes(normalizedRole) && (
           <NavLink to="/facility" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
             <Building className="nav-icon" size={20} />
             <span className="nav-label">Facilities</span>
           </NavLink>
         )}
 
-        {/* --- SYSTEM MANAGEMENT (Only MIS) --- */}
-        {SYSTEM_ADMIN_ROLES.includes(userRole) && (
+        {/* --- SYSTEM MANAGEMENT (MIS & Building Admin) --- */}
+        {SYSTEM_ADMIN_ROLES.includes(normalizedRole) && (
           <>
             <NavLink to="/equipment" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
               <Package className="nav-icon" size={20} />
