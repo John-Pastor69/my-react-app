@@ -14,7 +14,7 @@ const getCurrentDateTime = () => {
   });
 };
 
-const MisEquipmentManagement = () => {
+const MisEquipmentManagement = ({ currentUserRole }) => {
   // --- FIRESTORE STATES ---
   const [equipmentData, setEquipmentData] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
@@ -235,6 +235,17 @@ const MisEquipmentManagement = () => {
   // --- METRIC CALCULATIONS ---
   const totalAvailableUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedAvailable, 0);
   const totalReservedUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedReserved, 0);
+
+  // --- ROLE ACCESS CHECK ---
+  const allowedRoles = ['mis', 'mis admin', 'building admin'];
+  if (!currentUserRole || !allowedRoles.includes(currentUserRole.toLowerCase().trim())) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
+        <h2>Access Denied</h2>
+        <p>You do not have permission to view this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="equipment-management-content">

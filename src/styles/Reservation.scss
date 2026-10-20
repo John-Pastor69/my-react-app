@@ -107,6 +107,25 @@ $orange-main: #F59E0B;
     }
   }
 
+  .schedule-conflict-notice {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.8rem 0.9rem;
+    border: 1px solid #fecaca;
+    border-left: 4px solid $red-main;
+    border-radius: 7px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-size: var(--font-body);
+    line-height: 1.5;
+
+    strong {
+      font-size: var(--font-body);
+    }
+  }
+
   .input-group {
     min-width: 0; 
     display: flex; 
@@ -298,9 +317,20 @@ $orange-main: #F59E0B;
       font-weight: 400; 
       cursor: pointer;
 
+      &.is-disabled {
+        background: #F1F5F9;
+        color: #94A3B8;
+        cursor: not-allowed;
+        opacity: 0.6;
+      }
+
       input { 
         margin: 0; 
         accent-color: $blue-main; 
+
+        &:disabled {
+          cursor: not-allowed;
+        }
       }
     }
   }
@@ -885,6 +915,42 @@ $orange-main: #F59E0B;
   justify-content: center; 
   padding: 1rem;
   background: rgba(15,23,42,.45);
+}
+
+.schedule-details-overlay {
+  z-index: 1100;
+}
+
+.schedule-details-modal {
+  position: relative;
+  width: min(73.3333rem, 100%);
+  max-height: calc(100vh - 2rem);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border-radius: 0.6667rem;
+  background: #ffffff;
+  box-shadow: 0 1.3333rem 1.6667rem -0.3333rem rgba(0, 0, 0, 0.18);
+}
+
+.schedule-details-close {
+  position: sticky;
+  z-index: 1;
+  top: 0.5rem;
+  float: right;
+  width: 2.25rem;
+  height: 2.25rem;
+  margin: 0.5rem 0.5rem -2.75rem 0;
+  border: 0;
+  border-radius: 50%;
+  background: #ffffff;
+  color: $text-dark;
+  font-size: var(--font-h3);
+  cursor: pointer;
+  box-shadow: 0 0.2rem 0.6rem rgba(15, 23, 42, 0.15);
+
+  &:hover {
+    background: #E2E8F0;
+  }
 }
 
 .modal-card {

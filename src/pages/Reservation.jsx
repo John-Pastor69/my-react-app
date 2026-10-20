@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
+import ReservationDetails from './ReservationDetails';
 import '../styles/Reservation.scss';
 
 const initialFormState = {
@@ -33,18 +34,137 @@ const initialFormState = {
 
 // Helper function extracted outside component
 const parseTimeToDecimal = (timeStr) => {
+  const minutes = parseTimeToMinutes(timeStr);
+  return minutes === null ? null : minutes / 60;
+};
+
+const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s(AM|PM)$/i);
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
   if (!match) return null;
-  
-  let [ , hours, minutes, modifier ] = match;
-  hours = parseInt(hours, 10);
-  minutes = parseInt(minutes, 10);
 
-  if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
-  if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
+  let hours = Number(match[1]);
+  const minutes = Number(match[2]);
+  const modifier = match[3].toUpperCase();
+  if (hours < 1 || hours > 12 || minutes > 59) return null;
+  if (hours === 12 && modifier === 'AM') hours = 0;
+  if (hours < 12 && modifier === 'PM') hours += 12;
 
-  return hours + (minutes / 60);
+  return hours * 60 + minutes;
+};
+
+const parseDateOrdinal = (value) => {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') {
+    return parseDateOrdinal(value.toDate());
+  }
+  if (value instanceof Date) {
+    if (Number.isNaN(value.getTime())) return null;
+    return Math.floor(Date.UTC(value.getFullYear(), value.getMonth(), value.getDate()) / 86400000);
+  }
+
+  const dateString = String(value).trim();
+  let year;
+  let month;
+  let day;
+  const monthFirstMatch = dateString.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  const yearFirstMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (monthFirstMatch) {
+    [, month, day, year] = monthFirstMatch;
+  } else if (yearFirstMatch) {
+    [, year, month, day] = yearFirstMatch;
+  } else {
+    const parsed = new Date(dateString);
+    if (Number.isNaN(parsed.getTime())) return null;
+    return Math.floor(Date.UTC(parsed.getFullYear(), parsed.getMonth(), parsed.getDate()) / 86400000);
+  }
+
+  year = Number(year);
+  month = Number(month);
+  day = Number(day);
+  const parsed = new Date(Date.UTC(year, month - 1, day));
+  if (
+    parsed.getUTCFullYear() !== year
+    || parsed.getUTCMonth() !== month - 1
+    || parsed.getUTCDate() !== day
+  ) return null;
+  return Math.floor(parsed.getTime() / 86400000);
+};
+
+const getReservationDateRange = (reservation) => {
+  const start = parseDateOrdinal(reservation.eventDate || reservation.date);
+  if (start === null) return null;
+
+  const explicitEnd = parseDateOrdinal(reservation.endDate);
+  const dayCount = Math.max(1, Number(reservation.days) || 1);
+  const end = explicitEnd ?? start + dayCount - 1;
+  return end < start ? null : { start, end };
+};
+
+const timeRangesOverlapAcrossDates = (firstRange, firstStart, firstEnd, secondRange, secondStart, secondEnd) => {
+  const firstEndMinute = firstEnd <= firstStart ? firstEnd + 1440 : firstEnd;
+  const secondEndMinute = secondEnd <= secondStart ? secondEnd + 1440 : secondEnd;
+
+  for (let dayOffset = -1; dayOffset <= 1; dayOffset += 1) {
+    const firstDayStart = Math.max(firstRange.start, secondRange.start - dayOffset);
+    const firstDayEnd = Math.min(firstRange.end, secondRange.end - dayOffset);
+    if (firstDayStart > firstDayEnd) continue;
+
+    const shiftedSecondStart = secondStart + dayOffset * 1440;
+    const shiftedSecondEnd = secondEndMinute + dayOffset * 1440;
+    if (firstStart < shiftedSecondEnd && firstEndMinute > shiftedSecondStart) {
+      return true;
+    }
+  }
+  return false;
+};
+
+const findFacilityConflict = (reservations, request) => {
+  const requestStart = parseDateOrdinal(request.eventDate);
+  const requestEnd = parseDateOrdinal(request.endDate);
+  const requestStartTime = parseTimeToMinutes(request.startTime);
+  const requestEndTime = parseTimeToMinutes(request.endTime);
+  if (
+    requestStart === null
+    || requestEnd === null
+    || requestEnd < requestStart
+    || requestStartTime === null
+    || requestEndTime === null
+    || requestEndTime === requestStartTime
+    || request.facilities.length === 0
+  ) return null;
+
+  return reservations.find((reservation) => {
+    const status = (reservation.status || '').toLowerCase().trim();
+    const hasRejectedApproval = Object.values(reservation.approvals || {}).some((approval) => {
+      const approvalStatus = typeof approval === 'string' ? approval : approval?.status;
+      return (approvalStatus || '').toLowerCase() === 'rejected';
+    });
+    if (status === 'rejected' || status === 'cancelled' || hasRejectedApproval) return false;
+
+    const existingRange = getReservationDateRange(reservation);
+    if (!existingRange) return false;
+
+    const existingStartTime = parseTimeToMinutes(reservation.startTime);
+    const existingEndTime = parseTimeToMinutes(reservation.endTime);
+    if (
+      existingStartTime === null
+      || existingEndTime === null
+      || existingEndTime === existingStartTime
+    ) return false;
+
+    const sharesFacility = request.facilities.some(
+      (facilityId) => (reservation.facilities || []).includes(facilityId)
+    );
+    return sharesFacility && timeRangesOverlapAcrossDates(
+      { start: requestStart, end: requestEnd },
+      requestStartTime,
+      requestEndTime,
+      existingRange,
+      existingStartTime,
+      existingEndTime
+    );
+  });
 };
 
 // Name parsing helper function
@@ -109,12 +229,14 @@ const Reservation = () => {
   // --- MODAL STATES ---
   const [showOverlapWarning, setShowOverlapWarning] = useState(false);
   const [conflictEvent, setConflictEvent] = useState(null);
+  const [selectedScheduleId, setSelectedScheduleId] = useState('');
   const [customAlert, setCustomAlert] = useState(null); 
 
   // --- UI & VALIDATION STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
   const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
+  const [reservationsLoaded, setReservationsLoaded] = useState(false);
   const [dateError, setDateError] = useState('');
   const [daysDateError, setDaysDateError] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
@@ -156,7 +278,6 @@ const Reservation = () => {
               fullName: prev.fullName || cleanName,
               contactNumber: prev.contactNumber || userData.phone || '',
               emailAddress: prev.emailAddress || userData.email || user.email || '',
-              endorserDesignation: prev.endorserDesignation || userData.department || ''
             }));
           }
         } catch (err) {
@@ -175,7 +296,15 @@ const Reservation = () => {
     if (draft) {
       try {
         const parsed = JSON.parse(draft);
-        if (parsed.formData) setFormData(prev => ({ ...prev, ...parsed.formData }));
+        if (parsed.formData) {
+          setFormData(prev => ({
+            ...prev,
+            ...parsed.formData,
+            eventType: Array.isArray(parsed.formData.eventType)
+              ? parsed.formData.eventType.slice(0, 1)
+              : []
+          }));
+        }
         if (parsed.days !== undefined) setDays(parsed.days);
         if (parsed.endDateInput !== undefined) setEndDateInput(parsed.endDateInput);
         if (parsed.aircon !== undefined) setAircon(parsed.aircon);
@@ -226,6 +355,7 @@ const Reservation = () => {
     const unsubReservations = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setReservationsData(list);
+      setReservationsLoaded(true);
     }, (error) => console.error('Failed to load reservations:', error));
 
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
@@ -258,11 +388,36 @@ const Reservation = () => {
         }
       }
     });
+
     const total = Number(item.totalCount) || 0;
     const availableCount = item.status === 'Unavailable' ? 0 : Math.max(0, total - reservedCount);
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : item.status;
     return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
+
+  const conflictRequest = {
+    eventDate,
+    endDate: endDateInput,
+    startTime,
+    endTime,
+    facilities: formData.facilities
+  };
+  const requestStartDate = parseDateOrdinal(eventDate);
+  const requestEndDate = parseDateOrdinal(endDateInput);
+  const invalidDateRange = requestStartDate !== null
+    && requestEndDate !== null
+    && requestEndDate < requestStartDate;
+  const liveConflict = reservationsLoaded
+    && !dateError
+    && !daysDateError
+    && !invalidDateRange
+    ? findFacilityConflict(reservationsData, conflictRequest)
+    : null;
+  const liveConflictEndDate = liveConflict?.endDate
+    || calculateEndDate(liveConflict?.eventDate, liveConflict?.days || 1);
+  const selectedSchedule = reservationsData.find(
+    (reservation) => reservation.id === selectedScheduleId
+  );
 
   // --- CALCULATE DURATION ---
   useEffect(() => {
@@ -322,16 +477,28 @@ const Reservation = () => {
 
   const handleCheckboxArrayChange = (field, value) => {
     setFormData(prev => {
-      const updated = prev[field].includes(value)
-        ? prev[field].filter(item => item !== value)
-        : [...prev[field], value];
-      if (updated.length > 0) {
-        clearMissingField(field);
+      if (field === 'facilities') {
+        if (prev[field].includes(value)) {
+          return { ...prev, [field]: [] }; // Uncheck allows clearing the array
+        } else {
+          // Prevent selecting more than 1 facility
+          if (prev[field].length >= 1) return prev; 
+          clearMissingField(field);
+          return { ...prev, [field]: [value] };
+        }
+      } else if (field === 'eventType') {
+        const updated = prev[field].includes(value) ? [] : [value];
+        if (updated.length > 0) clearMissingField(field);
+        return { ...prev, [field]: updated };
+      } else {
+        const updated = prev[field].includes(value)
+          ? prev[field].filter(item => item !== value)
+          : [...prev[field], value];
+        if (updated.length > 0) {
+          clearMissingField(field);
+        }
+        return { ...prev, [field]: updated };
       }
-      return {
-        ...prev,
-        [field]: updated
-      };
     });
   };
 
@@ -361,9 +528,30 @@ const Reservation = () => {
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
     setEventDate(val);
-    const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
-    setDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
-    if (isValid) clearMissingField('eventDate');
+    
+    if (val.length > 0) {
+      const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val)
+        && parseDateOrdinal(val) !== null;
+      if (!isValidFormat) {
+        setDateError('Invalid format. Use MM/DD/YYYY');
+      } else {
+        const [m, d, y] = val.split('/').map(Number);
+        const inputDate = new Date(y, m - 1, d);
+        
+        const minDate = new Date();
+        minDate.setHours(0, 0, 0, 0);
+        minDate.setDate(minDate.getDate() + 7);
+        
+        if (inputDate < minDate) {
+          setDateError('Must be at least 7 days from today');
+        } else {
+          setDateError('');
+          clearMissingField('eventDate');
+        }
+      }
+    } else {
+      setDateError('');
+    }
   };
 
   const handleDaysDateChange = (e) => {
@@ -372,9 +560,30 @@ const Reservation = () => {
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
     setEndDateInput(val);
-    const isValid = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val);
-    setDaysDateError(val.length > 0 && !isValid ? 'Invalid format. Use MM/DD/YYYY' : '');
-    if (isValid) clearMissingField('endDateInput');
+    
+    if (val.length > 0) {
+      const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val)
+        && parseDateOrdinal(val) !== null;
+      if (!isValidFormat) {
+        setDaysDateError('Invalid format. Use MM/DD/YYYY');
+      } else {
+        const [m, d, y] = val.split('/').map(Number);
+        const inputDate = new Date(y, m - 1, d);
+        
+        const minDate = new Date();
+        minDate.setHours(0, 0, 0, 0);
+        minDate.setDate(minDate.getDate() + 7);
+        
+        if (inputDate < minDate) {
+          setDaysDateError('Must be at least 7 days from today');
+        } else {
+          setDaysDateError('');
+          clearMissingField('endDateInput');
+        }
+      }
+    } else {
+      setDaysDateError('');
+    }
   };
 
   // Restricts input strictly to 12-hour AM/PM time (disallows 13:00, 00:00, etc.)
@@ -476,8 +685,9 @@ const Reservation = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const minDate = new Date();
+    minDate.setHours(0, 0, 0, 0);
+    minDate.setDate(minDate.getDate() + 7); // 7-day restriction rule
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-${i}`} className="calendar-day empty"></div>
@@ -485,7 +695,7 @@ const Reservation = () => {
     
     const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
       const cellDate = new Date(year, month, day);
-      const isPast = cellDate < today;
+      const isPast = cellDate < minDate;
       return (
         <div 
           key={day} 
@@ -518,8 +728,9 @@ const Reservation = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
+    const minDate = new Date();
+    minDate.setHours(0, 0, 0, 0);
+    minDate.setDate(minDate.getDate() + 7); // 7-day restriction rule
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-days-${i}`} className="calendar-day empty"></div>
@@ -527,7 +738,7 @@ const Reservation = () => {
     
     const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
       const cellDate = new Date(year, month, day);
-      const isPast = cellDate < today;
+      const isPast = cellDate < minDate;
       return (
         <div 
           key={day} 
@@ -544,8 +755,16 @@ const Reservation = () => {
 
   // --- ACTION HANDLERS ---
   const handleDiscard = () => {
-    setFormData(initialFormState);
-    setDays(0); // Reset to 0
+    // Keep auto-filled readonly data when discarding
+    const retainedFullName = formData.fullName;
+    const retainedEmail = formData.emailAddress;
+    
+    setFormData({
+        ...initialFormState,
+        fullName: retainedFullName,
+        emailAddress: retainedEmail
+    });
+    setDays(0); 
     setEndDateInput('');
     setAircon(false);
     setEventDate('');
@@ -593,7 +812,7 @@ const Reservation = () => {
       { key: 'expectedParticipants', missing: !formData.expectedParticipants.trim() },
       { key: 'eventType', missing: formData.eventType.length === 0 },
       { key: 'eventDate', missing: !eventDate.trim() || !!dateError },
-      { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError },
+      { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
       { key: 'startTime', missing: !startTime.trim() },
       { key: 'endTime', missing: !endTime.trim() },
       { key: 'purpose', missing: !formData.purpose.trim() },
@@ -635,53 +854,52 @@ const Reservation = () => {
       return;
     }
 
+    const submittedStartTime = parseTimeToMinutes(startTime);
+    const submittedEndTime = parseTimeToMinutes(endTime);
+    if (submittedStartTime === null || submittedEndTime === null || submittedEndTime === submittedStartTime) {
+      setCustomAlert({
+        title: 'Invalid Time Range',
+        message: 'Enter a valid time range. Start and end times cannot be the same.',
+        isSuccess: false
+      });
+      return;
+    }
+
+    if (liveConflict) {
+      const conflictEndDate = liveConflict.endDate
+        || calculateEndDate(liveConflict.eventDate, liveConflict.days || 1);
+      setConflictEvent({
+        eventName: liveConflict.eventName || 'Untitled Event',
+        date: conflictEndDate !== liveConflict.eventDate
+          ? `${liveConflict.eventDate} - ${conflictEndDate}`
+          : liveConflict.eventDate || 'N/A',
+        time: `${liveConflict.startTime || 'N/A'} - ${liveConflict.endTime || 'N/A'}`
+      });
+      setShowOverlapWarning(true);
+      return;
+    }
+
     setIsSubmitting(true);
 
     try {
-      // 1. MULTI-DAY OVERLAP CHECK (Only if facility is booked)
-      if (hasFacility && startTime && endTime) {
-        const newReservationDates = getDatesInRange(eventDate, days);
+      // Recheck against Firestore at submit time in case the live list is stale.
+      if (hasFacility) {
         const snap = await getDocs(collection(db, 'reservations'));
-        
-        const conflictingDoc = snap.docs.find(d => {
-          const res = d.data();
-          const statusLower = (res.status || '').toLowerCase().trim();
-          const hasRejectedApproval = res.approvals && Object.values(res.approvals).some(
-            a => (typeof a === 'string' && a.toLowerCase() === 'rejected') || (a && typeof a.status === 'string' && a.status.toLowerCase() === 'rejected')
-          );
-          if (statusLower === 'rejected' || statusLower === 'cancelled' || hasRejectedApproval) return false;
+        const reservations = snap.docs.map((document) => ({
+          id: document.id,
+          ...document.data()
+        }));
+        const conflictingReservation = findFacilityConflict(reservations, conflictRequest);
 
-          const existingDays = res.days || 1;
-          const existingDates = getDatesInRange(res.eventDate, existingDays);
-          
-          // Check if any date overlaps between the two reservations
-          const dateOverlap = newReservationDates.some(date => existingDates.includes(date));
-          if (!dateOverlap) return false;
-
-          const startA = parseTimeToDecimal(startTime);
-          const endA = parseTimeToDecimal(endTime);
-          const startB = parseTimeToDecimal(res.startTime);
-          const endB = parseTimeToDecimal(res.endTime);
-          if (startA === null || endA === null || startB === null || endB === null) return false;
-          
-          const timeOverlap = startA < endB && endA > startB;
-
-          const hasFacilityOverlap = formData.facilities.length > 0 && res.facilities && formData.facilities.some(f => res.facilities.includes(f));
-          const hasRoomOverlap = formData.specificRoom && res.specificRoom && 
-                                 formData.specificRoom.toLowerCase().trim() === res.specificRoom.toLowerCase().trim();
-
-          return timeOverlap && (hasFacilityOverlap || hasRoomOverlap);
-        });
-
-        if (conflictingDoc) {
-          const conflictData = conflictingDoc.data();
-          const conflictDateDisplay = conflictData.endDate && conflictData.endDate !== conflictData.eventDate
-            ? `${conflictData.eventDate} - ${conflictData.endDate}`
-            : (conflictData.eventDate || 'N/A');
+        if (conflictingReservation) {
+          const conflictEndDate = conflictingReservation.endDate
+            || calculateEndDate(conflictingReservation.eventDate, conflictingReservation.days || 1);
           setConflictEvent({
-            eventName: conflictData.eventName || 'Untitled Event',
-            date: conflictDateDisplay,
-            time: `${conflictData.startTime || 'N/A'} - ${conflictData.endTime || 'N/A'}`
+            eventName: conflictingReservation.eventName || 'Untitled Event',
+            date: conflictEndDate !== conflictingReservation.eventDate
+              ? `${conflictingReservation.eventDate} - ${conflictEndDate}`
+              : conflictingReservation.eventDate || 'N/A',
+            time: `${conflictingReservation.startTime || 'N/A'} - ${conflictingReservation.endTime || 'N/A'}`
           });
           setShowOverlapWarning(true);
           setIsSubmitting(false);
@@ -784,6 +1002,7 @@ const Reservation = () => {
                 onChange={(e) => handleInputChange('fullName', e.target.value)} 
                 maxLength={50}
                 placeholder="Enter your full name" 
+                readOnly={true}
                 className={missingFields.fullName ? 'input-error' : ''}
               />
             </div>
@@ -818,6 +1037,7 @@ const Reservation = () => {
                 onChange={(e) => handleInputChange('emailAddress', e.target.value)} 
                 maxLength={50}
                 placeholder="your.email@domain.com" 
+                readOnly={true}
                 className={missingFields.emailAddress ? 'input-error' : ''}
               />
             </div>
@@ -845,7 +1065,7 @@ const Reservation = () => {
                     onFocus={() => setShowEndorserDropdown(formData.endorserName.length > 0)}
                     onBlur={() => setTimeout(() => setShowEndorserDropdown(false), 200)}
                     maxLength={50}
-                    placeholder="Faculty/Adviser name" 
+                    placeholder="type faculty or endorser's name" 
                     autoComplete="off"
                     className={missingFields.endorserName ? 'input-error' : ''}
                   />
@@ -894,6 +1114,7 @@ const Reservation = () => {
                     onChange={(e) => handleInputChange('endorserEmail', e.target.value)} 
                     maxLength={50}
                     placeholder="endorser@university.edu.ph" 
+                    readOnly={true}
                     className={missingFields.endorserEmail ? 'input-error' : ''}
                   />
                 </div>
@@ -943,23 +1164,58 @@ const Reservation = () => {
             </div>
           </div>
 
-          {/* Row 2 Left: Event Type */}
-          <div 
-            className={`input-group ${missingFields.eventType ? 'field-missing' : ''}`}
-            ref={el => fieldRefs.current.eventType = el}
-          >
-            <label>Event Type <span className="req">*</span></label>
-            <div className="event-type-grid">
-              {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map(type => (
-                <label key={type} className="checkbox-option">
-                  <input 
-                    type="checkbox" 
-                    checked={formData.eventType.includes(type)} 
-                    onChange={() => handleCheckboxArrayChange('eventType', type)} 
-                  /> 
-                  {type}
-                </label>
-              ))}
+          {/* Row 2 Left: Event Type & Taken Schedules */}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+            <div 
+              className={`input-group ${missingFields.eventType ? 'field-missing' : ''}`}
+              ref={el => fieldRefs.current.eventType = el}
+            >
+              <label>Event Type <span className="req">*</span></label>
+              <div className="event-type-grid">
+                {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map(type => (
+                  <label
+                    key={type}
+                    className={`checkbox-option ${formData.eventType.length > 0 && !formData.eventType.includes(type) ? 'is-disabled' : ''}`}
+                  >
+                    <input 
+                      type="checkbox" 
+                      checked={formData.eventType.includes(type)} 
+                      onChange={() => handleCheckboxArrayChange('eventType', type)} 
+                      disabled={formData.eventType.length > 0 && !formData.eventType.includes(type)}
+                    /> 
+                    {type}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            <div className="input-group">
+              <label>Taken Schedules (Reference)</label>
+              <select
+                value={selectedScheduleId}
+                onChange={(event) => setSelectedScheduleId(event.target.value)}
+                style={{ cursor: 'pointer' }}
+              >
+                <option value="" disabled>View pending & approved schedules...</option>
+                {reservationsData
+                  .filter(res => {
+                    const statusLower = (res.status || '').toLowerCase().trim();
+                    const hasRejectedApproval = res.approvals && Object.values(res.approvals).some(
+                      a => (typeof a === 'string' && a.toLowerCase() === 'rejected') || (a && typeof a.status === 'string' && a.status.toLowerCase() === 'rejected')
+                    );
+                    return (statusLower === 'pending' || statusLower === 'approved') && !hasRejectedApproval;
+                  })
+                  .map(res => (
+                    <option key={res.id} value={res.id}>
+                      {res.eventName || 'Untitled Event'} | {res.eventDate} {res.endDate && res.endDate !== res.eventDate ? `to ${res.endDate}` : ''} | {res.startTime} - {res.endTime}
+                      {' | '}{(res.facilities || [])
+                        .map(facilityId => inventoryFacilities.find(facility => facility.id === facilityId)?.name || facilityId)
+                        .join(', ') || 'No facility'}
+                      {' | '}{res.status || 'Pending'}
+                    </option>
+                  ))
+                }
+              </select>
             </div>
           </div>
 
@@ -1027,10 +1283,14 @@ const Reservation = () => {
                     maxLength={10}
                     placeholder="MM/DD/YYYY" 
                     onClick={() => setShowDaysCalendar(true)} 
-                    className={(daysDateError || missingFields.endDateInput) ? 'input-error' : ''}
+                    className={(daysDateError || invalidDateRange || missingFields.endDateInput) ? 'input-error' : ''}
                   />
                 </div>
-                {daysDateError && <span className="field-error">{daysDateError}</span>}
+                {(daysDateError || invalidDateRange) && (
+                  <span className="field-error">
+                    {daysDateError || 'End date must be on or after start date'}
+                  </span>
+                )}
                 
                 {showDaysCalendar && (
                   <>
@@ -1096,6 +1356,20 @@ const Reservation = () => {
             </div>
           </div>
 
+          {liveConflict && (
+            <div className="schedule-conflict-notice full-width" role="alert" aria-live="assertive">
+              <strong>Schedule conflict — this reservation cannot be submitted.</strong>
+              <span>
+                {liveConflict.eventName || 'Another reservation'} already uses the selected facility
+                {' '}from {liveConflict.eventDate || 'an overlapping date'}
+                {liveConflictEndDate && liveConflictEndDate !== liveConflict.eventDate
+                  ? ` to ${liveConflictEndDate}`
+                  : ''} at {liveConflict.startTime}–{liveConflict.endTime}.
+                {' '}Choose a different date, time, or facility.
+              </span>
+            </div>
+          )}
+
           {/* Full Width: Purpose / Description */}
           <div 
             className={`input-group full-width ${missingFields.purpose ? 'field-missing' : ''}`}
@@ -1105,7 +1379,7 @@ const Reservation = () => {
             <textarea 
               value={formData.purpose} 
               onChange={(e) => handleInputChange('purpose', e.target.value)} 
-              placeholder="Briefly describe the purpose and objectives of your event..."
+              placeholder="Others/Briefly describe the purpose and objectives of your event..."
               className={missingFields.purpose ? 'input-error' : ''}
             ></textarea>
           </div>
@@ -1133,8 +1407,9 @@ const Reservation = () => {
               <div className="empty-list">No facilities currently listed.</div>
             ) : (
               inventoryFacilities.map((item) => {
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
                 const isSelected = formData.facilities.includes(item.id);
+                const isAtLimit = formData.facilities.length >= 1 && !isSelected;
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance' || isAtLimit;
 
                 return (
                   <label 
@@ -1322,7 +1597,7 @@ const Reservation = () => {
           <button 
             className="btn-primary" 
             onClick={handleSubmit} 
-            disabled={!certified || isSubmitting}
+            disabled={!certified || isSubmitting || !!liveConflict}
           >
             {isSubmitting ? 'Submitting...' : 'Submit Reservation'}
           </button>
@@ -1364,6 +1639,28 @@ const Reservation = () => {
                 Understood
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {selectedSchedule && (
+        <div className="modal-overlay schedule-details-overlay" onClick={() => setSelectedScheduleId('')}>
+          <div
+            className="schedule-details-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-label={`${selectedSchedule.eventName || 'Reservation'} details`}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <button
+              type="button"
+              className="schedule-details-close"
+              onClick={() => setSelectedScheduleId('')}
+              aria-label="Close reservation details"
+            >
+              ×
+            </button>
+            <ReservationDetails data={selectedSchedule} />
           </div>
         </div>
       )}

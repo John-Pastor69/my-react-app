@@ -176,6 +176,7 @@ $blue-main: #3B82F6;
             &.pending { background-color: #3b82f6; box-shadow: 0 0 0 3px #dbeafe; } 
             &.approved { background-color: #10b981; box-shadow: 0 0 0 3px #d9f8ec; }
             &.rejected { background-color: #ef4444; box-shadow: 0 0 0 3px #ffe2e2; }
+            &.cancelled { background-color: #94a3b8; box-shadow: 0 0 0 3px #e2e8f0; }
           }
         }
 
@@ -501,6 +502,51 @@ $blue-main: #3B82F6;
           font-weight: 600;
           color: #1e293b;
         }
+      }
+
+      .cancellation-remark {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin-bottom: 12px;
+        color: $text-dark;
+        font-size: var(--font-body);
+        font-weight: 600;
+
+        > span strong {
+          color: #ef4444;
+        }
+
+        textarea {
+          width: 100%;
+          min-height: 96px;
+          padding: 9px 11px;
+          border: 1px solid $border-color;
+          border-radius: 7px;
+          background: #ffffff;
+          color: $text-dark;
+          font: inherit;
+          font-size: var(--font-body);
+          font-weight: 400;
+          line-height: 1.5;
+          resize: vertical;
+
+          &:focus {
+            border-color: $blue-main;
+            outline: 2px solid rgba(59, 130, 246, 0.12);
+          }
+
+          &:disabled {
+            background: #f1f5f9;
+            cursor: wait;
+          }
+        }
+      }
+
+      .cancellation-error {
+        margin: 0 0 12px;
+        color: #dc2626;
+        font-size: var(--font-body);
       }
 
       .modal-actions {

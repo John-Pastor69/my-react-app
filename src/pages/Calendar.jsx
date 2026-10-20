@@ -58,7 +58,7 @@ const formatEventDateRange = (startDateStr, endDateStr, numDays) => {
   return `${startDateStr} - ${endFormatted}`;
 };
 
-const Calendar = () => {
+const Calendar = ({ currentUserRole }) => {
   // 1. STATE & REFS
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
@@ -72,9 +72,7 @@ const Calendar = () => {
   // Ref for auto-scrolling to the bottom events container in mobile agenda view
   const sidebarRef = useRef(null);
 
-  // STATE: For the history modal
-  const [isHistoryModalOpen, setIsHistoryModalOpen] = useState(false);
-  const [historyDate, setHistoryDate] = useState(new Date());
+  const [isArchiveVisible, setIsArchiveVisible] = useState(false);
   
   // STATE: For the specific history "View Details" click
   const [historySelectedRequest, setHistorySelectedRequest] = useState(null);
@@ -151,14 +149,16 @@ const Calendar = () => {
   }, []);
 
   // 3. REUSABLE MAPPING FUNCTION WITH RANGE EXPANSION
-  const mapToEvents = (sourceData) => {
+  const mapToEvents = (sourceData, includeRejected = false) => {
     return sourceData.flatMap(data => {
       const status = (data.status || 'pending').toLowerCase().trim();
-      if (status === 'rejected') return [];
+      if (status === 'rejected' && !includeRejected) return [];
       
       let uiStatusColor = 'yellow'; 
       if (status === 'approved') uiStatusColor = 'green';
       if (status === 'pending') uiStatusColor = 'yellow';
+      if (status === 'cancelled') uiStatusColor = 'gray';
+      if (status === 'rejected') uiStatusColor = 'red';
 
       const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
       const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'N/A';
@@ -191,14 +191,16 @@ const Calendar = () => {
   };
 
   const events = mapToEvents(reservationsData);
-  const historyEvents = mapToEvents(historyData);
+  const historyEvents = mapToEvents(
+    historyData.filter(data => ['approved', 'rejected', 'cancelled'].includes((data.status || '').toLowerCase().trim())),
+    true
+  ).filter(event => event.isStart);
+  const normalizedRole = (currentUserRole || userRole).toLowerCase().trim();
+  const canViewArchive = normalizedRole === 'mis' || normalizedRole === 'building admin';
 
   // 4. NAVIGATION CONTROLLERS
   const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
-  const handleHistoryPrevMonth = () => setHistoryDate(new Date(historyDate.getFullYear(), historyDate.getMonth() - 1, 1));
-  const handleHistoryNextMonth = () => setHistoryDate(new Date(historyDate.getFullYear(), historyDate.getMonth() + 1, 1));
-  const handleOpenHistory = () => { setHistoryDate(currentDate); setIsHistoryModalOpen(true); };
 
   // 5. DYNAMIC CALENDAR GENERATOR
   const generateCalendar = () => {
@@ -242,7 +244,6 @@ const Calendar = () => {
 
   const calendarDays = generateCalendar();
   const currentMonthYearString = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
-  const historyMonthYearString = historyDate.toLocaleString('default', { month: 'long', year: 'numeric' });
 
   return (
     <div className="calendar-page-container">
@@ -255,13 +256,13 @@ const Calendar = () => {
             <h2>{currentMonthYearString}</h2>
             <button className="icon-btn" onClick={handleNextMonth}>&#10095;</button>
             
-            {userRole === 'mis' && (
-              <button className="icon-btn history-btn" onClick={handleOpenHistory} title="View History">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-                  <path d="M3 3v5h5" />
-                  <path d="M12 7v5l4 2" />
-                </svg>
+            {canViewArchive && (
+              <button
+                className="history-btn"
+                onClick={() => setIsArchiveVisible(visible => !visible)}
+                aria-expanded={isArchiveVisible}
+              >
+                {isArchiveVisible ? 'Hide Archive' : 'View Archive'}
               </button>
             )}
           </div>
@@ -358,6 +359,38 @@ const Calendar = () => {
         })()}
       </div>
 
+      {canViewArchive && isArchiveVisible && (
+        <section className="calendar-archive" aria-label="Reservation archive">
+          <h2>Reservation Archive</h2>
+          {historyEvents.length === 0 ? (
+            <p className="empty-state-text">No approved, rejected, or cancelled reservations found.</p>
+          ) : (
+            <div className="archive-event-list">
+              {historyEvents.map(event => {
+                const statusLabel = event.status === 'green' ? 'Approved' : event.status === 'gray' ? 'Cancelled' : event.status === 'red' ? 'Rejected' : 'Pending';
+                return (
+                  <article key={event.originalId} className="archive-event-item">
+                    <div className="archive-event-info">
+                      <h3>{event.title}</h3>
+                      <p>{event.date} · {event.time} · {event.facility}</p>
+                      {(event.fullData.cancellationRemark || event.fullData.rejectionRemark) && (
+                        <p className="archive-event-remark">
+                          {event.fullData.cancellationRemark || event.fullData.rejectionRemark}
+                        </p>
+                      )}
+                    </div>
+                    <span className={`archive-status status-${event.status}`}>{statusLabel}</span>
+                    <button className="btn-view-details" onClick={() => setHistorySelectedRequest(event)}>
+                      View Details
+                    </button>
+                  </article>
+                );
+              })}
+            </div>
+          )}
+        </section>
+      )}
+
       {/* --- MODAL POPUP FOR DETAILS --- */}
       {selectedRequest && (
         <div className="modal-overlay">
@@ -365,75 +398,6 @@ const Calendar = () => {
             <button className="close-modal-btn" onClick={() => setSelectedRequest(null)}>✕</button>
             <div className="modal-content">
               <ReservationDetails data={selectedRequest} />
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --- HISTORY MODAL --- */}
-      {isHistoryModalOpen && (
-        <div className="modal-overlay">
-          <div className="modal-wrapper">
-            <button className="close-modal-btn" onClick={() => setIsHistoryModalOpen(false)}>✕</button>
-            <div className="history-modal-content">
-              <h2>Calendar History</h2>
-              <div className="history-card">
-                <div className="calendar-header history-inner-header">
-                  <div className="month-nav">
-                    <button className="icon-btn" onClick={handleHistoryPrevMonth}>&#10094;</button>
-                    <h2>{historyMonthYearString}</h2>
-                    <button className="icon-btn" onClick={handleHistoryNextMonth}>&#10095;</button>
-                  </div>
-                  <div className="calendar-legend">
-                    <span className="legend-item"><span className="dot dot-green"></span> Approved</span>
-                  </div>
-                </div>
-                
-                {(() => {
-                  const approvedEventsThisMonth = historyEvents.filter(e => {
-                    if (!e.date) return false;
-                    const eDate = new Date(e.date);
-                    return eDate.getMonth() === historyDate.getMonth() && eDate.getFullYear() === historyDate.getFullYear() && e.isStart;
-                  }).sort((a, b) => new Date(a.date) - new Date(b.date));
-
-                  const groupedHistory = {};
-                  approvedEventsThisMonth.forEach(e => {
-                    const d = new Date(e.date);
-                    const dayName = d.toLocaleDateString('en-US', { weekday: 'short' });
-                    const dayNum = d.getDate();
-                    const groupKey = `${dayName} ${dayNum}`;
-                    if (!groupedHistory[groupKey]) groupedHistory[groupKey] = [];
-                    groupedHistory[groupKey].push(e);
-                  });
-
-                  const groupKeys = Object.keys(groupedHistory);
-                  if (groupKeys.length === 0) {
-                    return <p className="empty-state-text">No history records found for {historyMonthYearString}.</p>;
-                  }
-
-                  return (
-                    <div className="history-group-list">
-                      {groupKeys.map(dateKey => (
-                        <div key={dateKey} className="history-date-group">
-                          <h4>{dateKey}</h4>
-                          <div className="history-events-container">
-                            {groupedHistory[dateKey].map(event => (
-                              <div key={event.id} className="history-event-item">
-                                <div className="history-event-header">
-                                  <span className="event-title">{event.title}</span>
-                                  <button className="btn-view-details" onClick={() => setHistorySelectedRequest(event)}>
-                                    View Details
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  );
-                })()}
-              </div>
             </div>
           </div>
         </div>
@@ -467,6 +431,28 @@ const Calendar = () => {
                       <div className="details-full-width"><div className="details-label">Event Description / Purpose</div><div className="details-value">{historySelectedRequest.fullData.purpose || 'N/A'}</div></div>
                     </div>
                   </div>
+
+                  {historySelectedRequest.fullData.cancellationRemark && (
+                    <div className="details-card">
+                      <h3 className="details-card-header">Cancellation Remark</h3>
+                      <div className="details-grid">
+                        <div className="details-full-width">
+                          <div className="details-value">{historySelectedRequest.fullData.cancellationRemark}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {historySelectedRequest.fullData.rejectionRemark && (
+                    <div className="details-card">
+                      <h3 className="details-card-header">Rejection Remark</h3>
+                      <div className="details-grid">
+                        <div className="details-full-width">
+                          <div className="details-value">{historySelectedRequest.fullData.rejectionRemark}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
 
                   <div className="details-card">
                     <h3 className="details-card-header">🏢 Facility Details</h3>

@@ -62,7 +62,7 @@ const getDynamicStatus = (user) => {
   return 'Inactive';
 };
 
-const MisUserManagement = () => {
+const MisUserManagement = ({ currentUserRole }) => {
   const [usersData, setUsersData] = useState([]);
   const [searchQuery, setSearchQuery] = useState(''); // Added search state
   const [isLoading, setIsLoading] = useState(true);
@@ -183,6 +183,17 @@ const MisUserManagement = () => {
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => getDynamicStatus(u) === 'Active').length;
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase().trim())).length;
+
+  // --- ROLE ACCESS CHECK ---
+  const allowedRoles = ['mis', 'mis admin', 'building admin'];
+  if (!currentUserRole || !allowedRoles.includes(currentUserRole.toLowerCase().trim())) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
+        <h2>Access Denied</h2>
+        <p>You do not have permission to view this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="user-management-content">

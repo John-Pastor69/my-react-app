@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, onSnapshot, updateDoc, setDoc, arrayUnion, query, where, getDocs } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, updateDoc, setDoc, arrayUnion, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/PendingRequest.scss';
@@ -314,7 +314,22 @@ const PendingRequest = ({ data }) => {
         updatePayload.status = 'Approved';
       }
 
-      await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
+      if (isApprove) {
+        await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
+      } else {
+        const batch = writeBatch(db);
+        batch.update(doc(db, 'reservations', currentData.id), updatePayload);
+        const cleanHistoryData = { ...currentData };
+        delete cleanHistoryData.id;
+        delete cleanHistoryData.approvals;
+        delete cleanHistoryData.historyLogs;
+        batch.set(doc(db, 'history', currentData.id), {
+          ...cleanHistoryData,
+          status: 'Rejected',
+          rejectionRemark: remarks.trim()
+        }, { merge: true });
+        await batch.commit();
+      }
 
       // --- AUTO-SYNC TO HISTORY COLLECTION UPON SCHOOL ADMIN APPROVAL ---
       if (isApprove && approver.roleKey === 'school admin') {

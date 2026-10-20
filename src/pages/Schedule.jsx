@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, getDoc, deleteDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, deleteDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/Schedule.scss';
@@ -84,6 +84,8 @@ const Schedule = () => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [deleteModalData, setDeleteModalData] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
+  const [cancellationRemark, setCancellationRemark] = useState('');
+  const [cancellationError, setCancellationError] = useState('');
   const [reservationsData, setReservationsData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [approverRoleKey, setApproverRoleKey] = useState('');
@@ -144,7 +146,10 @@ const Schedule = () => {
 
       for (const res of reservationsData) {
         if (res.userId === currentUser.uid || res.userEmail === currentUser.email) {
-           if (isExpired(res.eventDate, res.endDate, res.startTime, res.endTime, res.status, res.days)) {
+           if (
+             (res.status || '').toLowerCase() !== 'cancelled'
+             && isExpired(res.eventDate, res.endDate, res.startTime, res.endTime, res.status, res.days)
+           ) {
               expiredEvents.push(res.eventName || 'Untitled Event');
               try {
                 await sendReservationEmail(
@@ -214,6 +219,7 @@ const Schedule = () => {
         const status = (res.status || 'Pending').toLowerCase();
         if (status === 'approved') return 'approved';
         if (status === 'rejected') return 'rejected';
+        if (status === 'cancelled') return 'cancelled';
         return 'pending'; 
       };
 
@@ -264,12 +270,36 @@ const Schedule = () => {
   // --- DELETION LOGIC ---
   const confirmDelete = async () => {
     if (!deleteModalData) return;
+    const remark = cancellationRemark.trim();
+    if (!remark) {
+      setCancellationError('A cancellation remark is required.');
+      return;
+    }
+
     setIsDeleting(true);
+    setCancellationError('');
     try {
-      await deleteDoc(doc(db, 'reservations', deleteModalData.id));
+      const cancelledAt = new Date().toISOString();
+      const cancellationData = {
+        status: 'Cancelled',
+        cancellationRemark: remark,
+        cancelledAt,
+        cancelledBy: currentUser?.uid || '',
+        cancelledByEmail: currentUser?.email || ''
+      };
+      const reservationRef = doc(db, 'reservations', deleteModalData.id);
+      await updateDoc(reservationRef, cancellationData);
+      const { id, ...reservationData } = deleteModalData.fullData;
+      await setDoc(doc(db, 'history', id), {
+        ...reservationData,
+        ...cancellationData
+      }, { merge: true });
+      await deleteDoc(reservationRef);
       setDeleteModalData(null);
+      setCancellationRemark('');
     } catch (error) {
-      console.error("Error deleting reservation:", error);
+      console.error("Error cancelling reservation:", error);
+      setCancellationError('The reservation could not be cancelled and moved to history. Please try again.');
     } finally {
       setIsDeleting(false);
     }
@@ -315,6 +345,7 @@ const Schedule = () => {
                         {row.scheduleStatus === 'pending' && <span className="status-dot pending" title="Pending"></span>}
                         {row.scheduleStatus === 'approved' && <span className="status-dot approved" title="Approved"></span>}
                         {row.scheduleStatus === 'rejected' && <span className="status-dot rejected" title="Rejected"></span>}
+                        {row.scheduleStatus === 'cancelled' && <span className="status-dot cancelled" title="Cancelled"></span>}
                       </strong>
                       <span>Submitted {row.submit}</span>
                     </div>
@@ -341,7 +372,15 @@ const Schedule = () => {
                     <button className="btn-view" onClick={() => setSelectedRequest(row)}>
                       <i className="ph ph-eye"></i> View Details
                     </button>
-                    <button className="btn-delete" onClick={() => setDeleteModalData(row)} title="Delete Reservation">
+                    <button
+                      className="btn-delete"
+                      onClick={() => {
+                        setDeleteModalData(row);
+                        setCancellationRemark('');
+                        setCancellationError('');
+                      }}
+                      title="Cancel Reservation"
+                    >
                       <i className="ph ph-x"></i>
                     </button>
                   </div>
@@ -405,23 +444,43 @@ const Schedule = () => {
       {deleteModalData && (
         <div className="modal-overlay delete-modal-overlay">
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modal-title error">Confirm Deletion</h3>
+            <h3 className="modal-title error">Confirm Cancelation</h3>
             <p className="modal-message">
-              Are you sure you want to delete the reservation for <strong>{deleteModalData.event}</strong>? This action cannot be undone.
+              Add a remark to cancel the reservation for <strong>{deleteModalData.event}</strong>. It will be marked cancelled, moved to history, and removed from your active schedule.
             </p>
+            <label className="cancellation-remark">
+              <span>Cancellation remark <strong>*</strong></span>
+              <textarea
+                value={cancellationRemark}
+                onChange={(event) => {
+                  setCancellationRemark(event.target.value);
+                  if (event.target.value.trim()) setCancellationError('');
+                }}
+                placeholder="Explain why this reservation is being cancelled..."
+                rows={4}
+                required
+                disabled={isDeleting}
+              />
+            </label>
+            {cancellationError && <p className="cancellation-error" role="alert">{cancellationError}</p>}
             <div className="modal-actions">
               <button 
-                onClick={() => setDeleteModalData(null)}
+                onClick={() => {
+                  setDeleteModalData(null);
+                  setCancellationRemark('');
+                  setCancellationError('');
+                }}
                 className="modal-button btn-modal-cancel"
+                disabled={isDeleting}
               >
-                Cancel
+                Back
               </button>
               <button 
                 onClick={confirmDelete}
                 className="modal-button btn-modal-confirm"
-                disabled={isDeleting}
+                disabled={isDeleting || !cancellationRemark.trim()}
               >
-                {isDeleting ? 'Deleting...' : 'Yes, Delete'}
+                {isDeleting ? 'Removing...' : 'Continue'}
               </button>
             </div>
           </div>

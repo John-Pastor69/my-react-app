@@ -5,8 +5,8 @@ const Facility = lazy(() => import('../building_admin/BuildingFacilitiesManageme
 const FacilityRouter = ({currentUserRole}) => {
 
     const approvalComponents = {
-        'building admin': <Facility />,
-        'mis': <Facility />
+        'building admin': <Facility currentUserRole={currentUserRole} />,
+        'mis': <Facility currentUserRole={currentUserRole} />
     };
 
     const CurrentDashboard = approvalComponents[currentUserRole] || null;

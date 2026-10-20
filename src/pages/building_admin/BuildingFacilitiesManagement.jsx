@@ -16,7 +16,7 @@ const getCurrentDateTime = () => {
 
 const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
 
-const BuildingFacilitiesManagement = () => {
+const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   // --- FIRESTORE STATES ---
   const [facilitiesData, setFacilitiesData] = useState([]);
 
@@ -203,6 +203,17 @@ const BuildingFacilitiesManagement = () => {
   const totalAvailable = facilitiesData.filter((f) => f.status === 'Available').length;
   const totalMaintenance = facilitiesData.filter((f) => f.status === 'Maintenance').length;
   const totalUnavailable = facilitiesData.filter((f) => f.status === 'Unavailable').length;
+
+  // --- ROLE ACCESS CHECK ---
+  const allowedRoles = ['building admin', 'mis', 'mis admin'];
+  if (!currentUserRole || !allowedRoles.includes(currentUserRole.toLowerCase().trim())) {
+    return (
+      <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
+        <h2>Access Denied</h2>
+        <p>You do not have permission to view this page.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="building-facilities-management-content">
@@ -544,4 +555,4 @@ const BuildingFacilitiesManagement = () => {
   );
 };
 
-export default BuildingFacilitiesManagement;
+export default BuildingFacilitiesManagement;      
