@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { signInWithRedirect } from 'firebase/auth';
+import { signInWithRedirect, signInWithPopup } from 'firebase/auth';
 import { auth, microsoftProvider } from '../Firebase';
 import '../styles/Login.scss';
 
@@ -20,8 +20,13 @@ export default function Login({ error, setError }) {
     e.preventDefault();
     if (setError) setError('');
     try {
-      // Authenticate via Microsoft SSO Redirect
-      await signInWithRedirect(auth, microsoftProvider);
+      if (window.location.hostname === 'localhost') {
+        // Authenticate via Microsoft SSO Popup for local development
+        await signInWithPopup(auth, microsoftProvider);
+      } else {
+        // Authenticate via Microsoft SSO Redirect for live deployment
+        await signInWithRedirect(auth, microsoftProvider);
+      }
     } catch (err) {
       console.error("Error signing in with Microsoft:", err.message);
       if (setError) setError("Microsoft login failed. Please try again.");

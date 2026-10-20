@@ -80,25 +80,35 @@ const MisUserManagement = () => {
         const list = snapshot.docs
           .map((d) => {
             const data = d.data();
-            let cleanName = (data.name || '').trim();
-            
-            // Format name from "Last, First Middle" to "First Middle Last"
-            if (cleanName.includes(',')) {
-              const parts = cleanName.split(',');
-              let lastName = parts[0].trim();
-              let firstNames = parts[1].trim();
-              
-              // Extract any parenthesized title like (Faculty) and move it to the end
-              const titleMatch = firstNames.match(/(\(.*?\))/);
-              if (titleMatch) {
-                firstNames = firstNames.replace(titleMatch[1], '').trim();
-                cleanName = `${firstNames} ${lastName} ${titleMatch[1]}`;
-              } else {
-                cleanName = `${firstNames} ${lastName}`;
-              }
+            let rawName = (data.name || '').trim();
+            let title = '';
+
+            // 1. Detect title robustly (case-insensitive) and extract it
+            if (/faculty/i.test(rawName)) {
+              title = '(Faculty)';
+              rawName = rawName.replace(/\(?faculty\)?/gi, ''); // Removes the word and optional parentheses
+            } else if (/student/i.test(rawName)) {
+              title = '(Student)';
+              rawName = rawName.replace(/\(?student\)?/gi, '');
             }
 
-            return { id: d.id, ...data, name: cleanName };
+            // 2. Clean up any trailing commas or stray punctuation left behind
+            rawName = rawName.replace(/,\s*$/, '').replace(/,\s*,/g, ',').trim();
+
+            // 3. Reverse "Last, First" if a comma still exists
+            if (rawName.includes(',')) {
+              const parts = rawName.split(',');
+              const lastName = parts[0].trim();
+              // Join the rest safely in case there were multiple commas
+              const firstNames = parts.slice(1).join(' ').trim();
+              rawName = `${firstNames} ${lastName}`;
+            }
+
+            // 4. Combine name and title, collapsing any accidental double spaces
+            let finalName = title ? `${rawName} ${title}` : rawName;
+            finalName = finalName.replace(/\s+/g, ' ').trim();
+
+            return { id: d.id, ...data, name: finalName };
           })
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 

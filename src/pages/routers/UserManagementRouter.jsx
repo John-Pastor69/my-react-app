@@ -5,7 +5,8 @@ const MisUserManagement = lazy(() => import('../mis/MisUserManagement'));
 const UserManagementRouter = ({currentUserRole}) => {
 
     const userManagementComponents = {
-        'mis': <MisUserManagement />
+        'mis': <MisUserManagement />,
+        'building admin': <MisUserManagement />
     };
 
     const CurrentDashboard = userManagementComponents[currentUserRole] || null;

@@ -5,7 +5,8 @@ const MisEquipmentManagement = lazy(() => import('../mis/MisEquipmentManagement'
 const EquipmentManagementRouter = ({currentUserRole}) => {
 
     const equipmentManagementComponents = {
-        'mis': <MisEquipmentManagement />
+        'mis': <MisEquipmentManagement />,
+        'building admin': <MisEquipmentManagement />
     };
 
     const CurrentDashboard = equipmentManagementComponents[currentUserRole] || null;

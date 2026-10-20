@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { deleteUser } from 'firebase/auth';
-import { auth, db } from '../Firebase'; 
+import { deleteUser, reauthenticateWithPopup, reauthenticateWithRedirect } from 'firebase/auth';
+import { auth, db, microsoftProvider } from '../Firebase'; 
 import '../styles/Profile.scss';
 
 const MAX_GIF_SIZE = 10 * 1024 * 1024;
@@ -44,6 +44,22 @@ const Profile = () => {
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
+
+        // --- AUTO-RESUME DELETION AFTER VERCEL REDIRECT ---
+        if (localStorage.getItem('pendingAccountDeletion') === 'true') {
+          localStorage.removeItem('pendingAccountDeletion'); // Clear the flag
+          try {
+            const userDocRef = doc(db, 'users', user.uid);
+            await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
+            await deleteDoc(userDocRef);
+            await deleteUser(user);
+            window.location.href = '/'; // Send back to login
+            return; // Stop the rest of the profile from loading
+          } catch (e) {
+            console.error("Failed to finish deletion after redirect:", e);
+          }
+        }
+
         try {
           const docRef = doc(db, 'users', user.uid);
           const docSnap = await getDoc(docRef);
@@ -213,9 +229,29 @@ const Profile = () => {
   const handleDeleteAccount = async () => {
     if (deleteVerification !== 'delete my account') return;
     setIsDeleting(true);
+    
     try {
       const user = auth.currentUser;
       if (user) {
+        // 1. Re-authenticate based on environment
+        try {
+          if (window.location.hostname === 'localhost') {
+            await reauthenticateWithPopup(user, microsoftProvider);
+          } else {
+            // Drop a flag so the app remembers to delete the account when Microsoft sends them back
+            localStorage.setItem('pendingAccountDeletion', 'true');
+            await reauthenticateWithRedirect(user, microsoftProvider);
+            return; // Stop execution here, the browser is redirecting away
+          }
+        } catch (reauthError) {
+          console.error("Re-authentication failed:", reauthError);
+          alert("We could not verify your identity. Account deletion cancelled.");
+          setIsDeleting(false);
+          setShowDeleteModal(false);
+          return; 
+        }
+
+        // 2. If on localhost (popup), it finishes the deletion immediately here
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
         
@@ -225,11 +261,7 @@ const Profile = () => {
       }
     } catch (error) {
       console.error("Error deleting account:", error);
-      if (error.code === 'auth/requires-recent-login') {
-        alert("Security requirement: Please log out and log back in before deleting your account.");
-      } else {
-        alert("An error occurred while deleting your account.");
-      }
+      alert("An error occurred while deleting your account.");
     } finally {
       setIsDeleting(false);
       setShowDeleteModal(false);

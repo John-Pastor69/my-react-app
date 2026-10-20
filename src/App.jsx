@@ -1,6 +1,6 @@
-import { useState, useEffect, Suspense } from 'react'; 
+import { useState, useEffect, Suspense, useRef } from 'react'; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { signOut } from 'firebase/auth';
+import { signOut, getRedirectResult } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
 
@@ -24,6 +24,7 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate(); 
   const location = useLocation(); 
+  const initialRedirectDone = useRef(false);
 
   // --- AUTO-CLOSE SIDEBAR ON NAVIGATION ---
   useEffect(() => {
@@ -43,7 +44,9 @@ export default function App() {
   // --- GLOBAL PRESENCE, HEARTBEAT & DB STATUS WRITER ---
   useEffect(() => {
     let heartbeatInterval = null;
-    let initialRedirectDone = false; // Prevent multiple redirects on mount
+
+    // Catch any errors from the Microsoft SSO redirect before auth state changes
+    getRedirectResult(auth).catch(err => console.error("Redirect Error:", err));
 
     // 1. Let Firebase automatically detect the returned session
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -79,11 +82,22 @@ export default function App() {
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
             const liveDate = `${month}/${day}/${d.getFullYear()}`;
+            
+            const rawName = user.displayName || "Unknown User";
+            
+            // Determine default role dynamically based on name contents
+            if (/faculty/i.test(rawName)) {
+              resolvedRole = 'endorser';
+            } else if (/student/i.test(rawName)) {
+              resolvedRole = 'requestor';
+            } else {
+              resolvedRole = 'requestor'; // Fallback for unknown formats
+            }
 
             await setDoc(userRef, {
               email: user.email,
-              name: user.displayName || "Unknown User",
-              role: 'requestor',
+              name: rawName,
+              role: resolvedRole,
               uid: user.uid,
               dateJoined: liveDate,
               officeLocation: '',
@@ -97,13 +111,13 @@ export default function App() {
           setIsAuthenticated(true);
           
           // Only redirect if they are sitting on the login page ("/")
-          if (!initialRedirectDone && location.pathname === '/') {
+          if (!initialRedirectDone.current && location.pathname === '/') {
              if (resolvedRole.toLowerCase() === 'requestor') {
                 navigate('/reserve', { replace: true });
              } else {
                 navigate('/dashboard', { replace: true });
              }
-             initialRedirectDone = true;
+             initialRedirectDone.current = true;
           }
 
         } catch (error) {
@@ -158,7 +172,7 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [navigate, location.pathname]);
+  }, [navigate]); // Removed location.pathname to prevent looping
 
   // --- LOADING SCREEN ---
   if (isAuthLoading) {

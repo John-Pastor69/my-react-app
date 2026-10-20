@@ -331,7 +331,7 @@ const BuildingFacilitiesManagement = () => {
                     <td className="font-semibold" data-label="Capacity">{facility.capacity}</td>
                     <td data-label="Status">
                       <span className={`status-badge ${facility.statusClass}`}>
-                        ● {facility.status}
+                        {facility.status}
                       </span>
                     </td>
                     <td className="text-muted" data-label="Last Updated">{facility.lastUpdated}</td>
