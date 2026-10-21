@@ -55,7 +55,6 @@ export default function Login({ error, setError }) {
       <div className="brand-header">
         <div className="sti-logo-container">
           <div className="sti-yellow-box">
-            <span className="globe-icon">🌐</span>
             <span className="sti-text">STI</span>
           </div>
           <h1 className="brand-title">STI Reservation System</h1>
