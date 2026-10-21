@@ -54,9 +54,6 @@ export default function Login({ error, setError }) {
       {/* STI BRANDING HEADER */}
       <div className="brand-header">
         <div className="sti-logo-container">
-          <div className="sti-yellow-box">
-            <span className="sti-text">STI</span>
-          </div>
           <h1 className="brand-title">STI Reservation System</h1>
         </div>
       </div>
