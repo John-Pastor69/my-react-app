@@ -297,6 +297,13 @@ main,
     margin-bottom: 1rem;
   }
 
+  .dashboard-operations {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
   .dashboard-panel {
     padding: 1rem;
   }
@@ -314,6 +321,137 @@ main,
     font-size: var(--font-body);
     font-weight: 600;
     white-space: nowrap;
+  }
+
+  .panel-action-link,
+  .resource-alert-row > a {
+    flex: 0 0 auto;
+    color: $blue;
+    font-size: var(--font-body);
+    font-weight: 600;
+    text-decoration: none;
+    white-space: nowrap;
+
+    &:hover {
+      text-decoration: underline;
+    }
+
+    &:focus-visible {
+      outline: 2px solid $blue;
+      outline-offset: 3px;
+      border-radius: 2px;
+    }
+  }
+
+  .operations-list,
+  .resource-alert-list {
+    display: flex;
+    flex-direction: column;
+  }
+
+  .operation-row {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid $border;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  .operation-row-main {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+
+    strong,
+    span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: $ink;
+      font-size: var(--font-body);
+      font-weight: 600;
+    }
+
+    span,
+    .operation-row-date {
+      color: $muted;
+      font-size: var(--font-body);
+    }
+  }
+
+  .operation-row-meta {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.3rem;
+  }
+
+  .operation-row-date {
+    color: $muted;
+    font-size: var(--font-body);
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .resource-alert-row {
+    display: grid;
+    grid-template-columns: 1.6rem minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.7rem 0;
+    border-bottom: 1px solid $border;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    > div {
+      display: flex;
+      min-width: 0;
+      flex-direction: column;
+      gap: 0.2rem;
+    }
+
+    strong,
+    span:not(.resource-alert-icon) {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    strong {
+      color: $ink;
+      font-size: var(--font-body);
+      font-weight: 600;
+    }
+
+    span:not(.resource-alert-icon) {
+      color: $muted;
+      font-size: var(--font-body);
+    }
+  }
+
+  .resource-alert-icon {
+    display: grid;
+    width: 1.4rem;
+    height: 1.4rem;
+    place-items: center;
+    border-radius: 50%;
+    background: #fff5df;
+    color: $amber;
+    font-size: var(--font-body);
+    font-weight: 700;
   }
 
   .trend-chart {
@@ -712,6 +850,14 @@ main,
     .dashboard-insights,
     .dashboard-lower {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-operations {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .resource-alerts-panel {
+      grid-column: 1 / -1;
     }
 
     .dashboard-panel {

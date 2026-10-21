@@ -1,81 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, getDoc, deleteDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, deleteDoc, setDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
-import { sendReservationEmail } from '../services/emailService'; 
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
-
-// --- UPDATED EXPIRATION LOGIC ---
-const isExpired = (eventDate, endDate, startTime, endTime, status, days = 1) => {
-  if (!eventDate) return false;
-  const now = new Date();
-  
-  const [month, day, year] = eventDate.split('/').map(Number);
-  if (!month || !day || !year) return false;
-
-  const isApproved = (status || '').toLowerCase() === 'approved';
-
-  // Rule 1: If eventDate is today and hasn't gotten approved yet, account for startTime (if added)
-  const todayDateOnly = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const eventDateOnly = new Date(year, month - 1, day);
-  const isToday = eventDateOnly.getTime() === todayDateOnly.getTime();
-
-  if (isToday && !isApproved) {
-    if (startTime && startTime !== 'N/A') {
-      const matchStart = startTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-      if (matchStart) {
-        let [ , sHours, sMins, sMod ] = matchStart;
-        sHours = parseInt(sHours, 10);
-        if (sHours === 12 && sMod.toUpperCase() === 'AM') sHours = 0;
-        if (sHours < 12 && sMod.toUpperCase() === 'PM') sHours += 12;
-        const startDateTime = new Date(year, month - 1, day, sHours, parseInt(sMins, 10));
-        if (now > startDateTime) return true;
-      }
-    } else {
-      // If no start time is added, expires at the end of today
-      const endOfToday = new Date(year, month - 1, day, 23, 59, 59);
-      if (now > endOfToday) return true;
-    }
-  }
-
-  // Rule 2 & 3: Calculate final expiration date (accounting for endDate or multi-day span)
-  let finalYear = year, finalMonth = month - 1, finalDay = day;
-  
-  if (endDate) {
-    const [em, ed, ey] = endDate.split('/').map(Number);
-    if (em && ed && ey) {
-      finalYear = ey;
-      finalMonth = em - 1;
-      finalDay = ed;
-    }
-  } else {
-    const parsedDays = parseInt(days, 10) || 1;
-    const baseDate = new Date(year, month - 1, day);
-    baseDate.setDate(baseDate.getDate() + (parsedDays - 1));
-    finalYear = baseDate.getFullYear();
-    finalMonth = baseDate.getMonth();
-    finalDay = baseDate.getDate();
-  }
-  
-  let endDateTime;
-  if (endTime && endTime !== 'N/A') {
-    const match = endTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    if (match) {
-      let [ , hours, minutes, modifier ] = match;
-      hours = parseInt(hours, 10);
-      if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
-      if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
-      
-      endDateTime = new Date(finalYear, finalMonth, finalDay, hours, parseInt(minutes, 10));
-    }
-  }
-  
-  if (!endDateTime) {
-    endDateTime = new Date(finalYear, finalMonth, finalDay, 23, 59, 59);
-  }
-
-  return now > endDateTime;
-};
 
 const Schedule = () => {
   // --- STATE MANAGEMENT ---
@@ -88,11 +15,7 @@ const Schedule = () => {
   const [cancellationError, setCancellationError] = useState('');
   const [reservationsData, setReservationsData] = useState([]);
   const [usersData, setUsersData] = useState([]);
-  const [approverRoleKey, setApproverRoleKey] = useState('');
   const [currentUser, setCurrentUser] = useState(null);
-  
-  // Auto-Removal Alert State
-  const [autoRemovedAlerts, setAutoRemovedAlerts] = useState([]);
   
   const itemsPerPage = 5;
 
@@ -114,69 +37,11 @@ const Schedule = () => {
     };
   }, []);
 
-  // --- FETCH CURRENT USER ROLE & DATA ---
+  // --- TRACK CURRENT USER ---
   useEffect(() => {
-    const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
-      if (user) {
-        setCurrentUser(user);
-        try {
-          const userRef = doc(db, 'users', user.uid);
-          const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const userData = userSnap.data();
-            const rawRole = userData.role || 'user';
-            setApproverRoleKey(rawRole.toLowerCase().trim());
-          }
-        } catch (err) {
-          console.error("Failed to fetch approver data", err);
-        }
-      } else {
-        setCurrentUser(null);
-      }
-    });
+    const unsubscribeAuth = auth.onAuthStateChanged(setCurrentUser);
     return () => unsubscribeAuth();
   }, []);
-
-  // --- AUTO-REMOVE EXPIRED RESERVATIONS ---
-  useEffect(() => {
-    if (!currentUser || reservationsData.length === 0) return;
-
-    const checkExpirations = async () => {
-      const expiredEvents = [];
-
-      for (const res of reservationsData) {
-        if (res.userId === currentUser.uid || res.userEmail === currentUser.email) {
-           if (
-             (res.status || '').toLowerCase() !== 'cancelled'
-             && isExpired(res.eventDate, res.endDate, res.startTime, res.endTime, res.status, res.days)
-           ) {
-              expiredEvents.push(res.eventName || 'Untitled Event');
-              try {
-                await sendReservationEmail(
-                  res.userEmail, 
-                  res.fullName, 
-                  res, 
-                  "Your schedule exceeded the given time and/or date and was auto-removed."
-                );
-                
-                await deleteDoc(doc(db, 'reservations', res.id));
-              } catch (e) {
-                console.error("Error auto-deleting", e);
-              }
-           }
-        }
-      }
-
-      if (expiredEvents.length > 0) {
-         setAutoRemovedAlerts(prev => {
-           const newAlerts = expiredEvents.filter(e => !prev.includes(e));
-           return [...prev, ...newAlerts];
-         });
-      }
-    };
-
-    checkExpirations();
-  }, [reservationsData, currentUser]);
 
   // --- MAP & JOIN DATA ---
   const scheduleData = reservationsData
@@ -487,30 +352,6 @@ const Schedule = () => {
         </div>
       )}
 
-      {/* --- AUTO-REMOVED NOTIFICATION MODAL --- */}
-      {autoRemovedAlerts.length > 0 && (
-        <div className="modal-overlay delete-modal-overlay">
-          <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className="modal-title error">Auto-Removed</h3>
-            <div className="modal-message">
-              Your schedule exceeded the given time and/or date for the following event(s):
-              <ul className="auto-removed-list">
-                {autoRemovedAlerts.map((evt, idx) => (
-                  <li key={idx}>{evt}</li>
-                ))}
-              </ul>
-            </div>
-            <div className="modal-actions">
-              <button 
-                onClick={() => setAutoRemovedAlerts([])}
-                className="modal-button btn-modal-cancel btn-modal-acknowledge"
-              >
-                Acknowledge
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 };

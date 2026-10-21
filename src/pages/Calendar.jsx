@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from "../Firebase";
-import { collection, onSnapshot, doc, setDoc, getDoc } from "firebase/firestore"; 
+import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, writeBatch } from "firebase/firestore"; 
 import "../styles/Calendar.scss";
 import ReservationDetails from './ReservationDetails';
 
@@ -58,6 +58,10 @@ const formatEventDateRange = (startDateStr, endDateStr, numDays) => {
   return `${startDateStr} - ${endFormatted}`;
 };
 
+const monthNames = Array.from({ length: 12 }, (_, month) =>
+  new Date(2000, month, 1).toLocaleString('default', { month: 'long' })
+);
+
 const Calendar = ({ currentUserRole }) => {
   // 1. STATE & REFS
   const [currentDate, setCurrentDate] = useState(new Date());
@@ -69,15 +73,17 @@ const Calendar = ({ currentUserRole }) => {
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [userRole, setUserRole] = useState('');
   
-  // Ref for auto-scrolling to the bottom events container in mobile agenda view
   const sidebarRef = useRef(null);
-
-  const [isArchiveVisible, setIsArchiveVisible] = useState(false);
   
-  // STATE: For the specific history "View Details" click
+  // ARCHIVE STATES
+  const [isArchiveVisible, setIsArchiveVisible] = useState(false);
+  const [showArchiveList, setShowArchiveList] = useState(false);
   const [historySelectedRequest, setHistorySelectedRequest] = useState(null);
+  const [archiveSearch, setArchiveSearch] = useState('');
+  const [archiveFilter, setArchiveFilter] = useState('All');
+  const [archiveSort, setArchiveSort] = useState('Latest');
+  const [itemToDelete, setItemToDelete] = useState(null);
 
-  // Handle date click & smooth scroll on mobile/agenda view
   const handleDateClick = (dateStr) => {
     setSelectedDate(dateStr);
     if (!window.matchMedia('(min-width: 51.2rem)').matches && sidebarRef.current) {
@@ -85,6 +91,14 @@ const Calendar = ({ currentUserRole }) => {
         sidebarRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
       }, 50);
     }
+  };
+
+  const toggleArchiveMode = () => {
+    setIsArchiveVisible(v => {
+      const next = !v;
+      if (!next) setShowArchiveList(false); 
+      return next;
+    });
   };
 
   // 1.5. FETCH CURRENT USER ROLE
@@ -106,14 +120,12 @@ const Calendar = ({ currentUserRole }) => {
     return () => unsubscribeAuth();
   }, []);
 
-  // 2. LIVE LISTENERS (Reservations, History, Facilities, Equipments)
+  // 2. LIVE LISTENERS
   useEffect(() => {
-    // A. Main Reservations Listener (and sync to History)
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const resData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReservationsData(resData);
 
-      // --- AUTO-SYNC LOGIC ---
       resData.forEach(async (res) => {
         if (res.status === 'Approved' || (res.status || '').toLowerCase() === 'approved') {
           try {
@@ -126,19 +138,16 @@ const Calendar = ({ currentUserRole }) => {
       });
     }, (error) => console.error('Failed to load reservations:', error));
 
-    // B. New History Collection Listener
     const unsubHistory = onSnapshot(collection(db, 'history'), (snapshot) => {
       setHistoryData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => console.error('Failed to load history:', error));
 
-    // C. Facilities Listener
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
       snapshot.forEach(doc => { fMap[doc.id] = doc.data(); });
       setFacilitiesMap(fMap);
     }, (error) => console.error('Failed to load facilities:', error));
 
-    // D. Equipments Listener
     const unsubEq = onSnapshot(collection(db, 'equipments'), (snapshot) => {
       const eMap = {};
       snapshot.forEach(doc => { eMap[doc.id] = doc.data(); });
@@ -149,7 +158,7 @@ const Calendar = ({ currentUserRole }) => {
   }, []);
 
   // 3. REUSABLE MAPPING FUNCTION WITH RANGE EXPANSION
-  const mapToEvents = (sourceData, includeRejected = false) => {
+  const mapToEvents = (sourceData, includeRejected = false, isHistoryEvent = false) => {
     return sourceData.flatMap(data => {
       const status = (data.status || 'pending').toLowerCase().trim();
       if (status === 'rejected' && !includeRejected) return [];
@@ -159,6 +168,7 @@ const Calendar = ({ currentUserRole }) => {
       if (status === 'pending') uiStatusColor = 'yellow';
       if (status === 'cancelled') uiStatusColor = 'gray';
       if (status === 'rejected') uiStatusColor = 'red';
+      if (status === 'expired') uiStatusColor = 'charcoal';
 
       const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
       const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'N/A';
@@ -184,19 +194,75 @@ const Calendar = ({ currentUserRole }) => {
           requestor: formatName(data.fullName),
           endorser: data.endorserName ? formatName(data.endorserName) : 'N/A',
           isStart: index === 0,
+          isHistory: isHistoryEvent, 
           fullData: data 
         };
       });
     });
   };
 
-  const events = mapToEvents(reservationsData);
-  const historyEvents = mapToEvents(
-    historyData.filter(data => ['approved', 'rejected', 'cancelled'].includes((data.status || '').toLowerCase().trim())),
-    true
-  ).filter(event => event.isStart);
+  const activeEvents = mapToEvents(reservationsData);
+  const historyEvents = mapToEvents(historyData, true, true);
+
+  const events = isArchiveVisible ? historyEvents : activeEvents;
+
   const normalizedRole = (currentUserRole || userRole).toLowerCase().trim();
   const canViewArchive = normalizedRole === 'mis' || normalizedRole === 'building admin';
+
+  // --- ARCHIVE COMPUTATIONS ---
+  const filteredHistory = historyData.filter(item => {
+    const statusMatch = archiveFilter === 'All' || (item.status || '').toLowerCase() === archiveFilter.toLowerCase();
+    const searchStr = archiveSearch.toLowerCase();
+    const textMatch = !searchStr || 
+       (item.refNo || '').toLowerCase().includes(searchStr) ||
+       (item.eventName || '').toLowerCase().includes(searchStr) ||
+       (item.fullName || '').toLowerCase().includes(searchStr) ||
+       (item.eventDate || '').toLowerCase().includes(searchStr);
+    return statusMatch && textMatch;
+  }).sort((a, b) => {
+    const dateA = new Date(a.createdAt || a.eventDate || 0).getTime();
+    const dateB = new Date(b.createdAt || b.eventDate || 0).getTime();
+    return archiveSort === 'Latest' ? dateB - dateA : dateA - dateB;
+  });
+
+  const handleViewArchiveItem = (data) => {
+    const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
+    const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'N/A';
+    
+    const equipArray = Object.entries(data.selectedEquip || {})
+      .filter(([id, qty]) => Number(qty) > 0)
+      .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
+    const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
+
+    setHistorySelectedRequest({
+      title: data.eventName || data.title || "Untitled Event",
+      date: formatEventDateRange(data.eventDate, data.endDate, data.days),
+      time: (data.startTime && data.endTime) ? `${data.startTime} - ${data.endTime}` : "N/A",
+      facility: facilityDisplay,
+      equipment: equipmentRequested,
+      requestor: formatName(data.fullName),
+      endorser: data.endorserName ? formatName(data.endorserName) : 'N/A',
+      fullData: data
+    });
+  };
+
+  const confirmDelete = async () => {
+    if (!itemToDelete) return;
+    try {
+      if (itemToDelete.type === 'single') {
+        await deleteDoc(doc(db, 'history', itemToDelete.id));
+      } else if (itemToDelete.type === 'all') {
+        const batch = writeBatch(db);
+        filteredHistory.forEach(item => {
+          batch.delete(doc(db, 'history', item.id));
+        });
+        await batch.commit();
+      }
+    } catch (error) {
+      console.error("Error deleting history:", error);
+    }
+    setItemToDelete(null);
+  };
 
   // 4. NAVIGATION CONTROLLERS
   const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -244,154 +310,275 @@ const Calendar = ({ currentUserRole }) => {
 
   const calendarDays = generateCalendar();
   const currentMonthYearString = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
+  const firstYearOption = Math.min(1950, currentDate.getFullYear() - 20);
+  const lastYearOption = Math.max(new Date().getFullYear() + 20, currentDate.getFullYear() + 20);
+  const yearOptions = Array.from(
+    { length: lastYearOption - firstYearOption + 1 },
+    (_, index) => firstYearOption + index
+  );
 
   return (
     <div className="calendar-page-container">
       
-      {/* --- LEFT: MAIN CALENDAR --- */}
-      <div className="calendar-main">
+      {/* --- LEFT: MAIN CALENDAR / ARCHIVE SUMMARY --- */}
+      <div className={`calendar-main ${showArchiveList ? 'archive-active' : ''}`}>
         <div className="calendar-header">
           <div className="month-nav">
-            <button className="icon-btn" onClick={handlePrevMonth}>&#10094;</button>
-            <h2>{currentMonthYearString}</h2>
-            <button className="icon-btn" onClick={handleNextMonth}>&#10095;</button>
+            {!showArchiveList && (
+              <>
+                <button className="icon-btn" onClick={handlePrevMonth}>&#10094;</button>
+                <details className="month-picker">
+                  <summary className="month-picker-trigger" aria-label={`Choose month and year, currently ${currentMonthYearString}`}>
+                    {currentMonthYearString}
+                  </summary>
+                  <div className="month-picker-menu">
+                    <label>
+                      Month
+                      <select
+                        value={currentDate.getMonth()}
+                        onChange={(event) => setCurrentDate(new Date(
+                          currentDate.getFullYear(),
+                          Number(event.target.value),
+                          1
+                        ))}
+                      >
+                        {monthNames.map((monthName, month) => (
+                          <option key={month} value={month}>{monthName}</option>
+                        ))}
+                      </select>
+                    </label>
+                    <label>
+                      Year
+                      <select
+                        value={currentDate.getFullYear()}
+                        onChange={(event) => setCurrentDate(new Date(
+                          Number(event.target.value),
+                          currentDate.getMonth(),
+                          1
+                        ))}
+                      >
+                        {yearOptions.map(year => <option key={year} value={year}>{year}</option>)}
+                      </select>
+                    </label>
+                  </div>
+                </details>
+                <button className="icon-btn" onClick={handleNextMonth}>&#10095;</button>
+              </>
+            )}
             
             {canViewArchive && (
               <button
                 className="history-btn"
-                onClick={() => setIsArchiveVisible(visible => !visible)}
+                onClick={toggleArchiveMode}
                 aria-expanded={isArchiveVisible}
               >
-                {isArchiveVisible ? 'Hide Archive' : 'View Archive'}
+                {isArchiveVisible ? 'View Active' : 'View Archive'}
               </button>
             )}
           </div>
-          <div className="calendar-legend">
-            <span className="legend-item"><span className="dot dot-yellow"></span> Pending</span>
-            <span className="legend-item"><span className="dot dot-green"></span> Approved</span>
+          
+          <div className="header-right" style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.8rem' }}>
+            <div className="calendar-legend" style={{ margin: 0 }}>
+              {/* Only show Pending if we are NOT in the Archive View */}
+              {!isArchiveVisible && (
+                <span className="legend-item"><span className="dot dot-yellow"></span> Pending</span>
+              )}
+              
+              <span className="legend-item"><span className="dot dot-green"></span> Approved</span>
+              
+              {isArchiveVisible && (
+                <>
+                  <span className="legend-item"><span className="dot dot-red"></span> Rejected</span>
+                  <span className="legend-item"><span className="dot dot-gray"></span> Cancelled</span>
+                  <span className="legend-item"><span className="dot dot-charcoal"></span> Expired</span>
+                </>
+              )}
+            </div>
+            
+            {/* The new button underneath the legend */}
+            {isArchiveVisible && !showArchiveList && (
+              <button 
+                className="history-btn" 
+                onClick={() => setShowArchiveList(true)}
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+              >
+                Open Archive List
+              </button>
+            )}
+            {showArchiveList && (
+              <button 
+                className="history-btn" 
+                onClick={() => setShowArchiveList(false)}
+                style={{ padding: '0.4rem 0.8rem', fontSize: '0.85rem' }}
+              >
+                Back to Calendar
+              </button>
+            )}
           </div>
         </div>
 
-        <div className="calendar-grid">
-          {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
-            <div key={day} className="weekday">{day}</div>
-          ))}
-          {calendarDays.map((day, index) => {
-            const daysEvents = events.filter(e => e.date === day.date);
-            const isEmpty = daysEvents.length === 0;
+        {showArchiveList ? (
+          <div className="archive-summary-view">
+            <div className="archive-controls">
+              <div className="controls-left">
+                <input 
+                  type="text" 
+                  placeholder="Search Ref No, Event, Name..." 
+                  value={archiveSearch}
+                  onChange={(e) => setArchiveSearch(e.target.value)}
+                />
+                <select value={archiveFilter} onChange={(e) => setArchiveFilter(e.target.value)}>
+                  <option value="All">All Status</option>
+                  <option value="Approved">Approved</option>
+                  <option value="Rejected">Rejected</option>
+                  <option value="Cancelled">Cancelled</option>
+                  <option value="Expired">Expired</option>
+                </select>
+              </div>
+              <div className="controls-right">
+                <select value={archiveSort} onChange={(e) => setArchiveSort(e.target.value)}>
+                  <option value="Latest">Latest First</option>
+                  <option value="Oldest">Oldest First</option>
+                </select>
+                <button className="btn-danger" onClick={() => setItemToDelete({ type: 'all' })} disabled={filteredHistory.length === 0}>
+                  Delete All
+                </button>
+              </div>
+            </div>
+
+            <div className="archive-list">
+              {filteredHistory.length === 0 ? (
+                <div className="empty-state-text">No matching records found.</div>
+              ) : (
+                filteredHistory.map(item => {
+                  const itemStatus = (item.status || '').toLowerCase().trim();
+
+                  return (
+                    <div key={item.id} className="archive-list-item">
+                      <div className="item-info">
+                        <div className="item-ref">{item.refNo}</div>
+                        <div className="item-title">{item.eventName}</div>
+                        <div className="item-meta">{item.eventDate} | {formatName(item.fullName)}</div>
+                      </div>
+                      <div className={`item-status status-${itemStatus}`}>
+                        {item.status}
+                      </div>
+                      <div className="item-actions">
+                        <button className="btn-view" onClick={() => handleViewArchiveItem(item)}>View</button>
+                        <button className="btn-delete" onClick={() => setItemToDelete({ type: 'single', id: item.id })}>Delete</button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        ) : (
+          <div className="calendar-grid">
+            {['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'].map(day => (
+              <div key={day} className="weekday">{day}</div>
+            ))}
+            {calendarDays.map((day, index) => {
+              const daysEvents = events.filter(e => e.date === day.date);
+              const isEmpty = daysEvents.length === 0;
+
+              return (
+                <div 
+                  key={index} 
+                  onClick={() => handleDateClick(day.date)}
+                  className={`day-cell ${isEmpty ? 'empty-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
+                >
+                  <span className="date"><span>{day.name}</span> {day.num}</span>
+                  {daysEvents.map(event => (
+                    <div 
+                      key={event.id} 
+                      className={`event-pill pill-${event.status}`}
+                      title={event.title}
+                    >
+                      {event.startTimeOnly && event.startTimeOnly !== "N/A" && (
+                        <span className="event-pill-time">{event.startTimeOnly}</span>
+                      )}
+                      <span className="event-pill-title">{event.title}</span>
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* --- RIGHT: SIDEBAR DETAILS (HIDDEN IN ARCHIVE LIST VIEW) --- */}
+      {!showArchiveList && (
+        <div className="calendar-sidebar" ref={sidebarRef}>
+          {(() => {
+            const sidebarEvents = events.filter(e => e.date === selectedDate); 
+            const approvedCount = sidebarEvents.filter(e => e.status === 'green').length;
+            const pendingCount = sidebarEvents.filter(e => e.status === 'yellow').length;
+            const displayDate = selectedDate ? new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'short', day: 'numeric' }) : "Select a date";
 
             return (
-              <div 
-                key={index} 
-                onClick={() => handleDateClick(day.date)}
-                className={`day-cell ${isEmpty ? 'empty-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
-              >
-                <span className="date"><span>{day.name}</span> {day.num}</span>
-                {daysEvents.map(event => (
-                  <div 
-                    key={event.id} 
-                    className={`event-pill pill-${event.status}`}
-                    title={event.title}
-                  >
-                    {event.startTimeOnly && event.startTimeOnly !== "N/A" && (
-                      <span className="event-pill-time">{event.startTimeOnly}</span>
-                    )}
-                    <span className="event-pill-title">{event.title}</span>
+              <>
+                <div className="sidebar-header">
+                  <div>
+                    <h3>{displayDate}</h3>
+                    <p>{isArchiveVisible ? "Archived reservations for selected date" : "All reservations for selected date"}</p>
                   </div>
-                ))}
-              </div>
-            );
-          })}
-        </div>
-      </div>
-
-      {/* --- RIGHT: SIDEBAR DETAILS --- */}
-      <div className="calendar-sidebar" ref={sidebarRef}>
-        {(() => {
-          // Display the reservation details no matter which spanned day was clicked
-          const sidebarEvents = events.filter(e => e.date === selectedDate); 
-          const approvedCount = sidebarEvents.filter(e => e.status === 'green').length;
-          const pendingCount = sidebarEvents.filter(e => e.status === 'yellow').length;
-          const displayDate = selectedDate ? new Date(selectedDate).toLocaleDateString('default', { weekday: 'long', month: 'short', day: 'numeric' }) : "Select a date";
-
-          return (
-            <>
-              <div className="sidebar-header">
-                <div>
-                  <h3>{displayDate}</h3>
-                  <p>All reservations for selected date</p>
+                  <span className="event-count">{sidebarEvents.length} events</span>
                 </div>
-                <span className="event-count">{sidebarEvents.length} events</span>
-              </div>
-              <div className="sidebar-stats">
-                <div className="stat-box"><span className="stat-num text-green">{approvedCount}</span><span className="stat-label">Approved</span></div>
-                <div className="stat-divider"></div>
-                <div className="stat-box"><span className="stat-num text-yellow">{pendingCount}</span><span className="stat-label">Pending</span></div>
-              </div>
-              <div className="event-cards">
-                {sidebarEvents.length === 0 ? (
-                  <p className="empty-state-text">No reservations scheduled for this date.</p>
-                ) : (
-                  sidebarEvents.map(event => (
-                    <div key={event.id} className="event-card">
-                      <div className="card-top">
-                        <span className={`status-badge bg-${event.status}`}>
-                          {event.status === 'green' ? 'Approved' : 'Pending'}
-                        </span>
-                        <h4>{event.title}</h4>
-                      </div>
-                      <div className="card-details">
-                        <p><i className="ph ph-user"></i> {event.requestor}</p>
-                        <p><i className="ph ph-clock"></i> {event.time}</p>
-                        <p><i className="ph ph-buildings"></i> {event.facility}</p>
-                        <p><i className="ph ph-package"></i> {event.equipment}</p>
-                        <p><i className="ph ph-signature"></i> {event.endorser}</p>
-                      </div>
-                      <div className="card-actions">
-                        <button className="btn-view" onClick={() => setSelectedRequest(event.fullData)}>View Details</button>
-                      </div>
-                    </div>
-                  ))
+                
+                {!isArchiveVisible && (
+                  <div className="sidebar-stats">
+                    <div className="stat-box"><span className="stat-num text-green">{approvedCount}</span><span className="stat-label">Approved</span></div>
+                    <div className="stat-divider"></div>
+                    <div className="stat-box"><span className="stat-num text-yellow">{pendingCount}</span><span className="stat-label">Pending</span></div>
+                  </div>
                 )}
-              </div>
-            </>
-          );
-        })()}
-      </div>
 
-      {canViewArchive && isArchiveVisible && (
-        <section className="calendar-archive" aria-label="Reservation archive">
-          <h2>Reservation Archive</h2>
-          {historyEvents.length === 0 ? (
-            <p className="empty-state-text">No approved, rejected, or cancelled reservations found.</p>
-          ) : (
-            <div className="archive-event-list">
-              {historyEvents.map(event => {
-                const statusLabel = event.status === 'green' ? 'Approved' : event.status === 'gray' ? 'Cancelled' : event.status === 'red' ? 'Rejected' : 'Pending';
-                return (
-                  <article key={event.originalId} className="archive-event-item">
-                    <div className="archive-event-info">
-                      <h3>{event.title}</h3>
-                      <p>{event.date} · {event.time} · {event.facility}</p>
-                      {(event.fullData.cancellationRemark || event.fullData.rejectionRemark) && (
-                        <p className="archive-event-remark">
-                          {event.fullData.cancellationRemark || event.fullData.rejectionRemark}
-                        </p>
-                      )}
-                    </div>
-                    <span className={`archive-status status-${event.status}`}>{statusLabel}</span>
-                    <button className="btn-view-details" onClick={() => setHistorySelectedRequest(event)}>
-                      View Details
-                    </button>
-                  </article>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                <div className="event-cards">
+                  {sidebarEvents.length === 0 ? (
+                    <p className="empty-state-text">No reservations scheduled for this date.</p>
+                  ) : (
+                    sidebarEvents.map(event => (
+                      <div key={event.id} className="event-card">
+                        <div className="card-top">
+                          <span className={`status-badge bg-${event.status}`}>
+                            {event.status === 'green' ? 'Approved' : event.status === 'yellow' ? 'Pending' : event.status === 'red' ? 'Rejected' : event.status === 'charcoal' ? 'Expired' : 'Cancelled'}
+                          </span>
+                          <h4>{event.title}</h4>
+                        </div>
+                        <div className="card-details">
+                          <p><i className="ph ph-user"></i> {event.requestor}</p>
+                          <p><i className="ph ph-clock"></i> {event.time}</p>
+                          <p><i className="ph ph-buildings"></i> {event.facility}</p>
+                          <p><i className="ph ph-package"></i> {event.equipment}</p>
+                          <p><i className="ph ph-signature"></i> {event.endorser}</p>
+                        </div>
+                        <div className="card-actions">
+                          <button 
+                            className="btn-view" 
+                            onClick={() => {
+                              if (event.isHistory) {
+                                setHistorySelectedRequest(event);
+                              } else {
+                                setSelectedRequest(event.fullData);
+                              }
+                            }}
+                          >
+                            View Details
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </>
+            );
+          })()}
+        </div>
       )}
 
-      {/* --- MODAL POPUP FOR DETAILS --- */}
+      {/* --- MODAL POPUP FOR ACTIVE DETAILS --- */}
       {selectedRequest && (
         <div className="modal-overlay">
           <div className="modal-wrapper">
@@ -507,6 +694,24 @@ const Calendar = ({ currentUserRole }) => {
                   </div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --- CONFIRM DELETE MODAL --- */}
+      {itemToDelete && (
+        <div className="modal-overlay">
+          <div className="modal-card" style={{ maxWidth: '400px' }}>
+            <h3 className="modal-title error">Confirm Deletion</h3>
+            <p className="modal-message">
+              {itemToDelete.type === 'all' 
+                ? "Are you sure you want to delete ALL matching history records? This cannot be undone." 
+                : "Are you sure you want to delete this record? This cannot be undone."}
+            </p>
+            <div className="modal-actions" style={{ gap: '0.8rem' }}>
+              <button onClick={() => setItemToDelete(null)} className="btn-cancel">Cancel</button>
+              <button onClick={confirmDelete} className="btn-danger">Delete</button>
             </div>
           </div>
         </div>

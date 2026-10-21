@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
+import { archiveExpiredPendingReservations } from './services/reservationExpiration';
 
 import SideBar from './pages/SideBar';
 import TopBar from './pages/TopBar'; 
@@ -73,6 +74,16 @@ export default function App() {
 
         try {
           const userRef = doc(db, 'users', user.uid);
+          
+          // 1. OPTIMIZATION: Check for cached role to instantly unblock the UI
+          const cachedRole = localStorage.getItem(`userRole_${user.uid}`);
+          if (cachedRole) {
+            setUserRole(cachedRole);
+            setIsAuthenticated(true);
+            setIsAuthLoading(false); 
+          }
+
+          // 2. Fetch fresh data from Firestore
           const userSnap = await getDoc(userRef);
           const nowIso = new Date().toISOString();
 
@@ -80,10 +91,14 @@ export default function App() {
 
           if (userSnap.exists()) {
             resolvedRole = userSnap.data().role || 'requestor';
-            await updateDoc(userRef, {
+            
+            // OPTIMIZATION: Non-blocking write (removed 'await')
+            // The UI no longer waits for the server to acknowledge this update
+            updateDoc(userRef, {
               status: 'Active',
               lastActive: nowIso
-            });
+            }).catch(err => console.error("Heartbeat update failed:", err));
+            
           } else {
             const d = new Date();
             const month = String(d.getMonth() + 1).padStart(2, '0');
@@ -101,7 +116,8 @@ export default function App() {
               resolvedRole = 'requestor'; // Fallback for unknown formats
             }
 
-            await setDoc(userRef, {
+            // OPTIMIZATION: Non-blocking write (removed 'await')
+            setDoc(userRef, {
               email: user.email,
               name: rawName,
               role: resolvedRole,
@@ -111,9 +127,17 @@ export default function App() {
               phone: '',
               status: 'Active',
               lastActive: nowIso
-            });
+            }).catch(err => console.error("User creation failed:", err));
           }
 
+          try {
+            await archiveExpiredPendingReservations(user);
+          } catch (error) {
+            console.error("Failed to archive expired reservations during login:", error);
+          }
+
+          // 3. Update the state and the cache with the verified database role
+          localStorage.setItem(`userRole_${user.uid}`, resolvedRole);
           setUserRole(resolvedRole);
           setIsAuthenticated(true);
           
@@ -206,6 +230,9 @@ export default function App() {
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
         onLogout={() => {
+         if (auth.currentUser) {
+           localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
+         }
          setIsAuthenticated(false); 
          setUserRole('requestor'); 
          navigate('/', { replace: true }); // Clear the URL on logout

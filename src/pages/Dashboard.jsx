@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase';
 import "../styles/Dashboard.scss";
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
+const ROLE_HIERARCHY = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
 
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
@@ -69,6 +71,13 @@ const getStatusClass = (status) => {
   return 'pending';
 };
 
+const normalizeName = (value) => {
+  const name = (value || '').replace(/\s*\(Student\)/i, '').trim();
+  if (!name.includes(',')) return name;
+  const [lastName, ...firstNames] = name.split(',');
+  return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
+};
+
 const Dashboard = ({ currentUserRole }) => {
   const [reservationsData, setReservationsData] = useState([]);
   const [equipmentData, setEquipmentData] = useState([]);
@@ -126,7 +135,9 @@ const Dashboard = ({ currentUserRole }) => {
   }, []);
 
   const currentUserRecord = usersData.find(
-    (user) => user.uid === currentUser?.uid || user.id === currentUser?.uid
+    (user) => user.uid === currentUser?.uid
+      || user.id === currentUser?.uid
+      || user.email === currentUser?.email
   );
   const approverRoleKey = currentUserRecord?.role?.toLowerCase().trim() || '';
   const dashboardRole = (currentUserRole || approverRoleKey)
@@ -134,7 +145,6 @@ const Dashboard = ({ currentUserRole }) => {
     .trim()
     .replace(/_/g, ' ');
   const isAdminDashboard = ['building admin', 'mis', 'mis admin'].includes(dashboardRole);
-  const roleHierarchy = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
 
   const scheduleCount = currentUser
     ? reservationsData.filter(
@@ -142,39 +152,79 @@ const Dashboard = ({ currentUserRole }) => {
     ).length
     : 0;
 
-  const pendingApprovals = reservationsData.filter((reservation) => {
+  const pendingApprovalReservations = useMemo(() => reservationsData.filter((reservation) => {
     if (!approverRoleKey) return false;
 
     const myRecord = reservation.approvals?.[approverRoleKey];
+    const reservationStatus = (reservation.status || 'pending').toLowerCase();
     if (myRecord?.status === 'approved' || myRecord?.status === 'rejected') return false;
-    if (reservation.status === 'Rejected' || reservation.status === 'Approved') return false;
+    if (reservationStatus === 'rejected' || reservationStatus === 'approved') return false;
 
-    const myIndex = roleHierarchy.indexOf(approverRoleKey);
+    const myIndex = ROLE_HIERARCHY.indexOf(approverRoleKey);
     if (myIndex <= 0) return false;
 
     const requestor = usersData.find(
       (user) => user.email === reservation.userEmail || user.uid === reservation.userId
     ) || {};
-    const requestorRole = (requestor.role || 'requestor').toLowerCase().trim();
+    const requestorRole = (requestor.role || reservation.userRole || 'requestor').toLowerCase().trim();
     const isStaffRequestor = requestorRole !== 'requestor' && requestorRole !== 'user';
-    const hasEndorser = !!reservation.endorserName;
 
-    if (approverRoleKey === 'endorser' && isStaffRequestor) return false;
-
-    const previousRole = roleHierarchy[myIndex - 1];
-    let previousStepApproved = false;
-    if (previousRole === 'requestor') {
-      previousStepApproved = true;
-    } else if (previousRole === 'endorser') {
-      previousStepApproved = isStaffRequestor || !hasEndorser
-        ? true
-        : reservation.approvals?.endorser?.status === 'approved';
-    } else {
-      previousStepApproved = reservation.approvals?.[previousRole]?.status === 'approved';
+    if (approverRoleKey === 'endorser') {
+      if (isStaffRequestor || !reservation.endorserName) return false;
+      if (normalizeName(reservation.endorserName).toLowerCase() !== normalizeName(currentUserRecord?.name).toLowerCase()) {
+        return false;
+      }
     }
 
-    return previousStepApproved;
-  }).length;
+    const previousRole = ROLE_HIERARCHY[myIndex - 1];
+    if (previousRole === 'requestor') return true;
+    if (previousRole === 'endorser') {
+      return isStaffRequestor
+        || !reservation.endorserName
+        || reservation.approvals?.endorser?.status === 'approved';
+    }
+    return reservation.approvals?.[previousRole]?.status === 'approved';
+  }).sort((first, second) => {
+    const firstDate = parseDate(first.createdAt || first.eventDate)?.getTime() || 0;
+    const secondDate = parseDate(second.createdAt || second.eventDate)?.getTime() || 0;
+    return secondDate - firstDate;
+  }), [reservationsData, usersData, approverRoleKey, currentUserRecord]);
+  const pendingApprovals = pendingApprovalReservations.length;
+  const canReviewApprovals = ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
+
+  const todayKey = toDateInputValue(new Date());
+  const today = parseDate(todayKey);
+  const weekAhead = today ? new Date(today) : null;
+  if (weekAhead) {
+    weekAhead.setDate(weekAhead.getDate() + 7);
+    weekAhead.setHours(23, 59, 59, 999);
+  }
+
+  const upcomingReservations = today && weekAhead
+    ? reservationsData
+      .map((reservation) => ({
+        ...reservation,
+        eventDateValue: parseDate(reservation.eventDate || reservation.date)
+      }))
+      .filter((reservation) => {
+        const status = (reservation.status || 'pending').toLowerCase();
+        const isOwnedByUser = Boolean(currentUser && (
+          reservation.userId === currentUser.uid
+          || reservation.userEmail === currentUser.email
+        ));
+        return reservation.eventDateValue
+          && reservation.eventDateValue >= today
+          && reservation.eventDateValue <= weekAhead
+          && status !== 'rejected'
+          && status !== 'cancelled'
+          && (isAdminDashboard || isOwnedByUser);
+      })
+      .sort((first, second) => (
+        first.eventDateValue - second.eventDateValue
+        || (parseTime(first.startTime) ?? -1) - (parseTime(second.startTime) ?? -1)
+      ))
+      .slice(0, 6)
+    : [];
 
   const startMinutes = parseTime(filters.startTime);
   const endMinutes = parseTime(filters.endTime);
@@ -374,6 +424,75 @@ const Dashboard = ({ currentUserRole }) => {
   const facilitiesAvailable = facilitiesData.filter((facility) => facility.status === 'Available').length;
   const facilitiesUnderMaintenance = facilitiesData.filter((facility) => facility.status === 'Maintenance').length;
   const facilitiesUnavailable = facilitiesData.filter((facility) => facility.status === 'Unavailable').length;
+  const resourceAlerts = useMemo(() => {
+    const alerts = equipmentInventory
+      .filter((equipment) => (
+        equipment.total > 0
+        && equipment.available <= Math.ceil(equipment.total * 0.2)
+      ))
+      .map((equipment) => ({
+        key: `equipment-${equipment.id}`,
+        title: equipment.name || 'Unnamed equipment',
+        detail: `${equipment.available} of ${equipment.total} units available`,
+        link: '/equipment'
+      }));
+
+    facilitiesData
+      .filter((facility) => ['maintenance', 'unavailable'].includes((facility.status || '').toLowerCase()))
+      .forEach((facility) => alerts.push({
+        key: `facility-${facility.id}`,
+        title: facility.name || 'Unnamed facility',
+        detail: `Facility status: ${facility.status}`,
+        link: '/facility'
+      }));
+
+    const today = parseDate(todayKey);
+    if (today) {
+      const weekAhead = new Date(today);
+      weekAhead.setDate(weekAhead.getDate() + 7);
+      weekAhead.setHours(23, 59, 59, 999);
+      const reservationGroups = new Map();
+
+      reservationsData
+        .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
+        .forEach((reservation) => {
+          const date = parseDate(reservation.eventDate || reservation.date);
+          const start = parseTime(reservation.startTime);
+          const end = parseTime(reservation.endTime);
+          if (!date || date < today || date > weekAhead || start === null || end === null || end <= start) return;
+
+          (reservation.facilities || []).forEach((facilityId) => {
+            const key = `${toDateInputValue(date)}-${facilityId}`;
+            const group = reservationGroups.get(key) || [];
+            group.push({ reservation, date, start, end, facilityId });
+            reservationGroups.set(key, group);
+          });
+        });
+
+      const conflicts = [];
+      for (const group of reservationGroups.values()) {
+        group.sort((first, second) => first.start - second.start);
+        for (let firstIndex = 0; firstIndex < group.length && conflicts.length < 6; firstIndex += 1) {
+          const first = group[firstIndex];
+          for (let secondIndex = firstIndex + 1; secondIndex < group.length; secondIndex += 1) {
+            const second = group[secondIndex];
+            if (second.start >= first.end) break;
+            if (first.reservation.id === second.reservation.id) continue;
+            conflicts.push({
+              key: `conflict-${first.reservation.id}-${second.reservation.id}-${first.facilityId}`,
+              title: facilitiesById.get(first.facilityId)?.name || 'Facility',
+              detail: `${first.reservation.eventName || 'Reservation'} overlaps ${second.reservation.eventName || 'another reservation'} on ${formatDate(first.date)}`,
+              link: '/calendar'
+            });
+            if (conflicts.length >= 6) break;
+          }
+        }
+      }
+      alerts.push(...conflicts);
+    }
+
+    return alerts.slice(0, 8);
+  }, [equipmentInventory, facilitiesData, reservationsData, facilitiesById, todayKey]);
   const chartMaximum = Math.max(1, ...trendData.map((bucket) => bucket.count));
   const equipmentMaximum = Math.max(1, ...usageByEquipment.map((equipment) => equipment.quantity));
   const facilityMaximum = Math.max(1, ...facilityUsage.map((facility) => facility.count));
@@ -396,6 +515,104 @@ const Dashboard = ({ currentUserRole }) => {
           <h1>{isAdminDashboard ? 'Admin dashboard' : 'Dashboard'}</h1>
         </div>
       </header>
+
+      <section className="dashboard-operations" aria-label="Upcoming reservations and pending approvals">
+        <article className="dashboard-panel operations-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>{isAdminDashboard ? 'Approval queue' : 'Requests needing your review'}</h2>
+              <p>Reservations currently waiting for your approval.</p>
+            </div>
+            {canReviewApprovals && (
+              <Link className="panel-action-link" to="/approval">Open approvals</Link>
+            )}
+          </div>
+          {pendingApprovalReservations.length ? (
+            <div className="operations-list">
+              {pendingApprovalReservations.slice(0, 5).map((reservation) => (
+                <div className="operation-row" key={reservation.id}>
+                  <div className="operation-row-main">
+                    <strong>{reservation.eventName || 'Untitled reservation'}</strong>
+                    <span>{reservation.fullName || reservation.userEmail || 'Unknown requestor'}</span>
+                  </div>
+                  <span className="operation-row-date">
+                    {formatDate(parseDate(reservation.eventDate || reservation.date))}
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="panel-empty">
+              {canReviewApprovals ? 'No reservations are waiting for your approval.' : 'No approval queue is assigned to your role.'}
+            </p>
+          )}
+        </article>
+
+        <article className="dashboard-panel operations-panel">
+          <div className="panel-heading">
+            <div>
+              <h2>{isAdminDashboard ? 'Upcoming reservations' : 'Your upcoming reservations'}</h2>
+              <p>Scheduled over the next seven days.</p>
+            </div>
+            <Link className="panel-action-link" to="/schedule">View schedule</Link>
+          </div>
+          {upcomingReservations.length ? (
+            <div className="operations-list">
+              {upcomingReservations.map((reservation) => (
+                <div className="operation-row" key={reservation.id}>
+                  <div className="operation-row-main">
+                    <strong>{reservation.eventName || 'Untitled reservation'}</strong>
+                    <span>
+                      {isAdminDashboard
+                        ? (reservation.fullName || reservation.userEmail || 'Unknown requestor')
+                        : (reservation.facilities || []).map((id) => facilitiesById.get(id)?.name || id).join(', ') || 'No facility listed'}
+                    </span>
+                  </div>
+                  <div className="operation-row-meta">
+                    <span className={`reservation-status ${getStatusClass(reservation.status)}`}>
+                      {reservation.status || 'Pending'}
+                    </span>
+                    <span className="operation-row-date">
+                      {formatDate(reservation.eventDateValue)} · {formatTime(reservation.startTime)}
+                    </span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="panel-empty">
+              {isAdminDashboard ? 'No reservations are scheduled in the next seven days.' : 'You have no reservations scheduled in the next seven days.'}
+            </p>
+          )}
+        </article>
+
+        {isAdminDashboard && (
+          <article className="dashboard-panel resource-alerts-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Resource alerts</h2>
+                <p>Low equipment stock, facility status, and overlapping bookings over the next seven days.</p>
+              </div>
+            </div>
+            {resourceAlerts.length ? (
+              <div className="resource-alert-list">
+                {resourceAlerts.map((alert) => (
+                  <div className="resource-alert-row" key={alert.key}>
+                    <span className="resource-alert-icon">!</span>
+                    <div>
+                      <strong>{alert.title}</strong>
+                      <span>{alert.detail}</span>
+                    </div>
+                    <Link to={alert.link}>View</Link>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="panel-empty">No low-stock items, facility issues, or schedule conflicts were detected.</p>
+            )}
+          </article>
+        )}
+      </section>
 
       {isAdminDashboard ? (
         <>
