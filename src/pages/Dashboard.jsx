@@ -1018,25 +1018,21 @@ const Dashboard = ({ currentUserRole }) => {
               <span className="kpi-label">Reservations in range</span>
               <strong>{metrics.total}</strong>
               <span className="kpi-footnote">Across the selected filters</span>
-              <span className="kpi-symbol">R</span>
             </article>
             <article className="kpi-card">
               <span className="kpi-label">Approved bookings</span>
               <strong>{metrics.approved}</strong>
               <span className="kpi-footnote">{metrics.reservedUnits} equipment units requested</span>
-              <span className="kpi-symbol kpi-success">✓</span>
             </article>
             <article className="kpi-card">
               <span className="kpi-label">Awaiting review</span>
               <strong>{metrics.pending}</strong>
               <span className="kpi-footnote">{pendingApprovals} assigned to your approval role</span>
-              <span className="kpi-symbol kpi-warning">!</span>
             </article>
             <article className="kpi-card">
               <span className="kpi-label">Available equipment</span>
               <strong>{metrics.availableUnits}</strong>
-              <span className="kpi-footnote">Units available in current inventory</span>
-              <span className="kpi-symbol kpi-neutral">E</span>
+              <span className="kpi-footnote">Units available in current inventory</span>  
             </article>
           </section>
 
