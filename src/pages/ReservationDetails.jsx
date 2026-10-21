@@ -2,6 +2,7 @@ import { jsPDF } from 'jspdf';
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db } from '../Firebase';
+import { getApprovalTrackerSteps } from '../services/approvalWorkflow';
 import '../styles/ReservationDetails.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -156,68 +157,12 @@ const ReservationDetails = ({ data }) => {
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
 
   // --- HIERARCHY & TRACKER LOGIC ---
-  const roleHierarchy = [
-    { key: 'requestor', label: 'Requestor Submitted' },
-    { key: 'endorser', label: 'Endorser' },
-    { key: 'building admin', label: 'Building Admin' },
-    { key: 'osa', label: 'OSA' },
-    { key: 'mis', label: 'MIS' },
-    { key: 'academic head', label: 'Academic Head' },
-    { key: 'school admin', label: 'School Admin' }
-  ];
-
-  const trackerSteps = roleHierarchy.map((step, index) => {
-    if (step.key === 'requestor') return { label: step.label, status: 'Completed', date: dateSubmitted, state: 'approved' };
-    
-    if (step.key === 'endorser') {
-      if (isStaffRequestor) {
-        return { label: step.label, status: 'Skipped', date: dateSubmitted, state: 'approved' };
-      }
-      if (!hasEndorser) {
-        return { label: step.label, status: 'Skipped', date: '—', state: 'approved' };
-      }
-    }
-
-    const approvalRecord = currentData.approvals?.[step.key];
-    const isApproved = approvalRecord?.status === 'approved';
-    const isRejected = approvalRecord?.status === 'rejected';
-    const actionDate = approvalRecord?.date || 'Pending';
-
-    let state = 'pending';
-    let statusText = 'Pending';
-
-    if (isApproved) {
-      state = 'approved';
-      statusText = 'Completed';
-    } else if (isRejected) {
-      state = 'rejected';
-      statusText = 'Rejected';
-    } else {
-      const prevStepKey = roleHierarchy[index - 1].key;
-      let prevIsApproved = false;
-
-      if (prevStepKey === 'requestor') {
-        prevIsApproved = true;
-      } else if (prevStepKey === 'endorser') {
-        if (isStaffRequestor || !hasEndorser) {
-          prevIsApproved = true;
-        } else {
-          prevIsApproved = currentData.approvals?.['endorser']?.status === 'approved';
-        }
-      } else {
-        prevIsApproved = currentData.approvals?.[prevStepKey]?.status === 'approved';
-      }
-
-      if (prevIsApproved) {
-        state = 'pending';
-        statusText = 'Pending';
-      } else {
-        state = 'queued';
-        statusText = 'Queued';
-      }
-    }
-
-    return { label: step.label, status: statusText, date: isApproved ? actionDate : 'Pending', state: state };
+  const trackerSteps = getApprovalTrackerSteps({
+    approvals: currentData.approvals,
+    dateSubmitted,
+    hasEndorser,
+    isStaffRequestor,
+    reservationStatus: currentData.status
   });
 
   const baseHistory = [{

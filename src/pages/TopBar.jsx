@@ -4,6 +4,7 @@ import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
 import PendingRequest from './PendingRequest';
+import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import '../styles/TopBar.scss'; 
 
 // Helper function to format timestamp into "X ago"
@@ -166,7 +167,7 @@ const TopBar = ({ toggleSidebar }) => {
   useEffect(() => {
     if (!userData.role || userData.role === '...' || !auth.currentUser) return;
 
-    const myRoleKey = userData.role.toLowerCase().trim();
+    const myRoleKey = normalizeApprovalRoleKey(userData.role);
     const uid = auth.currentUser.uid;
     const email = auth.currentUser.email;
     let newNotifs = [];
@@ -226,8 +227,7 @@ const TopBar = ({ toggleSidebar }) => {
       }
 
       // --- 2. APPROVER NOTIFICATIONS ---
-      const roleHierarchy = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
-      const myIndex = roleHierarchy.indexOf(myRoleKey);
+      const myIndex = APPROVAL_ROLE_HIERARCHY.indexOf(myRoleKey);
       
       if (myIndex > 0 && res.status !== 'Rejected' && res.status !== 'Approved' && !isExpired(res.eventDate, res.endTime, res.days)) {
         
@@ -235,28 +235,13 @@ const TopBar = ({ toggleSidebar }) => {
           return; 
         }
 
-        const hasEndorser = !!res.endorserName;
-        let isMyTurn = false;
-        
-        if (myRoleKey === 'endorser' && isStaffRequestor) {
-          isMyTurn = false;
-        } else {
-          const myRecord = res.approvals?.[myRoleKey];
-          if (!myRecord || myRecord.status === 'pending') {
-            const prevStepKey = roleHierarchy[myIndex - 1];
-            let prevIsApproved = false;
-
-            if (prevStepKey === 'requestor') {
-              prevIsApproved = true;
-            } else if (prevStepKey === 'endorser') {
-              if (isStaffRequestor || !hasEndorser) prevIsApproved = true;
-              else prevIsApproved = res.approvals?.['endorser']?.status === 'approved';
-            } else {
-              prevIsApproved = res.approvals?.[prevStepKey]?.status === 'approved';
-            }
-            isMyTurn = prevIsApproved;
-          }
-        }
+        const myRecord = res.approvals?.[myRoleKey];
+        const isMyTurn = (!myRecord || myRecord.status === 'pending')
+          && !(myRoleKey === 'endorser' && isStaffRequestor)
+          && isApprovalStepReady(res.approvals, myRoleKey, {
+            hasEndorser: Boolean(res.endorserName),
+            isStaffRequestor
+          });
 
         if (isMyTurn) {
           newNotifs.push({

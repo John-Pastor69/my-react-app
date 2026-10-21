@@ -3,6 +3,7 @@ import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import "../styles/Approval.scss";
 import PendingRequest from './PendingRequest';
+import { isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -54,7 +55,7 @@ const Approval = () => {
                     if (userSnap.exists()) {
                         const userData = userSnap.data();
                         const rawRole = userData.role || 'user';
-                        setApproverRoleKey(rawRole.toLowerCase().trim());
+                        setApproverRoleKey(normalizeApprovalRoleKey(rawRole));
                     }
                 } catch (err) {
                     console.error("Failed to fetch approver data", err);
@@ -119,28 +120,10 @@ const Approval = () => {
                 return 'your-turn';
             }
 
-            const roleHierarchy = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
-            const myIndex = roleHierarchy.indexOf(approverRoleKey);
-            if (myIndex <= 0) return null;
-
-            const hasEndorser = !!res.endorserName;
-
-            const prevStepKey = roleHierarchy[myIndex - 1];
-            let prevIsApproved = false;
-
-            if (prevStepKey === 'requestor') {
-                prevIsApproved = true;
-            } else if (prevStepKey === 'endorser') {
-                if (isStaffRequestor || !hasEndorser) {
-                    prevIsApproved = true;
-                } else {
-                    prevIsApproved = res.approvals?.['endorser']?.status === 'approved';
-                }
-            } else {
-                prevIsApproved = res.approvals?.[prevStepKey]?.status === 'approved';
-            }
-
-            if (prevIsApproved) return 'your-turn';
+            if (isApprovalStepReady(res.approvals, approverRoleKey, {
+                hasEndorser: Boolean(res.endorserName),
+                isStaffRequestor
+            })) return 'your-turn';
             return null;
         };
 

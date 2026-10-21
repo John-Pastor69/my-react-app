@@ -2,12 +2,12 @@ import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase';
+import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import "../styles/Dashboard.scss";
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const ROLE_HIERARCHY = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
 const EMPTY_HISTORY = [];
 
 const toDateInputValue = (date) => {
@@ -88,6 +88,7 @@ const Dashboard = ({ currentUserRole }) => {
   const [facilitiesData, setFacilitiesData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [upcomingDays, setUpcomingDays] = useState('7');
   const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
   const [selectedReservation, setSelectedReservation] = useState(null);
@@ -154,12 +155,16 @@ const Dashboard = ({ currentUserRole }) => {
       || user.id === currentUser?.uid
       || user.email === currentUser?.email
   );
-  const approverRoleKey = currentUserRecord?.role?.toLowerCase().trim() || '';
+  const approverRoleKey = normalizeApprovalRoleKey(currentUserRecord?.role);
   const dashboardRole = (currentUserRole || approverRoleKey)
     .toLowerCase()
     .trim()
     .replace(/_/g, ' ');
   const isAdminDashboard = ['building admin', 'mis', 'mis admin'].includes(dashboardRole);
+  const isGeneralStaffDashboard = Boolean(dashboardRole)
+    && !['requestor', 'user'].includes(dashboardRole)
+    && !isAdminDashboard;
+  const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
 
   useEffect(() => {
     if (!isAdminDashboard) return undefined;
@@ -188,8 +193,7 @@ const Dashboard = ({ currentUserRole }) => {
     if (myRecord?.status === 'approved' || myRecord?.status === 'rejected') return false;
     if (reservationStatus === 'rejected' || reservationStatus === 'approved') return false;
 
-    const myIndex = ROLE_HIERARCHY.indexOf(approverRoleKey);
-    if (myIndex <= 0) return false;
+    if (APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) <= 0) return false;
 
     const requestor = usersData.find(
       (user) => user.email === reservation.userEmail || user.uid === reservation.userId
@@ -204,21 +208,33 @@ const Dashboard = ({ currentUserRole }) => {
       }
     }
 
-    const previousRole = ROLE_HIERARCHY[myIndex - 1];
-    if (previousRole === 'requestor') return true;
-    if (previousRole === 'endorser') {
-      return isStaffRequestor
-        || !reservation.endorserName
-        || reservation.approvals?.endorser?.status === 'approved';
-    }
-    return reservation.approvals?.[previousRole]?.status === 'approved';
+    return isApprovalStepReady(reservation.approvals, approverRoleKey, {
+      hasEndorser: Boolean(reservation.endorserName),
+      isStaffRequestor
+    });
   }).sort((first, second) => {
     const firstDate = parseDate(first.createdAt || first.eventDate)?.getTime() || 0;
     const secondDate = parseDate(second.createdAt || second.eventDate)?.getTime() || 0;
     return secondDate - firstDate;
   }), [reservationsData, usersData, approverRoleKey, currentUserRecord]);
   const pendingApprovals = pendingApprovalReservations.length;
-  const canReviewApprovals = ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
+  const canReviewApprovals = APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
+  const matchingUsers = useMemo(() => {
+    const query = userSearchQuery.trim().toLowerCase();
+    if (!query) return [];
+
+    const normalizedPhoneQuery = query.replace(/\D/g, '');
+    return usersData
+      .filter((user) => {
+        const name = (user.name || '').toLowerCase();
+        const email = (user.email || '').toLowerCase();
+        const phone = String(user.phone || '');
+        return name.includes(query)
+          || email.includes(query)
+          || (normalizedPhoneQuery && phone.replace(/\D/g, '').includes(normalizedPhoneQuery));
+      })
+      .slice(0, 8);
+  }, [usersData, userSearchQuery]);
 
   const todayKey = toDateInputValue(new Date());
   const today = parseDate(todayKey);
@@ -248,7 +264,7 @@ const Dashboard = ({ currentUserRole }) => {
           && reservation.eventDateValue <= weekAhead
           && status !== 'rejected'
           && status !== 'cancelled'
-          && (isAdminDashboard || isOwnedByUser);
+          && (hasAnalyticsDashboard || isOwnedByUser);
       })
       .sort((first, second) => (
         first.eventDateValue - second.eventDateValue
@@ -366,7 +382,12 @@ const Dashboard = ({ currentUserRole }) => {
       .filter((reservation) => {
         const status = (reservation.status || 'pending').toLowerCase();
         if (searchText && !reservation.searchableText.includes(searchText)) return false;
+        if (
+          isGeneralStaffDashboard
+          && !['pending', 'approved'].includes(status)
+        ) return false;
         if (reservationSearchFilters.status !== 'all' && status !== reservationSearchFilters.status) return false;
+        if (isGeneralStaffDashboard && reservation.source !== 'active') return false;
         if (reservationSearchFilters.source !== 'all' && reservation.source !== reservationSearchFilters.source) return false;
         if (fromDate && (!reservation.eventDateValue || reservation.eventDateValue < fromDate)) return false;
         if (throughDate && (
@@ -389,7 +410,7 @@ const Dashboard = ({ currentUserRole }) => {
         const direction = reservationSearchFilters.sort === 'latest' ? -1 : 1;
         return direction * (firstDateTime - secondDateTime);
       });
-  }, [searchableReservations, reservationSearchFilters]);
+  }, [searchableReservations, reservationSearchFilters, isGeneralStaffDashboard]);
 
   const equipmentInventory = useMemo(() => equipmentData.map((equipment) => {
     const reserved = reservationsData.reduce((total, reservation) => {
@@ -441,7 +462,6 @@ const Dashboard = ({ currentUserRole }) => {
         const secondDate = parseDate(second.createdAt || second.eventDate)?.getTime() || 0;
         return secondDate - firstDate;
       })
-      .slice(0, 6)
       .map((reservation) => {
         const facilityNames = (reservation.facilities || [])
           .map((id) => facilitiesById.get(id)?.name || id)
@@ -635,7 +655,7 @@ const Dashboard = ({ currentUserRole }) => {
   };
 
   return (
-    <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : 'personal-dashboard'}`}>
+    <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : hasAnalyticsDashboard ? 'staff-dashboard' : 'personal-dashboard'}`}>
       <header className="dashboard-header">
         <div className="dashboard-title">
           <h1>{isAdminDashboard ? 'Admin dashboard' : 'Dashboard'}</h1>
@@ -646,7 +666,7 @@ const Dashboard = ({ currentUserRole }) => {
         <article className="dashboard-panel operations-panel">
           <div className="panel-heading">
             <div>
-              <h2>{isAdminDashboard ? 'Approval queue' : 'Requests needing your review'}</h2>
+              <h2>{hasAnalyticsDashboard ? 'Approval queue' : 'Requests needing your review'}</h2>
               <p>Reservations currently waiting for your approval.</p>
             </div>
             {canReviewApprovals && (
@@ -682,7 +702,7 @@ const Dashboard = ({ currentUserRole }) => {
         <article className="dashboard-panel operations-panel">
           <div className="panel-heading">
             <div>
-              <h2>{isAdminDashboard ? 'Upcoming reservations' : 'Your upcoming reservations'}</h2>
+              <h2>{hasAnalyticsDashboard ? 'Upcoming reservations' : 'Your upcoming reservations'}</h2>
               <p>Reservations scheduled within your selected date range.</p>
             </div>
             <label className="upcoming-range-control">
@@ -720,7 +740,7 @@ const Dashboard = ({ currentUserRole }) => {
                   <div className="operation-row-main">
                     <strong>{reservation.eventName || 'Untitled reservation'}</strong>
                     <span>
-                      {isAdminDashboard
+                      {hasAnalyticsDashboard
                         ? (reservation.fullName || reservation.userEmail || 'Unknown requestor')
                         : (reservation.facilities || []).map((id) => facilitiesById.get(id)?.name || id).join(', ') || 'No facility listed'}
                     </span>
@@ -738,7 +758,7 @@ const Dashboard = ({ currentUserRole }) => {
             </div>
           ) : (
             <p className="panel-empty">
-              {isAdminDashboard
+              {hasAnalyticsDashboard
                 ? `No reservations are scheduled in the next ${upcomingRangeDays} days.`
                 : `You have no reservations scheduled in the next ${upcomingRangeDays} days.`}
             </p>
@@ -750,7 +770,7 @@ const Dashboard = ({ currentUserRole }) => {
             <div className="panel-heading">
               <div>
                 <h2>Resource alerts</h2>
-                <p>Low equipment stock, facility status, and overlapping bookings over the next seven days.</p>
+                <p>Low equipment stock and facility status.</p>
               </div>
             </div>
             {resourceAlerts.length ? (
@@ -771,15 +791,71 @@ const Dashboard = ({ currentUserRole }) => {
             )}
           </article>
         )}
+
+        {isAdminDashboard && (
+          <article className="dashboard-panel user-search-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>User search</h2>
+                <p>Search users by name, email, or phone number.</p>
+              </div>
+              {userSearchQuery.trim() && (
+                <span className="panel-total">{matchingUsers.length} results</span>
+              )}
+            </div>
+            <label className="user-search-field">
+              <span>Find a user</span>
+              <input
+                type="search"
+                placeholder="Name, email, or phone number..."
+                value={userSearchQuery}
+                onChange={(event) => setUserSearchQuery(event.target.value)}
+              />
+            </label>
+            {userSearchQuery.trim() && (
+              matchingUsers.length ? (
+                <div className="user-search-results">
+                  {matchingUsers.map((user) => (
+                    <Link
+                      className="user-search-result"
+                      key={user.id}
+                      to={`/account?userId=${encodeURIComponent(user.id)}`}
+                    >
+                      <span className="user-search-avatar">
+                        {user.avatarUrl
+                          ? <img src={user.avatarUrl} alt="" />
+                          : (user.name || user.email || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <span className="user-search-result-copy">
+                        <strong>{user.name || 'Unnamed user'}</strong>
+                        <span>{user.email || 'No email listed'}</span>
+                      </span>
+                      <span className="user-search-result-meta">
+                        <span>{user.phone || 'No phone listed'}</span>
+                        <span>{(user.role || 'requestor').replace(/_/g, ' ')}</span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-empty">No users match that name, email, or phone number.</p>
+              )
+            )}
+          </article>
+        )}
       </section>
 
-      {isAdminDashboard ? (
+      {hasAnalyticsDashboard ? (
         <>
           <section className="dashboard-panel reservation-search-panel" aria-label="Reservation search">
             <div className="panel-heading">
               <div>
                 <h2>Reservation search</h2>
-                <p>Search active and archived records by reference, event, people, date, time, facility, or equipment.</p>
+                <p>
+                  {isAdminDashboard
+                    ? 'Search active and archived records by reference, event, people, date, time, facility, or equipment.'
+                    : 'Search active records by reference, event, people, date, time, facility, or equipment.'}
+                </p>
               </div>
               <span className="panel-total">{filteredSearchReservations.length} results</span>
             </div>
@@ -796,7 +872,7 @@ const Dashboard = ({ currentUserRole }) => {
                   }))}
                 />
               </label>
-              <label>
+              <label className="reservation-search-status">
                 <span>Status</span>
                 <select
                   value={reservationSearchFilters.status}
@@ -808,26 +884,36 @@ const Dashboard = ({ currentUserRole }) => {
                   <option value="all">All statuses</option>
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="cancelled">Cancelled</option>
-                  <option value="expired">Expired</option>
+                  {isAdminDashboard && (
+                    <>
+                      <option value="rejected">Rejected</option>
+                      <option value="cancelled">Cancelled</option>
+                      <option value="expired">Expired</option>
+                    </>
+                  )}
                 </select>
               </label>
-              <label>
+              <label className="reservation-search-source">
                 <span>Record source</span>
                 <select
-                  value={reservationSearchFilters.source}
+                  value={isGeneralStaffDashboard ? 'active' : reservationSearchFilters.source}
                   onChange={(event) => setReservationSearchFilters((current) => ({
                     ...current,
                     source: event.target.value
                   }))}
                 >
-                  <option value="all">Active and archived</option>
-                  <option value="active">Active</option>
-                  <option value="archived">Archived</option>
+                  {isAdminDashboard ? (
+                    <>
+                      <option value="all">Active and archived</option>
+                      <option value="active">Active</option>
+                      <option value="archived">Archived</option>
+                    </>
+                  ) : (
+                    <option value="active">Active</option>
+                  )}
                 </select>
               </label>
-              <label>
+              <label className="reservation-search-date-from">
                 <span>Event date from</span>
                 <input
                   type="date"
@@ -839,7 +925,7 @@ const Dashboard = ({ currentUserRole }) => {
                   }))}
                 />
               </label>
-              <label>
+              <label className="reservation-search-date-to">
                 <span>Event date to</span>
                 <input
                   type="date"
@@ -851,7 +937,7 @@ const Dashboard = ({ currentUserRole }) => {
                   }))}
                 />
               </label>
-              <label>
+              <label className="reservation-search-sort">
                 <span>Sort by event date</span>
                 <select
                   value={reservationSearchFilters.sort}
@@ -1000,8 +1086,12 @@ const Dashboard = ({ currentUserRole }) => {
                   <option value="all">All statuses</option>
                   <option value="approved">Approved</option>
                   <option value="pending">Pending</option>
-                  <option value="rejected">Rejected</option>
-                  <option value="cancelled">Cancelled</option>
+                  {isAdminDashboard && (
+                    <>
+                      <option value="rejected">Rejected</option>
+                      <option value="cancelled">Cancelled</option>
+                    </>
+                  )}
                 </select>
               </label>
             </div>
@@ -1029,11 +1119,13 @@ const Dashboard = ({ currentUserRole }) => {
               <strong>{metrics.pending}</strong>
               <span className="kpi-footnote">{pendingApprovals} assigned to your approval role</span>
             </article>
-            <article className="kpi-card">
-              <span className="kpi-label">Available equipment</span>
-              <strong>{metrics.availableUnits}</strong>
-              <span className="kpi-footnote">Units available in current inventory</span>  
-            </article>
+            {isAdminDashboard && (
+              <article className="kpi-card">
+                <span className="kpi-label">Available equipment</span>
+                <strong>{metrics.availableUnits}</strong>
+                <span className="kpi-footnote">Units available in current inventory</span>
+              </article>
+            )}
           </section>
 
           <section className="dashboard-charts">
@@ -1068,6 +1160,7 @@ const Dashboard = ({ currentUserRole }) => {
               </div>
             </article>
 
+            {isAdminDashboard && (
             <article className="dashboard-panel resource-summary-panel">
               <div className="panel-heading">
                 <div>
@@ -1096,8 +1189,10 @@ const Dashboard = ({ currentUserRole }) => {
               </div>
               <p className="snapshot-note">{usersData.length} registered users in the system</p>
             </article>
+            )}
           </section>
 
+          {isAdminDashboard && (
           <section className="dashboard-insights">
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
@@ -1149,8 +1244,10 @@ const Dashboard = ({ currentUserRole }) => {
               )}
             </article>
           </section>
+          )}
 
           <section className="dashboard-lower">
+            {isAdminDashboard && (
             <article className="dashboard-panel equipment-history-panel">
               <div className="panel-heading">
                 <div>
@@ -1204,6 +1301,7 @@ const Dashboard = ({ currentUserRole }) => {
                 <p className="panel-empty">No equipment has been added to the inventory.</p>
               )}
             </article>
+            )}
 
             <article className="dashboard-panel recent-activity-panel">
               <div className="panel-heading">

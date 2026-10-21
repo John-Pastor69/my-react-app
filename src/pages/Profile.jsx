@@ -1,17 +1,25 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { deleteUser, reauthenticateWithPopup, reauthenticateWithRedirect } from 'firebase/auth';
+import { useSearchParams } from 'react-router-dom';
 import { auth, db, microsoftProvider } from '../Firebase'; 
 import '../styles/Profile.scss';
 
 const MAX_GIF_SIZE = 10 * 1024 * 1024;
 
-const Profile = () => {
+const Profile = ({ currentUserRole }) => {
+  const [searchParams] = useSearchParams();
+  const requestedProfileId = searchParams.get('userId');
+  const normalizedUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  const canViewOtherProfiles = ['mis', 'mis admin', 'building admin'].includes(normalizedUserRole);
+  const viewedProfileId = canViewOtherProfiles ? requestedProfileId : '';
+  const isViewingOtherProfile = Boolean(viewedProfileId);
   // --- STATE MANAGEMENT ---
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
+  const [profileLoadError, setProfileLoadError] = useState('');
 
   // --- IMAGE STATE ---
   const [avatarFile, setAvatarFile] = useState(null);
@@ -40,13 +48,14 @@ const Profile = () => {
     bannerUrl: ''
   });
             
-  // --- FETCH DATA ON LOAD ---
+  // --- FETCH PROFILE DATA ON LOAD ---
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
+        setProfileLoadError('');
 
         // --- AUTO-RESUME DELETION AFTER VERCEL REDIRECT ---
-        if (localStorage.getItem('pendingAccountDeletion') === 'true') {
+        if (!viewedProfileId && localStorage.getItem('pendingAccountDeletion') === 'true') {
           localStorage.removeItem('pendingAccountDeletion'); // Clear the flag
           try {
             const userDocRef = doc(db, 'users', user.uid);
@@ -61,11 +70,11 @@ const Profile = () => {
         }
 
         try {
-          const docRef = doc(db, 'users', user.uid);
+          const docRef = doc(db, 'users', viewedProfileId || user.uid);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
-            const data = docSnap.data(); 
+            const data = docSnap.data();
             const fullName = data.name || '';
             
             let parsedLastName = '';
@@ -80,7 +89,7 @@ const Profile = () => {
             }
 
             let joinedDate = data.dateJoined;
-            if (!joinedDate && user.metadata?.creationTime) {
+            if (!joinedDate && !viewedProfileId && user.metadata?.creationTime) {
               const d = new Date(user.metadata.creationTime);
               const month = String(d.getMonth() + 1).padStart(2, '0');
               const day = String(d.getDate()).padStart(2, '0');
@@ -92,7 +101,7 @@ const Profile = () => {
               ...prev,
               firstName: parsedFirstName,
               lastName: parsedLastName,
-              email: data.email || user.email || '',
+              email: data.email || (viewedProfileId ? '' : user.email || ''),
               role: data.role ? data.role.toUpperCase() : '',
               status: data.status || 'Active',
               dateJoined: joinedDate || 'N/A', 
@@ -102,15 +111,18 @@ const Profile = () => {
               avatarUrl: data.avatarUrl || '',
               bannerUrl: data.bannerUrl || ''
             }));
+          } else {
+            setProfileLoadError('This user profile could not be found.');
           }
         } catch (error) {
-          console.error("Error fetching user data:", error);
+          console.error("Error fetching profile data:", error);
+          setProfileLoadError('Could not load this profile. Please try again.');
         }
       }
     });
 
     return () => unsubscribe(); 
-  }, []);
+  }, [viewedProfileId]);
 
   // --- HANDLERS ---
   const handleInputChange = (e) => {
@@ -270,6 +282,7 @@ const Profile = () => {
 
   return (
     <div className="profile-container">
+      {profileLoadError && <p className="profile-save-error" role="alert">{profileLoadError}</p>}
       
       <div className="profile-hero">
         <div 
@@ -335,26 +348,28 @@ const Profile = () => {
             </div>
           </div>
 
-          <div className="profile-actions">
-            <button className="btn-edit" onClick={toggleEditMode}>
-              <i className={isEditing ? "ph ph-x" : "ph ph-pencil-simple"}></i> 
-              {isEditing ? "Cancel Editing" : "Edit Profile"}
-            </button>
-            <button 
-              className={isEditing ? "btn-update-primary" : "btn-save"} 
-              onClick={handleSave}
-              disabled={!isEditing || isSaving}
-            >
-              {isSaving ? (
-                <><i className="ph ph-spinner"></i> Saving...</>
-              ) : saveSuccess ? (
-                <><i className="ph ph-check-circle"></i> Saved!</>
-              ) : (
-                <><i className="ph ph-floppy-disk"></i> Save Changes</>
-              )}
-            </button>
-            {saveError && <p className="profile-save-error" role="alert">{saveError}</p>}
-          </div>
+          {!isViewingOtherProfile && (
+            <div className="profile-actions">
+              <button className="btn-edit" onClick={toggleEditMode}>
+                <i className={isEditing ? "ph ph-x" : "ph ph-pencil-simple"}></i>
+                {isEditing ? "Cancel Editing" : "Edit Profile"}
+              </button>
+              <button
+                className={isEditing ? "btn-update-primary" : "btn-save"}
+                onClick={handleSave}
+                disabled={!isEditing || isSaving}
+              >
+                {isSaving ? (
+                  <><i className="ph ph-spinner"></i> Saving...</>
+                ) : saveSuccess ? (
+                  <><i className="ph ph-check-circle"></i> Saved!</>
+                ) : (
+                  <><i className="ph ph-floppy-disk"></i> Save Changes</>
+                )}
+              </button>
+              {saveError && <p className="profile-save-error" role="alert">{saveError}</p>}
+            </div>
+          )}
         </div>
       </div>
 
@@ -408,16 +423,18 @@ const Profile = () => {
           </div>
         </div>
 
-        <div className="profile-sidebar">
-          <div className="side-panel card-style danger-zone">
-            <div className="section-title">
-              <div className="icon-wrap danger-icon-wrap"><i className="ph-fill ph-warning"></i></div>
-              <h3>Danger Zone</h3>
+        {!isViewingOtherProfile && (
+          <div className="profile-sidebar">
+            <div className="side-panel card-style danger-zone">
+              <div className="section-title">
+                <div className="icon-wrap danger-icon-wrap"><i className="ph-fill ph-warning"></i></div>
+                <h3>Danger Zone</h3>
+              </div>
+              <p>This action cannot be undone.</p>
+              <button className="btn-deactivate" onClick={() => setShowDeleteModal(true)}><i className="ph ph-prohibit"></i> Delete Account</button>
             </div>
-            <p>This action cannot be undone.</p>
-            <button className="btn-deactivate" onClick={() => setShowDeleteModal(true)}><i className="ph ph-prohibit"></i> Delete Account</button>
           </div>
-        </div>
+        )}
 
         {showDeleteModal && (
           <div className="modal-overlay">
