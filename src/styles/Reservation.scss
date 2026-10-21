@@ -70,6 +70,7 @@ $orange-main: #F59E0B;
     margin-bottom: 1.125rem;
     font-size: var(--font-h3);
     font-weight: 700;
+    color: $blue-main;
 
     .step-badge {
       width: 1.625rem; 
@@ -160,6 +161,7 @@ $orange-main: #F59E0B;
     input[type='text'], 
     input[type='email'], 
     input[type='number'], 
+    input[type='time'],
     select, 
     textarea {
       width: 100%; 
@@ -532,8 +534,8 @@ $orange-main: #F59E0B;
     display: flex; 
     flex-direction: column; 
     gap: 0.625rem;
-    max-height: 21.25rem; 
-    overflow-y: auto; 
+    max-height: 26rem;
+    overflow-y: auto;
     overflow-x: auto;
     padding-right: 0.25rem;
 

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch, deleteField } from 'firebase/firestore';
 import { db } from '../../Firebase';
 import '../../styles/buildingadmin/BuildingFacilitiesManagement.scss';
 
@@ -15,6 +15,18 @@ const getCurrentDateTime = () => {
 };
 
 const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
+
+const getCapacityLabel = (facility) => {
+  const minCapacity = Number(facility.minCapacity) || null;
+  const maxCapacity = facility.maxCapacity !== undefined
+    ? Number(facility.maxCapacity) || null
+    : Number(facility.capacity) || null;
+
+  if (minCapacity && maxCapacity) return `${minCapacity}–${maxCapacity}`;
+  if (minCapacity) return `${minCapacity}+`;
+  if (maxCapacity) return `Up to ${maxCapacity}`;
+  return 'Not set';
+};
 
 const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   // --- FIRESTORE STATES ---
@@ -32,7 +44,8 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
     name: '',
     code: '',
     location: '',
-    capacity: '',
+    minCapacity: '',
+    maxCapacity: '',
     status: 'Available'
   });
   
@@ -54,7 +67,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
 
   // --- ACTION HANDLERS ---
   const handleAddClick = () => {
-    setNewItem({ name: '', code: '', location: '', capacity: '', status: 'Available' });
+    setNewItem({ name: '', code: '', location: '', minCapacity: '', maxCapacity: '', status: 'Available' });
     setIsAddingNew(true);
   };
 
@@ -93,7 +106,13 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   };
 
   const handleEditClick = (item) => {
-    setEditingItem({ ...item });
+    setEditingItem({
+      ...item,
+      minCapacity: item.minCapacity == null ? '' : String(item.minCapacity),
+      maxCapacity: item.maxCapacity == null
+        ? (item.capacity == null ? '' : String(item.capacity))
+        : String(item.maxCapacity)
+    });
   };
 
   // Save changes to Firestore
@@ -112,7 +131,9 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         name: editingItem.name,
         code: finalCode,
         location: editingItem.location?.trim() || '',
-        capacity: editingItem.capacity?.toString().trim() || '',
+        minCapacity: editingItem.minCapacity ? Number(editingItem.minCapacity) : null,
+        maxCapacity: editingItem.maxCapacity ? Number(editingItem.maxCapacity) : null,
+        capacity: deleteField(),
         status: editingItem.status,
         statusClass: statusClass,
         lastUpdated: getCurrentDateTime()
@@ -139,7 +160,8 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         code: finalCode,
         name: newItem.name.trim() || 'Untitled Facility',
         location: newItem.location.trim(),
-        capacity: newItem.capacity.trim(),
+        minCapacity: newItem.minCapacity ? Number(newItem.minCapacity) : null,
+        maxCapacity: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
         status: status,
         statusClass,
         lastUpdated: getCurrentDateTime()
@@ -339,7 +361,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
                       </div>
                     </td>
                     <td data-label="Location">{facility.location}</td>
-                    <td className="font-semibold" data-label="Capacity">{facility.capacity}</td>
+                    <td className="font-semibold" data-label="Capacity">{getCapacityLabel(facility)}</td>
                     <td data-label="Status">
                       <span className={`status-badge ${facility.statusClass}`}>
                         {facility.status}
@@ -440,11 +462,24 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
               </div>
 
               <div className="form-group">
-                <label>Capacity (Optional)</label>
+                <label>Minimum Capacity (Optional)</label>
                 <input
-                  type="text"
-                  value={editingItem.capacity ? String(editingItem.capacity).replace(/\D/g, '') : ''}
-                  onChange={(e) => setEditingItem({ ...editingItem, capacity: e.target.value.replace(/\D/g, '') })}
+                  type="number"
+                  min="1"
+                  max={editingItem.maxCapacity || undefined}
+                  value={editingItem.minCapacity}
+                  onChange={(e) => setEditingItem({ ...editingItem, minCapacity: e.target.value })}
+                  placeholder="e.g. 50"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Maximum Capacity (Optional)</label>
+                <input
+                  type="number"
+                  min={editingItem.minCapacity || '1'}
+                  value={editingItem.maxCapacity}
+                  onChange={(e) => setEditingItem({ ...editingItem, maxCapacity: e.target.value })}
                   placeholder="e.g. 500"
                 />
               </div>
@@ -508,11 +543,24 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
               </div>
 
               <div className="form-group">
-                <label>Capacity (Optional)</label>
+                <label>Minimum Capacity (Optional)</label>
                 <input
-                  type="text"
-                  value={newItem.capacity ? String(newItem.capacity).replace(/\D/g, '') : ''}
-                  onChange={(e) => setNewItem({ ...newItem, capacity: e.target.value.replace(/\D/g, '') })}
+                  type="number"
+                  min="1"
+                  max={newItem.maxCapacity || undefined}
+                  value={newItem.minCapacity}
+                  onChange={(e) => setNewItem({ ...newItem, minCapacity: e.target.value })}
+                  placeholder="e.g. 50"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Maximum Capacity (Optional)</label>
+                <input
+                  type="number"
+                  min={newItem.minCapacity || '1'}
+                  value={newItem.maxCapacity}
+                  onChange={(e) => setNewItem({ ...newItem, maxCapacity: e.target.value })}
                   placeholder="e.g. 500"
                 />
               </div>

@@ -81,16 +81,6 @@ const normalizeName = (value) => {
   return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
 };
 
-const formatReservationTimeInput = (value) => {
-  const match = value.trim().toUpperCase().match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/);
-  if (!match) return '';
-  const hours = Number(match[1]);
-  const minutes = Number(match[2] || 0);
-  if (hours < 1 || hours > 12 || minutes > 59) return '';
-  const meridiem = match[3] || (hours === 12 ? 'PM' : 'AM');
-  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${meridiem}`;
-};
-
 const Dashboard = ({ currentUserRole }) => {
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
@@ -644,29 +634,6 @@ const Dashboard = ({ currentUserRole }) => {
     }));
   };
 
-  const handleTimeFilterInput = (field, value) => {
-    if (value === '') {
-      setFilters((current) => ({ ...current, [field]: '' }));
-      return;
-    }
-
-    if (!/^[0-9:aApPmM\s]*$/.test(value) || value.length > 8) return;
-    const parts = value.replace(/[aApPmM\s]/g, '').split(':');
-    if (parts.length > 2) return;
-    const [hours, minutes] = parts;
-    if (hours?.length > 2 || minutes?.length > 2) return;
-    if (hours && (Number(hours) > 12 || (hours.length === 2 && Number(hours) === 0))) return;
-    if (minutes && Number(minutes) > 59) return;
-    setFilters((current) => ({ ...current, [field]: value }));
-  };
-
-  const normalizeTimeFilter = (field) => {
-    setFilters((current) => ({
-      ...current,
-      [field]: current[field] ? formatReservationTimeInput(current[field]) : ''
-    }));
-  };
-
   return (
     <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : 'personal-dashboard'}`}>
       <header className="dashboard-header">
@@ -1005,23 +972,23 @@ const Dashboard = ({ currentUserRole }) => {
               <label>
                 <span>Start time from</span>
                 <input
-                  type="text"
-                  inputMode="text"
+                  type="time"
                   value={filters.startTime}
-                  placeholder="08:00 AM"
-                  onChange={(event) => handleTimeFilterInput('startTime', event.target.value)}
-                  onBlur={() => normalizeTimeFilter('startTime')}
+                  onChange={(event) => setFilters((current) => ({
+                    ...current,
+                    startTime: event.target.value
+                  }))}
                 />
               </label>
               <label>
                 <span>Start time to</span>
                 <input
-                  type="text"
-                  inputMode="text"
+                  type="time"
                   value={filters.endTime}
-                  placeholder="05:00 PM"
-                  onChange={(event) => handleTimeFilterInput('endTime', event.target.value)}
-                  onBlur={() => normalizeTimeFilter('endTime')}
+                  onChange={(event) => setFilters((current) => ({
+                    ...current,
+                    endTime: event.target.value
+                  }))}
                 />
               </label>
               <label>
@@ -1213,19 +1180,26 @@ const Dashboard = ({ currentUserRole }) => {
                         <div className="equipment-initial">{(equipment.name || 'E').slice(0, 1).toUpperCase()}</div>
                         <div className="equipment-history-name">
                           <strong>{equipment.name || 'Unnamed equipment'}</strong>
-                          <span>{equipment.sku || 'No SKU'}</span>
+                          <span className="equipment-history-sku">{equipment.sku || 'No SKU'}</span>
                         </div>
                         {equipment.lastBorrow ? (
                           <div className="equipment-history-borrow">
                             <strong>{equipment.lastBorrow.borrower}</strong>
-                            <span>
-                              {formatDate(equipment.lastBorrow.date)}
-                              {equipment.lastBorrow.startTime ? ` · ${formatTime(equipment.lastBorrow.startTime)}` : ''}
-                              {' · '}{equipment.lastBorrow.quantity} unit{equipment.lastBorrow.quantity === 1 ? '' : 's'}
-                            </span>
+                            <div className="equipment-history-meta">
+                              <span>
+                                {formatDate(equipment.lastBorrow.date)}
+                                {equipment.lastBorrow.startTime ? ` · ${formatTime(equipment.lastBorrow.startTime)}` : ''}
+                              </span>
+                              <span className="equipment-quantity">
+                                {equipment.lastBorrow.quantity} unit{equipment.lastBorrow.quantity === 1 ? '' : 's'}
+                              </span>
+                            </div>
                           </div>
                         ) : (
-                          <div className="equipment-history-borrow no-history">No approved booking in range</div>
+                          <div className="equipment-history-borrow no-history">
+                            <strong>No recent booking</strong>
+                            <span>Nothing approved in this date range</span>
+                          </div>
                         )}
                       </div>
                     ))}
@@ -1245,7 +1219,12 @@ const Dashboard = ({ currentUserRole }) => {
               {activity.recentReservations.length ? (
                 <div className="recent-reservations-list">
                   {activity.recentReservations.map((reservation) => (
-                    <div className="recent-reservation" key={reservation.id}>
+                    <button
+                      className="recent-reservation"
+                      key={reservation.id}
+                      type="button"
+                      onClick={() => setSelectedReservation({ data: reservation, source: 'active' })}
+                    >
                       <div className={`reservation-status-dot ${getStatusClass(reservation.status)}`} />
                       <div className="recent-reservation-main">
                         <div className="recent-reservation-title">
@@ -1267,7 +1246,7 @@ const Dashboard = ({ currentUserRole }) => {
                           </span>
                         )}
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               ) : (

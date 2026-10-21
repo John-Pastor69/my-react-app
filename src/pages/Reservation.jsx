@@ -12,6 +12,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
+import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import ReservationDetails from './ReservationDetails';
 import '../styles/Reservation.scss';
 
@@ -32,6 +33,27 @@ const initialFormState = {
   endorserEmail: ''
 };
 
+const parseOptionalCapacity = (value) => {
+  if (value == null || String(value).trim() === '') return null;
+  const capacity = Number(value);
+  return Number.isInteger(capacity) && capacity > 0 ? capacity : null;
+};
+
+const getFacilityCapacityLimits = (facility) => ({
+  min: parseOptionalCapacity(facility.minCapacity),
+  max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
+    ? parseOptionalCapacity(facility.maxCapacity)
+    : parseOptionalCapacity(facility.capacity)
+});
+
+const getFacilityCapacityLabel = (facility) => {
+  const { min, max } = getFacilityCapacityLimits(facility);
+  if (min && max) return `${min}–${max} people`;
+  if (min) return `${min}+ people`;
+  if (max) return `Up to ${max} people`;
+  return 'Capacity not specified';
+};
+
 // Helper function extracted outside component
 const parseTimeToDecimal = (timeStr) => {
   const minutes = parseTimeToMinutes(timeStr);
@@ -40,17 +62,41 @@ const parseTimeToDecimal = (timeStr) => {
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
-  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
+  const match = timeStr.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
   if (!match) return null;
 
   let hours = Number(match[1]);
   const minutes = Number(match[2]);
-  const modifier = match[3].toUpperCase();
-  if (hours < 1 || hours > 12 || minutes > 59) return null;
-  if (hours === 12 && modifier === 'AM') hours = 0;
-  if (hours < 12 && modifier === 'PM') hours += 12;
+  const modifier = match[3]?.toUpperCase();
+  if (minutes > 59) return null;
+  if (modifier) {
+    if (hours < 1 || hours > 12) return null;
+    if (hours === 12 && modifier === 'AM') hours = 0;
+    if (hours < 12 && modifier === 'PM') hours += 12;
+  } else if (hours > 23) {
+    return null;
+  }
 
   return hours * 60 + minutes;
+};
+
+const formatTimeForStorage = (timeStr) => {
+  const totalMinutes = parseTimeToMinutes(timeStr);
+  if (totalMinutes === null) return 'N/A';
+
+  const hours = Math.floor(totalMinutes / 60);
+  const minutes = totalMinutes % 60;
+  const meridiem = hours >= 12 ? 'PM' : 'AM';
+  const displayHours = hours % 12 || 12;
+  return `${String(displayHours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${meridiem}`;
+};
+
+const formatTimeForPicker = (timeStr) => {
+  const totalMinutes = parseTimeToMinutes(timeStr);
+  if (totalMinutes === null) return '';
+  const hours = String(Math.floor(totalMinutes / 60)).padStart(2, '0');
+  const minutes = String(totalMinutes % 60).padStart(2, '0');
+  return `${hours}:${minutes}`;
 };
 
 const parseDateOrdinal = (value) => {
@@ -309,8 +355,8 @@ const Reservation = () => {
         if (parsed.endDateInput !== undefined) setEndDateInput(parsed.endDateInput);
         if (parsed.aircon !== undefined) setAircon(parsed.aircon);
         if (parsed.eventDate) setEventDate(parsed.eventDate);
-        if (parsed.startTime) setStartTime(parsed.startTime);
-        if (parsed.endTime) setEndTime(parsed.endTime);
+        if (parsed.startTime) setStartTime(formatTimeForPicker(parsed.startTime));
+        if (parsed.endTime) setEndTime(formatTimeForPicker(parsed.endTime));
         if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
       } catch (e) {
         console.error("Failed to parse draft", e);
@@ -394,6 +440,25 @@ const Reservation = () => {
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : item.status;
     return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
+  const selectedFacility = inventoryFacilities.find((facility) => formData.facilities.includes(facility.id));
+  const selectedFacilityCapacity = selectedFacility
+    ? getFacilityCapacityLimits(selectedFacility)
+    : { min: null, max: null };
+  const expectedParticipantCount = Number(formData.expectedParticipants);
+  const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
+    !Number.isInteger(expectedParticipantCount)
+    || (selectedFacility && (
+      (selectedFacilityCapacity.min !== null && expectedParticipantCount < selectedFacilityCapacity.min)
+      || (selectedFacilityCapacity.max !== null && expectedParticipantCount > selectedFacilityCapacity.max)
+    ))
+  ));
+  const participantCapacityHint = selectedFacilityCapacity.min !== null && selectedFacilityCapacity.max !== null
+    ? `Enter between ${selectedFacilityCapacity.min} and ${selectedFacilityCapacity.max} participants.`
+    : selectedFacilityCapacity.min !== null
+      ? `Enter at least ${selectedFacilityCapacity.min} participants.`
+      : selectedFacilityCapacity.max !== null
+        ? `Enter no more than ${selectedFacilityCapacity.max} participants.`
+        : '';
 
   const conflictRequest = {
     eventDate,
@@ -478,6 +543,7 @@ const Reservation = () => {
   const handleCheckboxArrayChange = (field, value) => {
     setFormData(prev => {
       if (field === 'facilities') {
+        clearMissingField('expectedParticipants');
         if (prev[field].includes(value)) {
           return { ...prev, [field]: [] }; // Uncheck allows clearing the array
         } else {
@@ -589,6 +655,7 @@ const Reservation = () => {
   // Restricts input strictly to 12-hour AM/PM time (disallows 13:00, 00:00, etc.)
   const handleTimeInput = (e, setter, stateKey, isFormData = false) => {
     const val = e.target.value;
+    if (!isReservationTimeInputValid(val)) return;
     if (val === '') {
       if (isFormData) {
         setFormData(prev => ({ ...prev, [stateKey]: '' }));
@@ -596,26 +663,6 @@ const Reservation = () => {
         setter('');
       }
       return;
-    }
-
-    if (!/^[0-9:aApPmM\s]*$/.test(val) || val.length > 8) return;
-
-    const timePart = val.replace(/[aApPmM\s]/g, '');
-    const parts = timePart.split(':');
-    if (parts.length > 2) return;
-
-    const [hStr, mStr] = parts;
-    if (hStr && hStr.length > 2) return;
-    if (mStr && mStr.length > 2) return;
-
-    if (hStr) {
-      const h = parseInt(hStr, 10);
-      if (h > 12 || (hStr.length === 2 && h === 0)) return;
-    }
-
-    if (mStr) {
-      const m = parseInt(mStr, 10);
-      if (m > 59) return;
     }
 
     if (isFormData) {
@@ -627,30 +674,10 @@ const Reservation = () => {
   };
 
   const handleTimeBlur = (e, setter, fieldKey = null, missingKey = null) => {
-    let val = e.target.value.trim().toUpperCase();
+    const val = e.target.value.trim();
     if (!val) return;
-    const match = val.match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/);
-    if (match) {
-      let [ , h, m, mod ] = match;
-      h = parseInt(h, 10);
-      m = m || '00';
-      const mins = parseInt(m, 10);
-
-      if (h < 1 || h > 12 || mins < 0 || mins > 59) {
-        if (fieldKey) {
-          setFormData(prev => ({ ...prev, [fieldKey]: '' }));
-        } else {
-          setter('');
-        }
-        return;
-      }
-
-      if (!mod) {
-        mod = h === 12 ? 'PM' : 'AM';
-      }
-      
-      const formattedTime = `${String(h).padStart(2, '0')}:${String(mins).padStart(2, '0')} ${mod}`;
-      
+    const formattedTime = formatReservationTimeInput(val);
+    if (formattedTime) {
       if (fieldKey) {
         setFormData(prev => ({ ...prev, [fieldKey]: formattedTime }));
         clearMissingField(fieldKey);
@@ -845,6 +872,17 @@ const Reservation = () => {
       return;
     }
 
+    if (participantCountOutOfRange) {
+      setMissingFields({ expectedParticipants: true });
+      setCustomAlert({
+        title: 'Participant Limit',
+        message: participantCapacityHint || 'Enter a whole number of participants.',
+        isSuccess: false
+      });
+      fieldRefs.current.expectedParticipants?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      return;
+    }
+
     if (!hasFacility && !hasEquipment) {
       setCustomAlert({
         title: 'Selection Required',
@@ -919,8 +957,8 @@ const Reservation = () => {
         userRole: userRole,
         eventDate,
         endDate: calculatedEndDate,
-        startTime: startTime || 'N/A',
-        endTime: endTime || 'N/A',
+        startTime: formatTimeForStorage(startTime),
+        endTime: formatTimeForStorage(endTime),
         durationHours,
         days,
         aircon,
@@ -983,10 +1021,10 @@ const Reservation = () => {
         </div>
       </div>
 
-      {/* SECTION 1: Requestor & Endorser Information */}
+      {/* Requestor & Endorser Information */}
       <div className="form-card">
         <div className="section-header">
-          <span className="step-badge">1</span> Requestor Information
+          Requestor Information
         </div>
 
         <div className="form-grid col-2">
@@ -996,7 +1034,7 @@ const Reservation = () => {
           >
             <label>Full Name <span className="req">*</span></label>
             <div className="input-with-icon right-icon">
-              <input 
+              <input
                 type="text" 
                 value={formData.fullName} 
                 onChange={(e) => handleInputChange('fullName', e.target.value)} 
@@ -1014,7 +1052,7 @@ const Reservation = () => {
             <label>Contact Number <span className="req">*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-phone"></i>
-              <input 
+              <input
                 type="text" 
                 value={formData.contactNumber} 
                 onChange={(e) => handleInputChange('contactNumber', e.target.value.replace(/\D/g, '').slice(0, 11))} 
@@ -1049,7 +1087,7 @@ const Reservation = () => {
           <>
             <hr className="section-divider" />
             <div className="section-header">
-              <span className="step-badge">2</span> Endorser Information
+              Endorser Information
             </div>
             <div className="form-grid col-2">
               <div 
@@ -1124,10 +1162,121 @@ const Reservation = () => {
         )}
       </div>
 
-      {/* SECTION 3: Event Information */}
+      <div className="split-cards">
+        <div className="form-card">
+          <div className="section-header">Facility</div>
+
+          <div className="checkbox-grid facility-list">
+            {inventoryFacilities.length === 0 ? (
+              <div className="empty-list">No facilities currently listed.</div>
+            ) : (
+              inventoryFacilities.map((item) => {
+                const isSelected = formData.facilities.includes(item.id);
+                const isAtLimit = formData.facilities.length >= 1 && !isSelected;
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance' || isAtLimit;
+
+                return (
+                  <label
+                    key={item.id}
+                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isLocked ? 'is-locked' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="facility-checkbox"
+                      checked={isSelected}
+                      onChange={() => handleCheckboxArrayChange('facilities', item.id)}
+                      disabled={isLocked}
+                    />
+                    <div className="facility-icon">
+                      <i className="ph ph-buildings"></i>
+                    </div>
+                    <div>
+                      <strong>{item.name}</strong>
+                      <span className="facility-meta">
+                        {[item.location, getFacilityCapacityLabel(item)].filter(Boolean).join(' | ')}
+                      </span>
+                      <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
+                        ● {item.status}
+                      </span>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+
+          <div className="input-group room-field">
+            <label>Specific Room Number / Name</label>
+            <div className="input-with-icon left-icon">
+              <i className="ph ph-door"></i>
+              <input
+                type="text"
+                value={formData.specificRoom}
+                onChange={(e) => handleInputChange('specificRoom', e.target.value)}
+                placeholder="e.g. Room 301, Annex B"
+              />
+            </div>
+            <span className="helper-text">Leave blank if not applicable</span>
+          </div>
+        </div>
+
+        <div className="form-card">
+          <div className="section-header">Equipment</div>
+
+          <div className="equipment-list">
+            {mappedEquipmentList.length === 0 ? (
+              <div className="empty-list">No equipment currently listed in inventory.</div>
+            ) : (
+              mappedEquipmentList.map((item) => {
+                const count = selectedEquip[item.id] || 0;
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
+                const isAvailable = !isLocked && item.computedAvailable > 0;
+
+                return (
+                  <div className={`equip-item ${isLocked ? 'is-locked' : ''}`} key={item.id}>
+                    <div className="equip-info">
+                      <div className="icon-box bg-blue">
+                        <i className="ph ph-package"></i>
+                      </div>
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span>{item.sku}</span>
+                        <span className={`equip-status ${item.status?.toLowerCase() || ''}`}>
+                          ● {item.status} ({item.computedAvailable} / {item.totalCount} units)
+                        </span>
+                      </div>
+                    </div>
+                    <div className="counter">
+                      <button
+                        type="button"
+                        onClick={() => updateEquip(item, -1)}
+                        disabled={count <= 0 || isLocked}
+                      >-</button>
+                      <input
+                        type="text"
+                        inputMode="numeric"
+                        value={count}
+                        onChange={(e) => handleEquipInputChange(item, e.target.value)}
+                        disabled={isLocked}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => updateEquip(item, 1)}
+                        disabled={isLocked || !isAvailable || item.computedAvailable <= count}
+                      >+</button>
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* Event Information */}
       <div className="form-card">
         <div className="section-header">
-          <span className="step-badge">3</span> Event Information
+          Event Information
         </div>
         <div className="form-grid col-2">
           {/* Row 1 Left: Event Name */}
@@ -1148,20 +1297,24 @@ const Reservation = () => {
           
           {/* Row 1 Right: Expected Number of Participants */}
           <div 
-            className={`input-group ${missingFields.expectedParticipants ? 'field-missing' : ''}`}
+            className={`input-group ${missingFields.expectedParticipants || participantCountOutOfRange ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.expectedParticipants = el}
           >
             <label>Expected Number of Participants <span className="req">*</span></label>
             <div className="input-with-icon left-icon">
               <i className="ph ph-users"></i>
               <input 
-                type="text" 
-                value={formData.expectedParticipants} 
-                onChange={(e) => handleInputChange('expectedParticipants', e.target.value.replace(/\D/g, ''))} 
-                placeholder="e.g. 150" 
-                className={missingFields.expectedParticipants ? 'input-error' : ''}
-              />
+              type="number"
+              step="1"
+              min={selectedFacilityCapacity.min ?? undefined}
+              max={selectedFacilityCapacity.max ?? undefined}
+              value={formData.expectedParticipants}
+              onChange={(e) => handleInputChange('expectedParticipants', e.target.value)}
+              placeholder="e.g. 150"
+              className={missingFields.expectedParticipants || participantCountOutOfRange ? 'input-error' : ''}
+            />
             </div>
+            {participantCapacityHint && <span className="helper-text">{participantCapacityHint}</span>}
           </div>
 
           {/* Row 2 Left: Event Type & Taken Schedules */}
@@ -1325,34 +1478,30 @@ const Reservation = () => {
               ref={el => fieldRefs.current.startTime = el}
             >
               <label>Start Time <span className="req">*</span></label>
-              <div className="input-with-icon left-icon">
-                <i className="ph ph-clock"></i>
-                <input 
-                  type="text" 
-                  value={startTime}
-                  onChange={(e) => handleTimeInput(e, setStartTime, 'startTime', false)}
-                  onBlur={(e) => handleTimeBlur(e, setStartTime, null, 'startTime')}
-                  placeholder="08:00 AM" 
-                  className={missingFields.startTime ? 'input-error' : ''}
-                />
-              </div>
+              <input
+                type="time"
+                value={startTime}
+                onChange={(e) => {
+                  setStartTime(e.target.value);
+                  if (e.target.value) clearMissingField('startTime');
+                }}
+                className={missingFields.startTime ? 'input-error' : ''}
+              />
             </div>
             <div 
               className={`input-group ${missingFields.endTime ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.endTime = el}
             >
               <label>End Time <span className="req">*</span></label>
-              <div className="input-with-icon left-icon">
-                <i className="ph ph-clock"></i>
-                <input 
-                  type="text" 
-                  value={endTime}
-                  onChange={(e) => handleTimeInput(e, setEndTime, 'endTime', false)}
-                  onBlur={(e) => handleTimeBlur(e, setEndTime, null, 'endTime')}
-                  placeholder="05:00 PM" 
-                  className={missingFields.endTime ? 'input-error' : ''}
-                />
-              </div>
+              <input
+                type="time"
+                value={endTime}
+                onChange={(e) => {
+                  setEndTime(e.target.value);
+                  if (e.target.value) clearMissingField('endTime');
+                }}
+                className={missingFields.endTime ? 'input-error' : ''}
+              />
             </div>
           </div>
 
@@ -1393,128 +1542,10 @@ const Reservation = () => {
         </div>
       </div>
 
-      {/* SECTIONS 4: Facilities & Equipment */}
-      <div className="split-cards">
-        
-        {/* Facilities Needed */}
-        <div className="form-card">
-          <div className="section-header">
-            <span className="step-badge">4</span> Facilities Needed
-          </div>
-          
-          <div className="checkbox-grid facility-list">
-            {inventoryFacilities.length === 0 ? (
-              <div className="empty-list">No facilities currently listed.</div>
-            ) : (
-              inventoryFacilities.map((item) => {
-                const isSelected = formData.facilities.includes(item.id);
-                const isAtLimit = formData.facilities.length >= 1 && !isSelected;
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance' || isAtLimit;
-
-                return (
-                  <label 
-                    key={item.id} 
-                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isLocked ? 'is-locked' : ''}`}
-                  >
-                    <input 
-                      type="checkbox" 
-                      className="facility-checkbox"
-                      checked={isSelected} 
-                      onChange={() => handleCheckboxArrayChange('facilities', item.id)} 
-                      disabled={isLocked}
-                    /> 
-                    <div className="facility-icon">
-                      <i className="ph ph-buildings"></i>
-                    </div>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <span className="facility-meta">{item.location} | {item.capacity}</span>
-                      <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
-                        ● {item.status}
-                      </span>
-                    </div>
-                  </label>
-                );
-              })
-            )}
-          </div>
-
-          <div className="input-group room-field">
-            <label>Specific Room Number / Name</label>
-            <div className="input-with-icon left-icon">
-              <i className="ph ph-door"></i>
-              <input 
-                type="text" 
-                value={formData.specificRoom} 
-                onChange={(e) => handleInputChange('specificRoom', e.target.value)} 
-                placeholder="e.g. Room 301, Annex B" 
-              />
-            </div>
-            <span className="helper-text">Leave blank if not applicable</span>
-          </div>
-        </div>
-
-        {/* Equipment Needed */}
-        <div className="form-card">
-          <div className="section-header">
-            <span className="step-badge">5</span> Equipment Needed
-          </div>
-          
-          <div className="equipment-list">
-            {mappedEquipmentList.length === 0 ? (
-              <div className="empty-list">No equipment currently listed in inventory.</div>
-            ) : (
-              mappedEquipmentList.map((item) => {
-                const count = selectedEquip[item.id] || 0;
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
-                const isAvailable = !isLocked && item.computedAvailable > 0;
-
-                return (
-                  <div className={`equip-item ${isLocked ? 'is-locked' : ''}`} key={item.id}>
-                    <div className="equip-info">
-                      <div className="icon-box bg-blue">
-                        <i className="ph ph-package"></i>
-                      </div>
-                      <div>
-                        <strong>{item.name}</strong>
-                        <span>{item.sku}</span>
-                        <span className={`equip-status ${item.status?.toLowerCase() || ''}`}>
-                          ● {item.status} ({item.computedAvailable} / {item.totalCount} units)
-                        </span>
-                      </div>
-                    </div>
-                    <div className="counter">
-                      <button 
-                        type="button" 
-                        onClick={() => updateEquip(item, -1)}
-                        disabled={count <= 0 || isLocked}
-                      >-</button>
-                      <input 
-                        type="text" 
-                        inputMode="numeric"
-                        value={count} 
-                        onChange={(e) => handleEquipInputChange(item, e.target.value)}
-                        disabled={isLocked} 
-                      />
-                      <button 
-                        type="button" 
-                        onClick={() => updateEquip(item, 1)}
-                        disabled={isLocked || !isAvailable || item.computedAvailable <= count}
-                      >+</button>
-                    </div>
-                  </div>
-                );
-              })
-            )}
-          </div>
-        </div>
-
-      </div>
-
-      {/* SECTION 6: Air Conditioning Schedule */}
+      {/* Air Conditioning Schedule */}
       <div className="form-card">
         <div className="section-header">
-          <span className="step-badge">6</span> Air Condition
+          Air Condition
         </div>
         <div className="aircon-controls">
           

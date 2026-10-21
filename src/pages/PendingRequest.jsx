@@ -166,8 +166,19 @@ const PendingRequest = ({ data }) => {
   const facilityNames = (currentData.facilities || []).map(id => facilitiesMap[id]?.name || id);
   const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'None';
   
-  const roomCapacities = (currentData.facilities || []).map(id => facilitiesMap[id]?.capacity).filter(Boolean);
-  const capacityDisplay = roomCapacities.length > 0 ? roomCapacities.join(', ') + ' seats' : 'N/A';
+  const roomCapacities = (currentData.facilities || []).map((id) => {
+    const facility = facilitiesMap[id];
+    if (!facility) return null;
+    const minCapacity = Number(facility.minCapacity) || null;
+    const maxCapacity = facility.maxCapacity !== undefined
+      ? Number(facility.maxCapacity) || null
+      : Number(facility.capacity) || null;
+    if (minCapacity && maxCapacity) return `${minCapacity}–${maxCapacity}`;
+    if (minCapacity) return `${minCapacity}+`;
+    if (maxCapacity) return `Up to ${maxCapacity}`;
+    return null;
+  }).filter(Boolean);
+  const capacityDisplay = roomCapacities.length > 0 ? roomCapacities.join(', ') + ' people' : 'N/A';
 
   const floorLocations = (currentData.facilities || []).map(id => facilitiesMap[id]?.location).filter(Boolean);
   const locationDisplay = currentData.specificRoom 

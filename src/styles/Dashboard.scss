@@ -857,39 +857,41 @@ main,
     flex-direction: column;
   }
 
-  .recent-reservations-list {
-    min-width: 0;
-    flex-direction: row;
-    gap: 0.75rem;
-    overflow-x: auto;
-    padding-bottom: 0.65rem;
-    scroll-snap-type: x mandatory;
-    scrollbar-gutter: stable;
-  }
-
   .equipment-history-row {
     display: grid;
     grid-template-columns: 2.25rem minmax(0, 1fr);
     align-items: center;
     gap: 0.7rem;
-    padding: 0.75rem 0;
-    border-bottom: 1px solid $border;
+    margin-bottom: 0.6rem;
+    padding: 0.75rem;
+    border: 1px solid $border;
+    border-radius: 0.8rem;
+    background: linear-gradient(115deg, #f8faff 0%, #fff 48%);
+    transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 
     &:last-child {
-      border-bottom: 0;
+      margin-bottom: 0;
+    }
+
+    &:hover {
+      transform: translateY(-1px);
+      border-color: #cbd7ff;
+      box-shadow: 0 0.35rem 1rem rgba(35, 69, 150, 0.08);
     }
   }
 
   .equipment-initial {
     display: grid;
-    width: 2.15rem;
-    height: 2.15rem;
+    width: 2.4rem;
+    height: 2.4rem;
     place-items: center;
-    border-radius: 0.65rem;
-    background: #eef2ff;
+    border: 1px solid #dce5ff;
+    border-radius: 0.75rem;
+    background: linear-gradient(145deg, #edf2ff, #e5ebff);
     color: $blue;
-    font-size: var(--font-body);
-    font-weight: 700;
+    font-size: 1rem;
+    font-weight: 750;
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.9);
   }
 
   .equipment-history-name,
@@ -899,8 +901,7 @@ main,
     flex-direction: column;
     gap: 0.2rem;
 
-    strong,
-    span {
+    strong {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -908,36 +909,87 @@ main,
 
     strong {
       color: $ink;
-      font-size: var(--font-body);
-      font-weight: 600;
+      font-size: 0.9rem;
+      font-weight: 650;
     }
 
     span {
       color: $muted;
-      font-size: var(--font-body);
+      font-size: 0.8rem;
     }
+  }
+
+  .equipment-history-sku {
+    width: fit-content;
+    padding: 0.12rem 0.4rem;
+    border-radius: 999px;
+    background: #f1f4fa;
+    font-size: 0.72rem;
   }
 
   .equipment-history-borrow {
     grid-column: 2;
-    padding-bottom: 0.1rem;
+    min-width: 0;
+    gap: 0.35rem;
+    padding: 0.45rem 0 0 0.7rem;
+    border-left: 2px solid #e7ecf5;
   }
 
   .no-history {
-    color: $muted;
-    font-size: var(--font-body);
+    strong {
+      color: $muted;
+    }
+  }
+
+  .equipment-history-meta {
+    display: flex;
+    min-width: 0;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+
+    > span:first-child {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+  }
+
+  .equipment-quantity {
+    flex: 0 0 auto;
+    padding: 0.2rem 0.45rem;
+    border-radius: 999px;
+    background: #eaf8ef;
+    color: $green !important;
+    font-size: 0.72rem !important;
+    font-weight: 650;
   }
 
   .recent-reservation {
     display: grid;
-    flex: 0 0 17rem;
     grid-template-columns: 0.6rem minmax(0, 1fr);
-    min-height: 8rem;
     gap: 0.7rem;
-    padding: 0.8rem;
-    border: 1px solid $border;
-    border-radius: 0.65rem;
-    scroll-snap-align: start;
+    width: 100%;
+    padding: 0.8rem 0;
+    border: 0;
+    border-bottom: 1px solid $border;
+    background: transparent;
+    color: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+
+    &:hover {
+      background: #f8faff;
+    }
+
+    &:focus-visible {
+      outline: 2px solid $blue;
+      outline-offset: -2px;
+    }
   }
 
   .reservation-status-dot {

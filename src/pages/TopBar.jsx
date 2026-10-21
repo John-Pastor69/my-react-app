@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Menu, Trash2 } from 'lucide-react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
 import PendingRequest from './PendingRequest';
 import '../styles/TopBar.scss'; 
@@ -382,7 +383,7 @@ const TopBar = ({ toggleSidebar }) => {
 
           <div className="divider"></div>
 
-          <div className="user-profile">
+          <Link className="user-profile" to="/account" aria-label="Open your profile">
             <img 
               src={
                 userData.avatarUrl || 
@@ -398,7 +399,7 @@ const TopBar = ({ toggleSidebar }) => {
                 {userData.role}
               </span>
             </div>
-          </div>
+          </Link>
         </div>
       </header>
 
