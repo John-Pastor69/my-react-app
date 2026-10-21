@@ -61,7 +61,8 @@ export default function App() {
       if (user) {
         const isStiEmail = user.email && (
           user.email.endsWith('@globalcity.sti.edu.ph') || 
-          user.email.endsWith('@sti.edu.ph')
+          user.email.endsWith('@sti.edu.ph') ||
+          user.email.endsWith('@globalcity.sti.edu')
         );
 
         if (!isStiEmail) {

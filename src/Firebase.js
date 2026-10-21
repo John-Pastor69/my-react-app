@@ -23,5 +23,5 @@ export const microsoftProvider = new OAuthProvider('microsoft.com');
 export const storage = getStorage(app);
 
 microsoftProvider.setCustomParameters({
-  tenant: 'ac848b9f-db81-4f90-8617-684472457a47'
+  common: 'ac848b9f-db81-4f90-8617-684472457a47'
 });
