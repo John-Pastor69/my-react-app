@@ -333,13 +333,8 @@ const MisUserManagement = ({ currentUserRole }) => {
           <span className="pagination-text">
             {filteredUsers.length === 0
               ? 'No users to show'
-              : `Showing 1 to ${filteredUsers.length} of ${filteredUsers.length} users`}
+              : `Showing all ${filteredUsers.length} users`}
           </span>
-          <div className="pagination-buttons">
-            <button className="page-btn" disabled>Prev</button>
-            <button className="page-btn active">1</button>
-            <button className="page-btn" disabled>Next</button>
-          </div>
         </div>
       </div>
 

@@ -8,8 +8,6 @@ import "../styles/Dashboard.scss";
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
 
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const EMPTY_HISTORY = [];
-
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -167,17 +165,13 @@ const Dashboard = ({ currentUserRole }) => {
   const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
 
   useEffect(() => {
-    if (!isAdminDashboard) return undefined;
-
     return onSnapshot(collection(db, 'history'), (snapshot) => {
       setHistoryData(snapshot.docs.map((document) => ({
         id: document.id,
         ...document.data()
       })));
     }, (error) => console.error('Failed to load reservation history:', error));
-  }, [isAdminDashboard]);
-
-  const visibleHistoryData = isAdminDashboard ? historyData : EMPTY_HISTORY;
+  }, []);
 
   const scheduleCount = currentUser
     ? reservationsData.filter(
@@ -254,16 +248,15 @@ const Dashboard = ({ currentUserRole }) => {
         eventDateValue: parseDate(reservation.eventDate || reservation.date)
       }))
       .filter((reservation) => {
-        const status = (reservation.status || 'pending').toLowerCase();
+        const status = (reservation.status || 'pending').toLowerCase().trim();
         const isOwnedByUser = Boolean(currentUser && (
           reservation.userId === currentUser.uid
           || reservation.userEmail === currentUser.email
         ));
-        return reservation.eventDateValue
+        return status === 'approved'
+          && reservation.eventDateValue
           && reservation.eventDateValue >= today
           && reservation.eventDateValue <= weekAhead
-          && status !== 'rejected'
-          && status !== 'cancelled'
           && (hasAnalyticsDashboard || isOwnedByUser);
       })
       .sort((first, second) => (
@@ -313,7 +306,7 @@ const Dashboard = ({ currentUserRole }) => {
   );
   const searchableReservations = useMemo(() => {
     const activeRecords = reservationsData.map((reservation) => ({ ...reservation, source: 'active' }));
-    const archivedRecords = visibleHistoryData.map((reservation) => ({ ...reservation, source: 'archived' }));
+    const archivedRecords = historyData.map((reservation) => ({ ...reservation, source: 'archived' }));
 
     return [...activeRecords, ...archivedRecords].map((reservation) => {
       const requestor = usersData.find((user) => (
@@ -367,7 +360,7 @@ const Dashboard = ({ currentUserRole }) => {
         searchableText
       };
     });
-  }, [reservationsData, visibleHistoryData, usersData, facilitiesById, equipmentById]);
+  }, [reservationsData, historyData, usersData, facilitiesById, equipmentById]);
 
   const filteredSearchReservations = useMemo(() => {
     const searchText = reservationSearchFilters.query.trim().toLowerCase();
@@ -382,12 +375,7 @@ const Dashboard = ({ currentUserRole }) => {
       .filter((reservation) => {
         const status = (reservation.status || 'pending').toLowerCase();
         if (searchText && !reservation.searchableText.includes(searchText)) return false;
-        if (
-          isGeneralStaffDashboard
-          && !['pending', 'approved'].includes(status)
-        ) return false;
         if (reservationSearchFilters.status !== 'all' && status !== reservationSearchFilters.status) return false;
-        if (isGeneralStaffDashboard && reservation.source !== 'active') return false;
         if (reservationSearchFilters.source !== 'all' && reservation.source !== reservationSearchFilters.source) return false;
         if (fromDate && (!reservation.eventDateValue || reservation.eventDateValue < fromDate)) return false;
         if (throughDate && (
@@ -410,7 +398,7 @@ const Dashboard = ({ currentUserRole }) => {
         const direction = reservationSearchFilters.sort === 'latest' ? -1 : 1;
         return direction * (firstDateTime - secondDateTime);
       });
-  }, [searchableReservations, reservationSearchFilters, isGeneralStaffDashboard]);
+  }, [searchableReservations, reservationSearchFilters]);
 
   const equipmentInventory = useMemo(() => equipmentData.map((equipment) => {
     const reserved = reservationsData.reduce((total, reservation) => {
@@ -662,15 +650,67 @@ const Dashboard = ({ currentUserRole }) => {
         </div>
       </header>
 
-      <section className="dashboard-operations" aria-label="Upcoming reservations and pending approvals">
-        <article className="dashboard-panel operations-panel">
+      <section className="dashboard-operations" aria-label="Dashboard operations and search">
+        {isAdminDashboard && (
+          <article className="dashboard-panel user-search-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>User search</h2>
+                <p>Search users by name, email, or phone number.</p>
+              </div>
+              {userSearchQuery.trim() && (
+                <span className="panel-total">{matchingUsers.length} results</span>
+              )}
+            </div>
+            <label className="user-search-field">
+              <span>Find a user</span>
+              <input
+                type="search"
+                placeholder="Name, email, or phone number..."
+                value={userSearchQuery}
+                onChange={(event) => setUserSearchQuery(event.target.value)}
+              />
+            </label>
+            {userSearchQuery.trim() && (
+              matchingUsers.length ? (
+                <div className="user-search-results">
+                  {matchingUsers.map((user) => (
+                    <Link
+                      className="user-search-result"
+                      key={user.id}
+                      to={`/account?userId=${encodeURIComponent(user.id)}`}
+                    >
+                      <span className="user-search-avatar">
+                        {user.avatarUrl
+                          ? <img src={user.avatarUrl} alt="" />
+                          : (user.name || user.email || '?').charAt(0).toUpperCase()}
+                      </span>
+                      <span className="user-search-result-copy">
+                        <strong>{user.name || 'Unnamed user'}</strong>
+                        <span>{user.email || 'No email listed'}</span>
+                      </span>
+                      <span className="user-search-result-meta">
+                        <span>{user.phone || 'No phone listed'}</span>
+                        <span>{(user.role || 'requestor').replace(/_/g, ' ')}</span>
+                      </span>
+                    </Link>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-empty">No users match that name, email, or phone number.</p>
+              )
+            )}
+          </article>
+        )}
+
+        <article className="dashboard-panel operations-panel approval-panel">
           <div className="panel-heading">
             <div>
-              <h2>{hasAnalyticsDashboard ? 'Approval queue' : 'Requests needing your review'}</h2>
+              <h2>{hasAnalyticsDashboard ? 'Approval' : 'Requests needing your review'}</h2>
               <p>Reservations currently waiting for your approval.</p>
             </div>
             {canReviewApprovals && (
-              <Link className="panel-action-link" to="/approval">Open approvals</Link>
+              <Link className="panel-action-link" to="/approval">Open Approval</Link>
             )}
           </div>
           {pendingApprovalReservations.length ? (
@@ -686,9 +726,11 @@ const Dashboard = ({ currentUserRole }) => {
                     <strong>{reservation.eventName || 'Untitled reservation'}</strong>
                     <span>{reservation.fullName || reservation.userEmail || 'Unknown requestor'}</span>
                   </div>
-                  <span className="operation-row-date">
-                    {formatDate(parseDate(reservation.eventDate || reservation.date))}
-                  </span>
+                  <div className="operation-row-meta">
+                    <span className="operation-row-date">
+                      {formatDate(parseDate(reservation.eventDate || reservation.date))}
+                    </span>
+                  </div>
                 </button>
               ))}
             </div>
@@ -699,11 +741,11 @@ const Dashboard = ({ currentUserRole }) => {
           )}
         </article>
 
-        <article className="dashboard-panel operations-panel">
+        <article className="dashboard-panel operations-panel upcoming-panel">
           <div className="panel-heading">
             <div>
-              <h2>{hasAnalyticsDashboard ? 'Upcoming reservations' : 'Your upcoming reservations'}</h2>
-              <p>Reservations scheduled within your selected date range.</p>
+              <h2>{hasAnalyticsDashboard ? 'Upcoming Events' : 'Your Upcoming Events'}</h2>
+              <p>Events scheduled within your selected date range.</p>
             </div>
             <label className="upcoming-range-control">
               <span>Show next</span>
@@ -759,8 +801,8 @@ const Dashboard = ({ currentUserRole }) => {
           ) : (
             <p className="panel-empty">
               {hasAnalyticsDashboard
-                ? `No reservations are scheduled in the next ${upcomingRangeDays} days.`
-                : `You have no reservations scheduled in the next ${upcomingRangeDays} days.`}
+                ? `No events are scheduled in the next ${upcomingRangeDays} days.`
+                : `You have no events scheduled in the next ${upcomingRangeDays} days.`}
             </p>
           )}
         </article>
@@ -792,70 +834,11 @@ const Dashboard = ({ currentUserRole }) => {
           </article>
         )}
 
-        {isAdminDashboard && (
-          <article className="dashboard-panel user-search-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>User search</h2>
-                <p>Search users by name, email, or phone number.</p>
-              </div>
-              {userSearchQuery.trim() && (
-                <span className="panel-total">{matchingUsers.length} results</span>
-              )}
-            </div>
-            <label className="user-search-field">
-              <span>Find a user</span>
-              <input
-                type="search"
-                placeholder="Name, email, or phone number..."
-                value={userSearchQuery}
-                onChange={(event) => setUserSearchQuery(event.target.value)}
-              />
-            </label>
-            {userSearchQuery.trim() && (
-              matchingUsers.length ? (
-                <div className="user-search-results">
-                  {matchingUsers.map((user) => (
-                    <Link
-                      className="user-search-result"
-                      key={user.id}
-                      to={`/account?userId=${encodeURIComponent(user.id)}`}
-                    >
-                      <span className="user-search-avatar">
-                        {user.avatarUrl
-                          ? <img src={user.avatarUrl} alt="" />
-                          : (user.name || user.email || '?').charAt(0).toUpperCase()}
-                      </span>
-                      <span className="user-search-result-copy">
-                        <strong>{user.name || 'Unnamed user'}</strong>
-                        <span>{user.email || 'No email listed'}</span>
-                      </span>
-                      <span className="user-search-result-meta">
-                        <span>{user.phone || 'No phone listed'}</span>
-                        <span>{(user.role || 'requestor').replace(/_/g, ' ')}</span>
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">No users match that name, email, or phone number.</p>
-              )
-            )}
-          </article>
-        )}
-      </section>
-
-      {hasAnalyticsDashboard ? (
-        <>
           <section className="dashboard-panel reservation-search-panel" aria-label="Reservation search">
             <div className="panel-heading">
               <div>
                 <h2>Reservation search</h2>
-                <p>
-                  {isAdminDashboard
-                    ? 'Search active and archived records by reference, event, people, date, time, facility, or equipment.'
-                    : 'Search active records by reference, event, people, date, time, facility, or equipment.'}
-                </p>
+                <p>Search active and archived records by reference, event, people, date, time, facility, or equipment.</p>
               </div>
               <span className="panel-total">{filteredSearchReservations.length} results</span>
             </div>
@@ -864,7 +847,7 @@ const Dashboard = ({ currentUserRole }) => {
                 <span>Search all reservation details</span>
                 <input
                   type="search"
-                  placeholder="Reference, name, email, event, date, time, facility, equipment..."
+                  placeholder="Reference, name, facility, equipment, etc..."
                   value={reservationSearchFilters.query}
                   onChange={(event) => setReservationSearchFilters((current) => ({
                     ...current,
@@ -884,33 +867,23 @@ const Dashboard = ({ currentUserRole }) => {
                   <option value="all">All statuses</option>
                   <option value="pending">Pending</option>
                   <option value="approved">Approved</option>
-                  {isAdminDashboard && (
-                    <>
-                      <option value="rejected">Rejected</option>
-                      <option value="cancelled">Cancelled</option>
-                      <option value="expired">Expired</option>
-                    </>
-                  )}
+                  <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="expired">Expired</option>
                 </select>
               </label>
               <label className="reservation-search-source">
                 <span>Record source</span>
                 <select
-                  value={isGeneralStaffDashboard ? 'active' : reservationSearchFilters.source}
+                  value={reservationSearchFilters.source}
                   onChange={(event) => setReservationSearchFilters((current) => ({
                     ...current,
                     source: event.target.value
                   }))}
                 >
-                  {isAdminDashboard ? (
-                    <>
-                      <option value="all">Active and archived</option>
-                      <option value="active">Active</option>
-                      <option value="archived">Archived</option>
-                    </>
-                  ) : (
-                    <option value="active">Active</option>
-                  )}
+                  <option value="all">Active and archived</option>
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
                 </select>
               </label>
               <label className="reservation-search-date-from">
@@ -1011,7 +984,10 @@ const Dashboard = ({ currentUserRole }) => {
               <p className="panel-empty">No reservations match the current search and filters.</p>
             )}
           </section>
+      </section>
 
+      {hasAnalyticsDashboard ? (
+        <>
           <section className="dashboard-filters" aria-label="Dashboard filters">
             <div className="filter-heading">
               <div>

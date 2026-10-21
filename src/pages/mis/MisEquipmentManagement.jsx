@@ -19,10 +19,8 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   const [equipmentData, setEquipmentData] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
 
-  // --- SEARCH & PAGINATION STATES ---
+  // --- SEARCH STATE ---
   const [searchQuery, setSearchQuery] = useState('');
-  const [currentPage, setCurrentPage] = useState(1);
-  const itemsPerPage = 5;
 
   // --- MODAL STATES ---
   const [editingItem, setEditingItem] = useState(null);
@@ -98,7 +96,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   };
 
   const toggleSelectAll = (e) => {
-    setSelectedIds(e.target.checked ? currentData.map((item) => item.id) : []);
+    setSelectedIds(e.target.checked ? filteredData.map((item) => item.id) : []);
   };
 
   const toggleSelectOne = (id) => {
@@ -121,11 +119,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       setSelectedIds([]);
       setIsConfirmingDelete(false);
       
-      const newTotalItems = filteredData.length - selectedIds.length;
-      const newTotalPages = Math.max(1, Math.ceil(newTotalItems / itemsPerPage));
-      if (currentPage > newTotalPages) {
-        setCurrentPage(newTotalPages);
-      }
     } catch (error) {
       console.error('Failed to delete equipment:', error);
     }
@@ -203,7 +196,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     }
   };
 
-  // --- FILTERING & PAGINATION LOGIC (Uses Mapped Data) ---
+  // --- FILTERING LOGIC (Uses Mapped Data) ---
   const filteredData = mappedEquipmentData.filter((item) => {
     const query = searchQuery.toLowerCase();
     return (
@@ -211,26 +204,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       (item.sku && item.sku.toLowerCase().includes(query))
     );
   });
-
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentData = filteredData.slice(startIndex, startIndex + itemsPerPage); 
-
-  const getPageNumbers = () => {
-    const pages = [];
-    if (totalPages <= 5) {
-      for (let i = 1; i <= totalPages; i++) pages.push(i);
-    } else {
-      if (currentPage <= 3) {
-        pages.push(1, 2, 3, '...', totalPages);
-      } else if (currentPage >= totalPages - 2) {
-        pages.push(1, '...', totalPages - 2, totalPages - 1, totalPages);
-      } else {
-        pages.push(1, '...', currentPage, '...', totalPages);
-      }
-    }
-    return pages;
-  };
 
   // --- METRIC CALCULATIONS ---
   const totalAvailableUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedAvailable, 0);
@@ -282,7 +255,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                 value={searchQuery}
                 onChange={(e) => {
                   setSearchQuery(e.target.value);
-                  setCurrentPage(1);
                 }}
               />
             </div>
@@ -305,7 +277,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               <th className="checkbox-col">
                 <input
                   type="checkbox"
-                  checked={currentData.length > 0 && selectedIds.length === currentData.length}
+                  checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.includes(item.id))}
                   onChange={toggleSelectAll}
                 />
               </th>
@@ -329,7 +301,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                 </td>
               </tr>
             ) : (
-              currentData.map((item) => (
+              filteredData.map((item) => (
                 <tr key={item.id}>
                   <td className="checkbox-col">
                     <input
@@ -366,44 +338,12 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
         </table>
         </div>
 
-        {/* Dynamic Table Footer & Pagination */}
         <div className="table-pagination">
           <span className="pagination-text">
             {filteredData.length === 0
               ? 'No equipment items to show'
-              : `Showing ${startIndex + 1} to ${Math.min(startIndex + itemsPerPage, filteredData.length)} of ${filteredData.length} equipment items`}
+              : `Showing all ${filteredData.length} equipment items`}
           </span>
-          <div className="pagination-buttons">
-            <button 
-              className="page-btn" 
-              disabled={currentPage === 1}
-              onClick={() => setCurrentPage(prev => Math.max(1, prev - 1))}
-            >
-              Prev
-            </button>
-            
-            {getPageNumbers().map((num, idx) => (
-              num === '...' ? (
-                <span key={`dots-${idx}`} className="dots">...</span>
-              ) : (
-                <button 
-                  key={idx}
-                  className={`page-btn ${currentPage === num ? 'active' : ''}`}
-                  onClick={() => setCurrentPage(num)}
-                >
-                  {num}
-                </button>
-              )
-            ))}
-
-            <button 
-              className="page-btn" 
-              disabled={currentPage === totalPages || filteredData.length === 0}
-              onClick={() => setCurrentPage(prev => Math.min(totalPages, prev + 1))}
-            >
-              Next
-            </button>
-          </div>
         </div>
       </div>
 

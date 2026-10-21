@@ -207,7 +207,7 @@ const Calendar = ({ currentUserRole }) => {
   const events = isArchiveVisible ? historyEvents : activeEvents;
 
   const normalizedRole = (currentUserRole || userRole).toLowerCase().trim();
-  const canViewArchive = normalizedRole === 'mis' || normalizedRole === 'building admin';
+  const canOpenArchiveList = normalizedRole === 'mis' || normalizedRole === 'building admin';
 
   // --- ARCHIVE COMPUTATIONS ---
   const filteredHistory = historyData.filter(item => {
@@ -366,15 +366,13 @@ const Calendar = ({ currentUserRole }) => {
               </>
             )}
             
-            {canViewArchive && (
-              <button
-                className="history-btn"
-                onClick={toggleArchiveMode}
-                aria-expanded={isArchiveVisible}
-              >
-                {isArchiveVisible ? 'View Active' : 'View Archive'}
-              </button>
-            )}
+            <button
+              className="history-btn"
+              onClick={toggleArchiveMode}
+              aria-expanded={isArchiveVisible}
+            >
+              {isArchiveVisible ? 'View Active' : 'View Archive'}
+            </button>
           </div>
           
           <div className="header-right" style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.8rem' }}>
@@ -396,7 +394,7 @@ const Calendar = ({ currentUserRole }) => {
             </div>
             
             {/* The new button underneath the legend */}
-            {isArchiveVisible && !showArchiveList && (
+            {canOpenArchiveList && isArchiveVisible && !showArchiveList && (
               <button 
                 className="history-btn" 
                 onClick={() => setShowArchiveList(true)}
@@ -405,7 +403,7 @@ const Calendar = ({ currentUserRole }) => {
                 Open Archive List
               </button>
             )}
-            {showArchiveList && (
+            {canOpenArchiveList && showArchiveList && (
               <button 
                 className="history-btn" 
                 onClick={() => setShowArchiveList(false)}

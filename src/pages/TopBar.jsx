@@ -62,6 +62,7 @@ const isExpired = (eventDate, endTime, days = 1) => {
 };
 
 const TopBar = ({ toggleSidebar }) => {
+  const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   const [userData, setUserData] = useState({
     displayName: 'Loading...',
     avatarName: 'User',
@@ -94,6 +95,11 @@ const TopBar = ({ toggleSidebar }) => {
 
   // Derived state: Check if there is AT LEAST ONE unread notification
   const hasUnread = notifications.some(notif => !readNotifs.includes(notif.id));
+
+  useEffect(() => {
+    const intervalId = setInterval(() => setCurrentDateTime(new Date()), 60_000);
+    return () => clearInterval(intervalId);
+  }, []);
 
   // Close notification dropdown when clicking outside
   useEffect(() => {
@@ -311,6 +317,21 @@ const TopBar = ({ toggleSidebar }) => {
         </div>
 
         <div className="header-actions">
+          <Link
+            className="current-datetime"
+            to="/calendar"
+            aria-label={`Open calendar. ${currentDateTime.toLocaleString()}`}
+          >
+            <span>{currentDateTime.toLocaleDateString(undefined, {
+              weekday: 'short',
+              month: 'short',
+              day: 'numeric'
+            })}</span>
+            <strong>{currentDateTime.toLocaleTimeString(undefined, {
+              hour: 'numeric',
+              minute: '2-digit'
+            })}</strong>
+          </Link>
 
           {/* Notification Wrapper */}
           <div className="notification-wrapper" ref={notifRef}>

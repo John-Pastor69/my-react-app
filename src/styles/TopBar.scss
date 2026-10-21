@@ -53,6 +53,33 @@
     align-items: center;
     gap: 1.6rem;
 
+    .current-datetime {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+      color: #4b5563;
+      font-size: 0.8rem;
+      line-height: 1.2;
+      text-decoration: none;
+      white-space: nowrap;
+
+      strong {
+        color: #111827;
+        font-size: 0.9rem;
+        font-weight: 600;
+      }
+
+      &:hover strong {
+        color: #315fe8;
+      }
+
+      &:focus-visible {
+        outline: 2px solid #2563eb;
+        outline-offset: 4px;
+        border-radius: 0.25rem;
+      }
+    }
+
     /* --- NOTIFICATION DROPDOWN STYLES --- */
     .notification-wrapper {
       position: relative;
@@ -266,6 +293,10 @@
           color: #6b7280;
           line-height: 1.2;
         }
+
+        @media (max-width: 28rem) {
+        display: none;
+        }
       }
     }
   }
@@ -299,6 +330,14 @@
 
     .header-actions {
       gap: 0.8rem;
+    }
+
+    .header-actions .current-datetime {
+      font-size: 0.7rem;
+
+      strong {
+        font-size: 0.8rem;
+      }
     }
   }
 }

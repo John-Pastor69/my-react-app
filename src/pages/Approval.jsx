@@ -19,14 +19,11 @@ const formatName = (fullName) => {
 const Approval = () => {
     // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
-    const [currentPage, setCurrentPage] = useState(1);
     const [selectedRequest, setSelectedRequest] = useState(null);
     const [reservationsData, setReservationsData] = useState([]);
     const [usersData, setUsersData] = useState([]);
     const [approverRoleKey, setApproverRoleKey] = useState('');
     
-    const itemsPerPage = 5;
-
     // --- REAL-TIME FIRESTORE LISTENERS ---
     useEffect(() => {
         const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
@@ -129,6 +126,7 @@ const Approval = () => {
 
         return {
             id: res.id,
+            refNo: String(res.refNo || ''),
             event: res.eventName || 'Untitled Event',
             equip: reqSubtext,
             submit: submitDate,
@@ -150,22 +148,12 @@ const Approval = () => {
     const pendingCount = approvalData.length;
 
     // --- SEARCH & FILTER LOGIC ---
-    const handleSearch = (e) => {
-        setSearch(e.target.value);
-        setCurrentPage(1);
-    };
-
     const filteredRequests = approvalData.filter((request) =>
         request.event.toLowerCase().includes(search.toLowerCase()) ||
         request.name.toLowerCase().includes(search.toLowerCase()) ||
-        request.role.toLowerCase().includes(search.toLowerCase())
+        request.role.toLowerCase().includes(search.toLowerCase()) ||
+        request.refNo.toLowerCase().includes(search.toLowerCase())
     );
-
-    // --- PAGINATION LOGIC ---
-    const totalPages = Math.max(1, Math.ceil(filteredRequests.length / itemsPerPage));
-    const indexOfLastItem = currentPage * itemsPerPage;
-    const indexOfFirstItem = indexOfLastItem - itemsPerPage;
-    const currentItems = filteredRequests.slice(indexOfFirstItem, indexOfLastItem);
 
     return (
         <div className="approval">
@@ -197,9 +185,9 @@ const Approval = () => {
                             <span className="search-icon" aria-hidden="true">⌕</span>
                             <input
                                 type="text"
-                                placeholder="Search requests..."
+                                placeholder="Search requests or reference no..."
                                 value={search}
-                                onChange={handleSearch}
+                                onChange={(event) => setSearch(event.target.value)}
                             />
                         </div>
                     </div>
@@ -214,8 +202,8 @@ const Approval = () => {
                             <span>ACTION</span>
                         </div>
 
-                        {currentItems.length > 0 ? (
-                            currentItems.map((request) => (
+                        {filteredRequests.length > 0 ? (
+                            filteredRequests.map((request) => (
                                 <div className="request-row" key={request.id}>
                                     
                                     <div className="event-info">
@@ -267,38 +255,8 @@ const Approval = () => {
 
                 <div className="table-footer">
                     <span>
-                        Showing {filteredRequests.length === 0 ? 0 : indexOfFirstItem + 1} to{' '}
-                        {Math.min(indexOfLastItem, filteredRequests.length)} of {filteredRequests.length} requests
+                        Showing all {filteredRequests.length} requests
                     </span>
-
-                    <div className="pagination">
-                        <button
-                            type="button"
-                            disabled={currentPage === 1}
-                            onClick={() => setCurrentPage((prev) => prev - 1)}
-                        >
-                            Prev
-                        </button>
-
-                        {Array.from({ length: totalPages }, (_, index) => (
-                            <button
-                                type="button"
-                                key={index + 1}
-                                className={currentPage === index + 1 ? 'active' : ''}
-                                onClick={() => setCurrentPage(index + 1)}
-                            >
-                                {index + 1}
-                            </button>
-                        ))}
-
-                        <button
-                            type="button"
-                            disabled={currentPage === totalPages || filteredRequests.length === 0}
-                            onClick={() => setCurrentPage((prev) => prev + 1)}
-                        >
-                            Next
-                        </button>
-                    </div>
                 </div>
             </div>
 

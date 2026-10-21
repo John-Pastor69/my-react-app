@@ -6,7 +6,6 @@ import ReservationDetails from './ReservationDetails';
 
 const Schedule = () => {
   // --- STATE MANAGEMENT ---
-  const [currentPage, setCurrentPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [deleteModalData, setDeleteModalData] = useState(null);
@@ -17,8 +16,6 @@ const Schedule = () => {
   const [usersData, setUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   
-  const itemsPerPage = 5;
-
   // --- REAL-TIME FIRESTORE LISTENERS ---
   useEffect(() => {
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
@@ -90,6 +87,7 @@ const Schedule = () => {
 
       return {
         id: res.id,
+        refNo: String(res.refNo || ''),
         event: res.eventName || 'Untitled Event',
         equip: reqSubtext,
         submit: submitDate,
@@ -108,29 +106,12 @@ const Schedule = () => {
     }).sort((a, b) => b.rawDate - a.rawDate); 
 
   // --- SEARCH & FILTER LOGIC ---
-  const handleSearch = (e) => {
-    setSearchQuery(e.target.value);
-    setCurrentPage(1); 
-  };
-
   const filteredData = scheduleData.filter((row) =>
     row.event.toLowerCase().includes(searchQuery.toLowerCase()) ||
     row.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.role.toLowerCase().includes(searchQuery.toLowerCase())
+    row.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    row.refNo.toLowerCase().includes(searchQuery.toLowerCase())
   );
-
-  // --- PAGINATION LOGIC ---
-  const totalPages = Math.max(1, Math.ceil(filteredData.length / itemsPerPage));
-  const startIndex = (currentPage - 1) * itemsPerPage;
-  const currentData = filteredData.slice(startIndex, startIndex + itemsPerPage);
-
-  const handlePrevPage = () => {
-    if (currentPage > 1) setCurrentPage(currentPage - 1);
-  };
-
-  const handleNextPage = () => {
-    if (currentPage < totalPages) setCurrentPage(currentPage + 1);
-  };
 
   // --- DELETION LOGIC ---
   const confirmDelete = async () => {
@@ -182,9 +163,9 @@ const Schedule = () => {
               <i className="ph ph-magnifying-glass"></i>
               <input 
                 type="text" 
-                placeholder="Search requests..." 
+                placeholder="Search requests or reference no..."
                 value={searchQuery}
-                onChange={handleSearch}
+                onChange={(event) => setSearchQuery(event.target.value)}
               />
             </div>
           </div>
@@ -200,8 +181,8 @@ const Schedule = () => {
           </div>
 
           <div className="table-body">
-            {currentData.length > 0 ? (
-              currentData.map((row) => (
+            {filteredData.length > 0 ? (
+              filteredData.map((row) => (
                 <div className="table-row" key={row.id}>
                   <div className="col-event">
                     <div className="event-details">
@@ -261,33 +242,8 @@ const Schedule = () => {
 
         <div className="card-footer">
           <span className="showing-text">
-            Showing {currentData.length > 0 ? startIndex + 1 : 0} to {Math.min(startIndex + itemsPerPage, filteredData.length)} of {filteredData.length} requests
+            Showing all {filteredData.length} requests
           </span>
-          <div className="pagination">
-            <button 
-              disabled={currentPage === 1} 
-              onClick={handlePrevPage}
-            >
-              Prev
-            </button>
-            
-            {Array.from({ length: totalPages }, (_, i) => i + 1).map((page) => (
-              <button 
-                key={page}
-                className={currentPage === page ? 'active' : ''} 
-                onClick={() => setCurrentPage(page)}
-              >
-                {page}
-              </button>
-            ))}
-
-            <button 
-              disabled={currentPage === totalPages || filteredData.length === 0} 
-              onClick={handleNextPage}
-            >
-              Next
-            </button>
-          </div>
         </div>
       </div>
 
