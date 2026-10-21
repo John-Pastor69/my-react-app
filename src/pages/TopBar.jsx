@@ -71,6 +71,7 @@ const TopBar = ({ toggleSidebar }) => {
   
   // Real-time Database State
   const [reservationsData, setReservationsData] = useState([]);
+  const [historyData, setHistoryData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   
   // Notification & Modal State
@@ -153,17 +154,22 @@ const TopBar = ({ toggleSidebar }) => {
       setReservationsData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubHistory = onSnapshot(collection(db, 'history'), (snapshot) => {
+      setHistoryData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       setUsersData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
     return () => {
       unsubRes();
+      unsubHistory();
       unsubUsers();
     };
   }, []);
 
-  // Process Real-Time Notifications & Persist Auto-Removed
+  // Process active reservation and archived reservation notifications
   useEffect(() => {
     if (!userData.role || userData.role === '...' || !auth.currentUser) return;
 
@@ -172,10 +178,6 @@ const TopBar = ({ toggleSidebar }) => {
     const email = auth.currentUser.email;
     let newNotifs = [];
 
-    // Pull previously saved auto-removed notifications to prevent losing them when Schedule.jsx deletes the document
-    let currentAutoRemoved = JSON.parse(localStorage.getItem('facilityResAutoRemoved')) || [];
-    let autoRemovedChanged = false;
-
     reservationsData.forEach(res => {
       const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
       const reqRole = (requestor.role || 'requestor').toLowerCase().trim();
@@ -183,46 +185,34 @@ const TopBar = ({ toggleSidebar }) => {
       
       // --- 1. REQUESTOR NOTIFICATIONS ---
       if (res.userId === uid || res.userEmail === email) {
-        
-        // ---> Auto-Removed Expiration Check
-        if (isExpired(res.eventDate, res.endTime, res.days)) {
-          const notifId = `${res.id}-auto`;
-          if (!currentAutoRemoved.find(n => n.id === notifId)) {
-            currentAutoRemoved.push({
-              id: notifId,
-              type: 'removed',
-              title: 'Auto-Removed',
-              message: `Your schedule exceeded the given time and/or date for ${res.eventName || 'an event'}.`,
-              time: new Date().toISOString(),
-              rawDate: new Date().toISOString(),
-              fullData: res 
-            });
-            autoRemovedChanged = true;
-          }
-        } 
-        // Normal Notifications
-        else {
-          if (res.status === 'Approved') {
-            newNotifs.push({
-              id: `${res.id}-app`,
-              type: 'approved',
-              title: 'Approved',
-              message: `Your reservation for ${res.eventName || 'an event'} has been approved.`,
-              time: res.updatedAt || res.createdAt,
-              rawDate: new Date(res.updatedAt || res.createdAt || 0),
-              fullData: res 
-            });
-          } else if (res.status === 'Rejected') {
-            newNotifs.push({
-              id: `${res.id}-rej`,
-              type: 'rejected',
-              title: 'Rejected',
-              message: `Your request for ${res.eventName || 'an event'} was declined.`,
-              time: res.updatedAt || res.createdAt,
-              rawDate: new Date(res.updatedAt || res.createdAt || 0),
-              fullData: res
-            });
-          }
+        const status = (res.status || '').toLowerCase();
+        if (status === 'approved' || status === 'rejected' || status === 'cancelled' || status === 'expired') {
+          const notificationType = status === 'approved'
+            ? 'approved'
+            : status === 'rejected' ? 'rejected' : status;
+          const notificationTitle = status.charAt(0).toUpperCase() + status.slice(1);
+          const message = status === 'approved'
+            ? `Your reservation for ${res.eventName || 'an event'} has been approved.`
+            : status === 'rejected'
+              ? `Your request for ${res.eventName || 'an event'} was declined.`
+              : status === 'cancelled'
+                ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
+                : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`;
+          const notificationTime = status === 'cancelled'
+            ? res.cancelledAt || res.updatedAt || res.createdAt
+            : status === 'expired'
+              ? res.expiredAt || res.updatedAt || res.createdAt
+              : res.updatedAt || res.createdAt;
+
+          newNotifs.push({
+            id: `${res.id}-${status}`,
+            type: notificationType,
+            title: notificationTitle,
+            message,
+            time: notificationTime,
+            rawDate: new Date(notificationTime || 0),
+            fullData: res
+          });
         }
       }
 
@@ -257,25 +247,37 @@ const TopBar = ({ toggleSidebar }) => {
       }
     });
 
-    // Save Auto-Removed to localStorage if new ones were generated
-    if (autoRemovedChanged) {
-      localStorage.setItem('facilityResAutoRemoved', JSON.stringify(currentAutoRemoved));
-    }
+    historyData.forEach((res) => {
+      if (res.userId !== uid && res.userEmail !== email) return;
 
-    // Combine active database notifications with persisted auto-removed ones
-    const combinedNotifs = [...newNotifs, ...currentAutoRemoved].map(n => ({
-      ...n,
-      // Rehydrate stringified dates back into Date objects for accurate sorting
-      rawDate: typeof n.rawDate === 'string' ? new Date(n.rawDate) : n.rawDate 
-    }));
+      const status = (res.status || '').toLowerCase();
+      if (status !== 'expired' && status !== 'cancelled') return;
+
+      const isCancelled = status === 'cancelled';
+      const notificationTime = isCancelled
+        ? res.cancelledAt || res.updatedAt || res.createdAt
+        : res.expiredAt || res.updatedAt || res.createdAt;
+      newNotifs.push({
+        id: `${res.id}-${status}`,
+        type: status,
+        title: isCancelled ? 'Cancelled' : 'Expired',
+        message: isCancelled
+          ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
+          : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`,
+        time: notificationTime,
+        rawDate: new Date(notificationTime || 0),
+        fullData: res
+      });
+    });
 
     // Filter out notifications that the user explicitly cleared
-    const filteredNotifs = combinedNotifs.filter(notif => !deletedNotifs.includes(notif.id));
+    const uniqueNotifs = [...new Map(newNotifs.map((notif) => [notif.id, notif])).values()];
+    const filteredNotifs = uniqueNotifs.filter(notif => !deletedNotifs.includes(notif.id));
     
     // Sort newest first
     filteredNotifs.sort((a, b) => b.rawDate - a.rawDate);
     setNotifications(filteredNotifs);
-  }, [reservationsData, usersData, userData, deletedNotifs]);
+  }, [reservationsData, historyData, usersData, userData, deletedNotifs]);
 
   // Click handler: Opens modal and marks notification as read
   const handleNotifItemClick = (notif) => {
@@ -347,7 +349,8 @@ const TopBar = ({ toggleSidebar }) => {
                           {notif.type === 'approved' && <div className="notif-avatar bg-green">✓</div>}
                           {notif.type === 'action' && <div className="notif-avatar bg-blue">ℹ</div>}
                           {notif.type === 'rejected' && <div className="notif-avatar bg-red">✕</div>}
-                          {notif.type === 'removed' && <div className="notif-avatar bg-red">!</div>}
+                          {notif.type === 'expired' && <div className="notif-avatar bg-charcoal">!</div>}
+                          {notif.type === 'cancelled' && <div className="notif-avatar bg-gray">×</div>}
                           
                           <div className="notif-content">
                             <p><strong>{notif.title}:</strong> {notif.message.replace(`${notif.title}:`, '')}</p>

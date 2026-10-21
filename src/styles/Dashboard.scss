@@ -1291,6 +1291,10 @@ main,
       grid-column: auto;
     }
   }
+
+  .mis-dashboard-content.staff-dashboard .dashboard-kpis {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
 }
 
 @media (min-width: 64rem) {
@@ -1315,7 +1319,22 @@ main,
     .dashboard-operations {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+  }
 
+  .mis-dashboard-content.staff-dashboard {
+    .dashboard-charts,
+    .dashboard-insights,
+    .dashboard-lower {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .reservations-trend-panel,
+    .recent-activity-panel {
+      grid-column: 1 / -1;
+    }
+  }
+
+  .mis-dashboard-content {
     .resource-alerts-panel {
       grid-column: 1 / -1;
     }

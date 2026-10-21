@@ -319,6 +319,8 @@ main,
         display: flex;
         align-items: center;
         gap: 0.8rem;
+        color: inherit;
+        text-decoration: none;
 
         .avatar-placeholder {
           width: 2.4rem;
@@ -350,6 +352,26 @@ main,
         .user-email {
           font-size: 0.8rem;
           color: $text-muted;
+        }
+
+        &.user-profile-link {
+          &:hover .user-title,
+          &:focus-visible .user-title {
+            color: $accent-purple;
+            text-decoration: underline;
+          }
+
+          &:focus-visible {
+            outline: 2px solid $accent-purple;
+            outline-offset: 2px;
+            border-radius: 2px;
+          }
+        }
+
+        .user-name-copy {
+          display: flex;
+          min-width: 0;
+          flex-direction: column;
         }
       }
 

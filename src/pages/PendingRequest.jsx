@@ -219,7 +219,10 @@ const PendingRequest = ({ data }) => {
   });
 
   const myStepIndex = APPROVAL_ROLE_HIERARCHY.indexOf(approver.roleKey);
-  const canAct = myStepIndex !== -1 && trackerSteps[myStepIndex].state === 'your-turn' && !currentData.approvals?.[approver.roleKey];
+  const canAct = myStepIndex !== -1
+    && trackerSteps[myStepIndex].state === 'your-turn'
+    && (currentData.status || '').toLowerCase() === 'pending'
+    && !currentData.approvals?.[approver.roleKey];
 
   const myApprovalRecord = currentData.approvals?.[approver.roleKey];
   const myApprovalStatus = myApprovalRecord?.status;

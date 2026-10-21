@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
+import { Link } from 'react-router-dom';
 import { db } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
 
@@ -284,17 +285,20 @@ const MisUserManagement = ({ currentUserRole }) => {
                   return (
                     <tr key={user.id}>
                       <td>
-                        <div className="user-name-cell">
+                        <Link
+                          className="user-name-cell user-profile-link"
+                          to={`/account?userId=${encodeURIComponent(user.id)}`}
+                        >
                           {user.avatarUrl ? (
                             <img className="avatar-img" src={user.avatarUrl} alt="" />
                           ) : (
-                            <div className="avatar-placeholder">{(user.name || '?').charAt(0)}</div>
+                            <span className="avatar-placeholder">{(user.name || '?').charAt(0)}</span>
                           )}
-                          <div>
-                            <div className="user-title">{user.name || 'Unnamed User'}</div>
-                            <div className="user-email">{user.email}</div>
-                          </div>
-                        </div>
+                          <span className="user-name-copy">
+                            <span className="user-title">{user.name || 'Unnamed User'}</span>
+                            <span className="user-email">{user.email}</span>
+                          </span>
+                        </Link>
                       </td>
                       <td>
                         <span className={`role-badge ${roleBadgeClass(user.role)}`}>
