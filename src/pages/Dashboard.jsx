@@ -1,11 +1,14 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase';
 import "../styles/Dashboard.scss";
 
+const ReservationDetails = lazy(() => import('./ReservationDetails'));
+
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const ROLE_HIERARCHY = ['requestor', 'endorser', 'building admin', 'osa', 'mis', 'academic head', 'school admin'];
+const EMPTY_HISTORY = [];
 
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
@@ -78,12 +81,34 @@ const normalizeName = (value) => {
   return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
 };
 
+const formatReservationTimeInput = (value) => {
+  const match = value.trim().toUpperCase().match(/^(\d{1,2}):?(\d{2})?\s*(AM|PM)?$/);
+  if (!match) return '';
+  const hours = Number(match[1]);
+  const minutes = Number(match[2] || 0);
+  if (hours < 1 || hours > 12 || minutes > 59) return '';
+  const meridiem = match[3] || (hours === 12 ? 'PM' : 'AM');
+  return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')} ${meridiem}`;
+};
+
 const Dashboard = ({ currentUserRole }) => {
   const [reservationsData, setReservationsData] = useState([]);
+  const [historyData, setHistoryData] = useState([]);
   const [equipmentData, setEquipmentData] = useState([]);
   const [facilitiesData, setFacilitiesData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const [upcomingDays, setUpcomingDays] = useState('7');
+  const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
+  const [selectedReservation, setSelectedReservation] = useState(null);
+  const [reservationSearchFilters, setReservationSearchFilters] = useState({
+    query: '',
+    status: 'all',
+    source: 'all',
+    startDate: '',
+    endDate: '',
+    sort: 'latest'
+  });
   const [filters, setFilters] = useState(() => {
     const today = new Date();
     const thirtyDaysAgo = new Date(today.getTime() - 29 * DAY_IN_MS);
@@ -146,6 +171,19 @@ const Dashboard = ({ currentUserRole }) => {
     .replace(/_/g, ' ');
   const isAdminDashboard = ['building admin', 'mis', 'mis admin'].includes(dashboardRole);
 
+  useEffect(() => {
+    if (!isAdminDashboard) return undefined;
+
+    return onSnapshot(collection(db, 'history'), (snapshot) => {
+      setHistoryData(snapshot.docs.map((document) => ({
+        id: document.id,
+        ...document.data()
+      })));
+    }, (error) => console.error('Failed to load reservation history:', error));
+  }, [isAdminDashboard]);
+
+  const visibleHistoryData = isAdminDashboard ? historyData : EMPTY_HISTORY;
+
   const scheduleCount = currentUser
     ? reservationsData.filter(
       (reservation) => reservation.userId === currentUser.uid || reservation.userEmail === currentUser.email
@@ -195,8 +233,11 @@ const Dashboard = ({ currentUserRole }) => {
   const todayKey = toDateInputValue(new Date());
   const today = parseDate(todayKey);
   const weekAhead = today ? new Date(today) : null;
+  const upcomingRangeDays = upcomingDays === 'custom'
+    ? Math.min(365, Math.max(1, Number(customUpcomingDays) || 1))
+    : Number(upcomingDays);
   if (weekAhead) {
-    weekAhead.setDate(weekAhead.getDate() + 7);
+    weekAhead.setDate(weekAhead.getDate() + upcomingRangeDays);
     weekAhead.setHours(23, 59, 59, 999);
   }
 
@@ -264,6 +305,101 @@ const Dashboard = ({ currentUserRole }) => {
     () => new Map(facilitiesData.map((facility) => [facility.id, facility])),
     [facilitiesData]
   );
+  const searchableReservations = useMemo(() => {
+    const activeRecords = reservationsData.map((reservation) => ({ ...reservation, source: 'active' }));
+    const archivedRecords = visibleHistoryData.map((reservation) => ({ ...reservation, source: 'archived' }));
+
+    return [...activeRecords, ...archivedRecords].map((reservation) => {
+      const requestor = usersData.find((user) => (
+        user.uid === reservation.userId
+        || user.id === reservation.userId
+        || (reservation.userEmail && user.email?.toLowerCase() === reservation.userEmail.toLowerCase())
+      )) || {};
+      const facilityValues = (reservation.facilities || []).flatMap((id) => [
+        id,
+        facilitiesById.get(id)?.name || ''
+      ]);
+      const equipmentValues = Object.entries(reservation.selectedEquip || {})
+        .filter(([, quantity]) => Number(quantity) > 0)
+        .flatMap(([id, quantity]) => [
+          id,
+          equipmentById.get(id)?.name || '',
+          quantity
+        ]);
+      const eventDateValue = parseDate(reservation.eventDate || reservation.date);
+      const startTimeValue = parseTime(reservation.startTime);
+      const searchableText = [
+        reservation.refNo,
+        reservation.eventName,
+        reservation.title,
+        reservation.fullName,
+        reservation.userEmail,
+        reservation.userRole,
+        requestor.name,
+        requestor.email,
+        requestor.role,
+        requestor.department,
+        reservation.endorserName,
+        reservation.endorserEmail,
+        reservation.eventDate,
+        reservation.endDate,
+        reservation.startTime,
+        reservation.endTime,
+        reservation.status,
+        reservation.purpose,
+        reservation.eventType,
+        ...facilityValues,
+        ...equipmentValues,
+        JSON.stringify(reservation)
+      ].flat().filter(Boolean).join(' ').toLowerCase();
+
+      return {
+        ...reservation,
+        requestor,
+        eventDateValue,
+        startTimeValue,
+        searchableText
+      };
+    });
+  }, [reservationsData, visibleHistoryData, usersData, facilitiesById, equipmentById]);
+
+  const filteredSearchReservations = useMemo(() => {
+    const searchText = reservationSearchFilters.query.trim().toLowerCase();
+    const fromDate = reservationSearchFilters.startDate
+      ? parseDate(reservationSearchFilters.startDate)
+      : null;
+    const throughDate = reservationSearchFilters.endDate
+      ? parseDate(reservationSearchFilters.endDate)
+      : null;
+
+    return searchableReservations
+      .filter((reservation) => {
+        const status = (reservation.status || 'pending').toLowerCase();
+        if (searchText && !reservation.searchableText.includes(searchText)) return false;
+        if (reservationSearchFilters.status !== 'all' && status !== reservationSearchFilters.status) return false;
+        if (reservationSearchFilters.source !== 'all' && reservation.source !== reservationSearchFilters.source) return false;
+        if (fromDate && (!reservation.eventDateValue || reservation.eventDateValue < fromDate)) return false;
+        if (throughDate && (
+          !reservation.eventDateValue
+          || reservation.eventDateValue > new Date(
+            throughDate.getFullYear(),
+            throughDate.getMonth(),
+            throughDate.getDate(),
+            23,
+            59,
+            59,
+            999
+          )
+        )) return false;
+        return true;
+      })
+      .sort((first, second) => {
+        const firstDateTime = (first.eventDateValue?.getTime() || 0) + (first.startTimeValue ?? 0) * 60_000;
+        const secondDateTime = (second.eventDateValue?.getTime() || 0) + (second.startTimeValue ?? 0) * 60_000;
+        const direction = reservationSearchFilters.sort === 'latest' ? -1 : 1;
+        return direction * (firstDateTime - secondDateTime);
+      });
+  }, [searchableReservations, reservationSearchFilters]);
 
   const equipmentInventory = useMemo(() => equipmentData.map((equipment) => {
     const reserved = reservationsData.reduce((total, reservation) => {
@@ -508,6 +644,29 @@ const Dashboard = ({ currentUserRole }) => {
     }));
   };
 
+  const handleTimeFilterInput = (field, value) => {
+    if (value === '') {
+      setFilters((current) => ({ ...current, [field]: '' }));
+      return;
+    }
+
+    if (!/^[0-9:aApPmM\s]*$/.test(value) || value.length > 8) return;
+    const parts = value.replace(/[aApPmM\s]/g, '').split(':');
+    if (parts.length > 2) return;
+    const [hours, minutes] = parts;
+    if (hours?.length > 2 || minutes?.length > 2) return;
+    if (hours && (Number(hours) > 12 || (hours.length === 2 && Number(hours) === 0))) return;
+    if (minutes && Number(minutes) > 59) return;
+    setFilters((current) => ({ ...current, [field]: value }));
+  };
+
+  const normalizeTimeFilter = (field) => {
+    setFilters((current) => ({
+      ...current,
+      [field]: current[field] ? formatReservationTimeInput(current[field]) : ''
+    }));
+  };
+
   return (
     <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : 'personal-dashboard'}`}>
       <header className="dashboard-header">
@@ -530,7 +689,12 @@ const Dashboard = ({ currentUserRole }) => {
           {pendingApprovalReservations.length ? (
             <div className="operations-list">
               {pendingApprovalReservations.slice(0, 5).map((reservation) => (
-                <div className="operation-row" key={reservation.id}>
+                <button
+                  className="operation-row operation-row-button"
+                  key={reservation.id}
+                  type="button"
+                  onClick={() => setSelectedReservation({ data: reservation, source: 'active' })}
+                >
                   <div className="operation-row-main">
                     <strong>{reservation.eventName || 'Untitled reservation'}</strong>
                     <span>{reservation.fullName || reservation.userEmail || 'Unknown requestor'}</span>
@@ -538,7 +702,7 @@ const Dashboard = ({ currentUserRole }) => {
                   <span className="operation-row-date">
                     {formatDate(parseDate(reservation.eventDate || reservation.date))}
                   </span>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
@@ -552,14 +716,40 @@ const Dashboard = ({ currentUserRole }) => {
           <div className="panel-heading">
             <div>
               <h2>{isAdminDashboard ? 'Upcoming reservations' : 'Your upcoming reservations'}</h2>
-              <p>Scheduled over the next seven days.</p>
+              <p>Reservations scheduled within your selected date range.</p>
             </div>
-            <Link className="panel-action-link" to="/schedule">View schedule</Link>
+            <label className="upcoming-range-control">
+              <span>Show next</span>
+              <select value={upcomingDays} onChange={(event) => setUpcomingDays(event.target.value)}>
+                <option value="7">7 days</option>
+                <option value="14">14 days</option>
+                <option value="30">30 days</option>
+                <option value="90">90 days</option>
+                <option value="custom">Custom</option>
+              </select>
+            </label>
           </div>
+          {upcomingDays === 'custom' && (
+            <label className="custom-upcoming-days">
+              Number of days
+              <input
+                type="number"
+                min="1"
+                max="365"
+                value={customUpcomingDays}
+                onChange={(event) => setCustomUpcomingDays(event.target.value)}
+              />
+            </label>
+          )}
           {upcomingReservations.length ? (
             <div className="operations-list">
               {upcomingReservations.map((reservation) => (
-                <div className="operation-row" key={reservation.id}>
+                <button
+                  className="operation-row operation-row-button"
+                  key={reservation.id}
+                  type="button"
+                  onClick={() => setSelectedReservation({ data: reservation, source: 'active' })}
+                >
                   <div className="operation-row-main">
                     <strong>{reservation.eventName || 'Untitled reservation'}</strong>
                     <span>
@@ -576,12 +766,14 @@ const Dashboard = ({ currentUserRole }) => {
                       {formatDate(reservation.eventDateValue)} · {formatTime(reservation.startTime)}
                     </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           ) : (
             <p className="panel-empty">
-              {isAdminDashboard ? 'No reservations are scheduled in the next seven days.' : 'You have no reservations scheduled in the next seven days.'}
+              {isAdminDashboard
+                ? `No reservations are scheduled in the next ${upcomingRangeDays} days.`
+                : `You have no reservations scheduled in the next ${upcomingRangeDays} days.`}
             </p>
           )}
         </article>
@@ -616,6 +808,157 @@ const Dashboard = ({ currentUserRole }) => {
 
       {isAdminDashboard ? (
         <>
+          <section className="dashboard-panel reservation-search-panel" aria-label="Reservation search">
+            <div className="panel-heading">
+              <div>
+                <h2>Reservation search</h2>
+                <p>Search active and archived records by reference, event, people, date, time, facility, or equipment.</p>
+              </div>
+              <span className="panel-total">{filteredSearchReservations.length} results</span>
+            </div>
+            <div className="reservation-search-fields">
+              <label className="reservation-search-query">
+                <span>Search all reservation details</span>
+                <input
+                  type="search"
+                  placeholder="Reference, name, email, event, date, time, facility, equipment..."
+                  value={reservationSearchFilters.query}
+                  onChange={(event) => setReservationSearchFilters((current) => ({
+                    ...current,
+                    query: event.target.value
+                  }))}
+                />
+              </label>
+              <label>
+                <span>Status</span>
+                <select
+                  value={reservationSearchFilters.status}
+                  onChange={(event) => setReservationSearchFilters((current) => ({
+                    ...current,
+                    status: event.target.value
+                  }))}
+                >
+                  <option value="all">All statuses</option>
+                  <option value="pending">Pending</option>
+                  <option value="approved">Approved</option>
+                  <option value="rejected">Rejected</option>
+                  <option value="cancelled">Cancelled</option>
+                  <option value="expired">Expired</option>
+                </select>
+              </label>
+              <label>
+                <span>Record source</span>
+                <select
+                  value={reservationSearchFilters.source}
+                  onChange={(event) => setReservationSearchFilters((current) => ({
+                    ...current,
+                    source: event.target.value
+                  }))}
+                >
+                  <option value="all">Active and archived</option>
+                  <option value="active">Active</option>
+                  <option value="archived">Archived</option>
+                </select>
+              </label>
+              <label>
+                <span>Event date from</span>
+                <input
+                  type="date"
+                  value={reservationSearchFilters.startDate}
+                  max={reservationSearchFilters.endDate || undefined}
+                  onChange={(event) => setReservationSearchFilters((current) => ({
+                    ...current,
+                    startDate: event.target.value
+                  }))}
+                />
+              </label>
+              <label>
+                <span>Event date to</span>
+                <input
+                  type="date"
+                  value={reservationSearchFilters.endDate}
+                  min={reservationSearchFilters.startDate || undefined}
+                  onChange={(event) => setReservationSearchFilters((current) => ({
+                    ...current,
+                    endDate: event.target.value
+                  }))}
+                />
+              </label>
+              <label>
+                <span>Sort by event date</span>
+                <select
+                  value={reservationSearchFilters.sort}
+                  onChange={(event) => setReservationSearchFilters((current) => ({
+                    ...current,
+                    sort: event.target.value
+                  }))}
+                >
+                  <option value="latest">Latest first</option>
+                  <option value="oldest">Oldest first</option>
+                </select>
+              </label>
+            </div>
+            <button
+              className="filter-reset reservation-search-reset"
+              type="button"
+              onClick={() => setReservationSearchFilters({
+                query: '',
+                status: 'all',
+                source: 'all',
+                startDate: '',
+                endDate: '',
+                sort: 'latest'
+              })}
+            >
+              Clear search and filters
+            </button>
+            {filteredSearchReservations.length ? (
+              <div className="reservation-search-results">
+                {filteredSearchReservations.map((reservation) => {
+                  const facilityNames = (reservation.facilities || [])
+                    .map((id) => facilitiesById.get(id)?.name || id);
+                  const equipmentNames = Object.entries(reservation.selectedEquip || {})
+                    .filter(([, quantity]) => Number(quantity) > 0)
+                    .map(([id, quantity]) => `${quantity} × ${equipmentById.get(id)?.name || id}`);
+
+                  return (
+                    <button
+                      className="reservation-search-result"
+                      key={`${reservation.source}-${reservation.id}`}
+                      type="button"
+                      onClick={() => setSelectedReservation({
+                        data: reservation,
+                        source: reservation.source
+                      })}
+                    >
+                      <span className={`reservation-source-badge ${reservation.source}`}>
+                        {reservation.source === 'active' ? 'Active' : 'Archived'}
+                      </span>
+                      <span className="reservation-search-result-main">
+                        <strong>{reservation.eventName || reservation.title || 'Untitled reservation'}</strong>
+                        <span>
+                          {reservation.refNo || 'No reference'}
+                          {' · '}{reservation.fullName || reservation.userEmail || 'Unknown user'}
+                        </span>
+                        <span>
+                          {reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}
+                          {' · '}{reservation.startTime || 'Time not set'}
+                          {' · '}{facilityNames.join(', ') || 'No facility'}
+                        </span>
+                        <span>{equipmentNames.join(', ') || 'No equipment listed'}</span>
+                      </span>
+                      <span className={`reservation-status ${getStatusClass(reservation.status)}`}>
+                        {reservation.status || 'Pending'}
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="panel-empty">No reservations match the current search and filters.</p>
+            )}
+          </section>
+
           <section className="dashboard-filters" aria-label="Dashboard filters">
             <div className="filter-heading">
               <div>
@@ -662,17 +1005,23 @@ const Dashboard = ({ currentUserRole }) => {
               <label>
                 <span>Start time from</span>
                 <input
-                  type="time"
+                  type="text"
+                  inputMode="text"
                   value={filters.startTime}
-                  onChange={(event) => setFilters((current) => ({ ...current, startTime: event.target.value }))}
+                  placeholder="08:00 AM"
+                  onChange={(event) => handleTimeFilterInput('startTime', event.target.value)}
+                  onBlur={() => normalizeTimeFilter('startTime')}
                 />
               </label>
               <label>
                 <span>Start time to</span>
                 <input
-                  type="time"
+                  type="text"
+                  inputMode="text"
                   value={filters.endTime}
-                  onChange={(event) => setFilters((current) => ({ ...current, endTime: event.target.value }))}
+                  placeholder="05:00 PM"
+                  onChange={(event) => handleTimeFilterInput('endTime', event.target.value)}
+                  onBlur={() => normalizeTimeFilter('endTime')}
                 />
               </label>
               <label>
@@ -733,19 +1082,21 @@ const Dashboard = ({ currentUserRole }) => {
                 </div>
                 <span className="panel-total">{metrics.total} total</span>
               </div>
-              <div className="trend-chart" role="img" aria-label="Reservations by date">
-                {trendData.map((bucket, index) => (
-                  <div className="trend-column" key={`${bucket.label}-${index}`}>
-                    <span className="trend-value">{bucket.count}</span>
-                    <div className="trend-bar-track">
-                      <div
-                        className="trend-bar"
-                        style={{ height: `${Math.max(bucket.count ? 9 : 3, bucket.count / chartMaximum * 100)}%` }}
-                      />
+              <div className="trend-chart-scroll" tabIndex={0} aria-label="Scroll to view reservation activity by date">
+                <div className="trend-chart" role="img" aria-label="Reservations by date">
+                  {trendData.map((bucket, index) => (
+                    <div className="trend-column" key={`${bucket.label}-${index}`}>
+                      <span className="trend-value">{bucket.count}</span>
+                      <div className="trend-bar-track">
+                        <div
+                          className="trend-bar"
+                          style={{ height: `${Math.max(bucket.count ? 9 : 3, bucket.count / chartMaximum * 100)}%` }}
+                        />
+                      </div>
+                      <span className="trend-label">{bucket.label}</span>
                     </div>
-                    <span className="trend-label">{bucket.label}</span>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
               <div className="status-breakdown">
                 <span><i className="status-key approved" /> Approved <strong>{metrics.approved}</strong></span>
@@ -938,6 +1289,40 @@ const Dashboard = ({ currentUserRole }) => {
             <span className="kpi-footnote">Requests awaiting your review</span>
           </article>
         </section>
+      )}
+
+      {selectedReservation && (
+        <div
+          className="dashboard-detail-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedReservation(null);
+          }}
+        >
+          <div
+            className="dashboard-detail-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Reservation details"
+          >
+            <button
+              className="dashboard-detail-close"
+              type="button"
+              aria-label="Close reservation details"
+              onClick={() => setSelectedReservation(null)}
+            >
+              ×
+            </button>
+            <div className="dashboard-detail-content">
+              <Suspense fallback={<p className="panel-empty">Loading reservation details...</p>}>
+                <ReservationDetails
+                  key={`${selectedReservation.source}-${selectedReservation.data.id}`}
+                  data={selectedReservation.data}
+                />
+              </Suspense>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
