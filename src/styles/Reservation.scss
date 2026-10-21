@@ -19,6 +19,10 @@ $orange-main: #F59E0B;
   box-sizing: border-box;
   font-size: var(--font-body);
 
+  &.is-submitting {
+    pointer-events: none;
+  }
+
   *, *::before, *::after { 
     box-sizing: border-box; 
   }
@@ -512,13 +516,25 @@ $orange-main: #F59E0B;
       line-height: 1.35; 
     }
 
-    .facility-status { 
-      font-size: var(--font-body); 
-      font-weight: 600; 
+    .facility-availability {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.4rem;
+    }
 
-      &.available { color: $green-main; } 
-      &.maintenance { color: $orange-main; } 
-      &.unavailable { color: $red-main; } 
+    .facility-status {
+      font-size: var(--font-body);
+      font-weight: 600;
+
+      &.available { color: $green-main; }
+      &.maintenance { color: $orange-main; }
+      &.unavailable { color: $red-main; }
+    }
+
+    .facility-capacity-left {
+      color: $text-muted;
+      font-size: var(--font-body);
     }
   }
 
@@ -996,6 +1012,66 @@ $orange-main: #F59E0B;
     font-size: var(--font-body); 
     font-weight: 600; 
     cursor: pointer; 
+  }
+}
+
+.modal-overlay.reservation-success-overlay > .modal-card {
+  width: min(28rem, 100%);
+  max-width: 28rem;
+  flex: 0 1 28rem;
+}
+
+.reservation-submitting-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.45);
+  color: $text-dark;
+  font-size: var(--font-body);
+  font-weight: 600;
+  pointer-events: auto;
+}
+
+.reservation-loading-screen {
+  width: min(32rem, 100%);
+  min-height: 16rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  border-radius: 12px;
+  background: #ffffff;
+  box-shadow: 0 18px 45px rgba(15, 23, 42, 0.18);
+  text-align: center;
+
+  strong {
+    font-size: var(--font-h2);
+  }
+
+  > span:last-child {
+    color: $text-muted;
+    font-weight: 400;
+  }
+}
+
+.reservation-submitting-spinner {
+  width: 3rem;
+  height: 3rem;
+  border: 4px solid #cbd5e1;
+  border-top-color: $blue-main;
+  border-radius: 50%;
+  animation: reservation-submit-spin 0.8s linear infinite;
+}
+
+@keyframes reservation-submit-spin {
+  to {
+    transform: rotate(360deg);
   }
 }
 

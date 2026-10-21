@@ -120,7 +120,8 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
     const finalCode = editingItem.code?.trim() ? editingItem.code.trim() : `FAC-${Date.now().toString().slice(-4)}`;
 
     try {
-      await updateDoc(doc(db, 'facilities', editingItem.id), {
+      // 1. Prepare the base update object
+      const updateData = {
         name: editingItem.name,
         code: finalCode,
         location: editingItem.location?.trim() || '',
@@ -130,7 +131,17 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         status: editingItem.status,
         statusClass: statusClass,
         lastUpdated: getCurrentDateTime()
-      });
+      };
+
+      // 2. Conditionally add maxCapRef based on input
+      if (editingItem.maxCapacity) {
+        updateData.maxCapRef = Number(editingItem.maxCapacity);
+      } else {
+        updateData.maxCapRef = deleteField();
+      }
+
+      // 3. Send to Firestore
+      await updateDoc(doc(db, 'facilities', editingItem.id), updateData);
       setEditingItem(null); 
     } catch (error) {
       console.error('Failed to update facility:', error);
@@ -155,6 +166,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         location: newItem.location.trim(),
         minCapacity: newItem.minCapacity ? Number(newItem.minCapacity) : null,
         maxCapacity: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
+        maxCapRef: newItem.maxCapacity ? Number(newItem.maxCapacity) : null, // <-- ADD THIS LINE
         status: status,
         statusClass,
         lastUpdated: getCurrentDateTime()

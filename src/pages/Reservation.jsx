@@ -39,6 +39,8 @@ const parseOptionalCapacity = (value) => {
   return Number.isInteger(capacity) && capacity > 0 ? capacity : null;
 };
 
+const sanitizeAlphabeticName = (value) => value.replace(/[^A-Za-z ]/g, '');
+
 const getFacilityCapacityLimits = (facility) => ({
   min: parseOptionalCapacity(facility.minCapacity),
   max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
@@ -165,7 +167,7 @@ const timeRangesOverlapAcrossDates = (firstRange, firstStart, firstEnd, secondRa
   return false;
 };
 
-const findFacilityConflict = (reservations, request) => {
+const getOverlappingFacilityReservations = (reservations, request, facilityId) => {
   const requestStart = parseDateOrdinal(request.eventDate);
   const requestEnd = parseDateOrdinal(request.endDate);
   const requestStartTime = parseTimeToMinutes(request.startTime);
@@ -177,16 +179,18 @@ const findFacilityConflict = (reservations, request) => {
     || requestStartTime === null
     || requestEndTime === null
     || requestEndTime === requestStartTime
-    || request.facilities.length === 0
-  ) return null;
+    || !facilityId
+  ) return [];
 
-  return reservations.find((reservation) => {
+  return reservations.filter((reservation) => {
     const status = (reservation.status || '').toLowerCase().trim();
+    if (['rejected', 'cancelled', 'expired', 'archived'].includes(status)) return false;
+
     const hasRejectedApproval = Object.values(reservation.approvals || {}).some((approval) => {
       const approvalStatus = typeof approval === 'string' ? approval : approval?.status;
       return (approvalStatus || '').toLowerCase() === 'rejected';
     });
-    if (status === 'rejected' || status === 'cancelled' || hasRejectedApproval) return false;
+    if (hasRejectedApproval) return false;
 
     const existingRange = getReservationDateRange(reservation);
     if (!existingRange) return false;
@@ -199,9 +203,7 @@ const findFacilityConflict = (reservations, request) => {
       || existingEndTime === existingStartTime
     ) return false;
 
-    const sharesFacility = request.facilities.some(
-      (facilityId) => (reservation.facilities || []).includes(facilityId)
-    );
+    const sharesFacility = (reservation.facilities || []).includes(facilityId);
     return sharesFacility && timeRangesOverlapAcrossDates(
       { start: requestStart, end: requestEnd },
       requestStartTime,
@@ -211,6 +213,57 @@ const findFacilityConflict = (reservations, request) => {
       existingEndTime
     );
   });
+};
+
+const findFacilityConflict = (reservations, request, facilities) => {
+  for (const facilityId of request.facilities) {
+    const overlappingReservations = getOverlappingFacilityReservations(
+      reservations,
+      request,
+      facilityId
+    );
+    if (overlappingReservations.length === 0) continue;
+
+    const facility = facilities.find((item) => item.id === facilityId);
+    const maxCapacity = facility ? getFacilityCapacityLimits(facility).max : null;
+    const conflictDetails = {
+      conflictFacilityName: facility?.name || facilityId,
+      conflictType: 'schedule'
+    };
+    if (maxCapacity === null) {
+      return { ...overlappingReservations[0], ...conflictDetails };
+    }
+
+    const hasUnknownCapacity = overlappingReservations.some((reservation) => {
+      const participants = Number(reservation.expectedParticipants);
+      return !Number.isInteger(participants) || participants <= 0;
+    });
+    if (hasUnknownCapacity) {
+      return {
+        ...overlappingReservations[0],
+        ...conflictDetails,
+        conflictType: 'unknown-capacity'
+      };
+    }
+
+    const occupiedCapacity = overlappingReservations.reduce(
+      (total, reservation) => total + Number(reservation.expectedParticipants),
+      0
+    );
+    const requestedCapacity = Number(request.expectedParticipants);
+    if (occupiedCapacity + requestedCapacity > maxCapacity) {
+      return {
+        ...overlappingReservations[0],
+        ...conflictDetails,
+        conflictType: 'capacity',
+        occupiedCapacity,
+        requestedCapacity,
+        maxCapacity
+      };
+    }
+  }
+
+  return null;
 };
 
 // Name parsing helper function
@@ -346,6 +399,8 @@ const Reservation = () => {
           setFormData(prev => ({
             ...prev,
             ...parsed.formData,
+            eventName: sanitizeAlphabeticName(parsed.formData.eventName || ''),
+            endorserName: sanitizeAlphabeticName(parsed.formData.endorserName || ''),
             eventType: Array.isArray(parsed.formData.eventType)
               ? parsed.formData.eventType.slice(0, 1)
               : []
@@ -444,28 +499,43 @@ const Reservation = () => {
   const selectedFacilityCapacity = selectedFacility
     ? getFacilityCapacityLimits(selectedFacility)
     : { min: null, max: null };
+  const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
   const expectedParticipantCount = Number(formData.expectedParticipants);
   const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
     !Number.isInteger(expectedParticipantCount)
-    || (selectedFacility && (
-      (selectedFacilityCapacity.min !== null && expectedParticipantCount < selectedFacilityCapacity.min)
-      || (selectedFacilityCapacity.max !== null && expectedParticipantCount > selectedFacilityCapacity.max)
-    ))
+    || expectedParticipantCount <= 0
+    || (selectedFacilityCapacity.max !== null && expectedParticipantCount > selectedFacilityCapacity.max)
   ));
-  const participantCapacityHint = selectedFacilityCapacity.min !== null && selectedFacilityCapacity.max !== null
-    ? `Enter between ${selectedFacilityCapacity.min} and ${selectedFacilityCapacity.max} participants.`
-    : selectedFacilityCapacity.min !== null
-      ? `Enter at least ${selectedFacilityCapacity.min} participants.`
-      : selectedFacilityCapacity.max !== null
-        ? `Enter no more than ${selectedFacilityCapacity.max} participants.`
-        : '';
 
   const conflictRequest = {
     eventDate,
     endDate: endDateInput,
     startTime,
     endTime,
-    facilities: formData.facilities
+    facilities: formData.facilities,
+    expectedParticipants: formData.expectedParticipants
+  };
+  const getAvailableFacilityCapacity = (facility) => {
+    const maxCapacity = getFacilityCapacityLimits(facility).max;
+    if (maxCapacity === null) return null;
+
+    const overlappingReservations = getOverlappingFacilityReservations(
+      reservationsData,
+      conflictRequest,
+      facility.id
+    );
+    const hasUnknownCapacity = overlappingReservations.some((reservation) => {
+      const participants = Number(reservation.expectedParticipants);
+      return !Number.isInteger(participants) || participants <= 0;
+    });
+    if (hasUnknownCapacity) return 0;
+
+    const occupiedCapacity = overlappingReservations.reduce(
+      (total, reservation) => total + Number(reservation.expectedParticipants),
+      0
+    );
+
+    return Math.max(0, maxCapacity - occupiedCapacity);
   };
   const requestStartDate = parseDateOrdinal(eventDate);
   const requestEndDate = parseDateOrdinal(endDateInput);
@@ -476,7 +546,7 @@ const Reservation = () => {
     && !dateError
     && !daysDateError
     && !invalidDateRange
-    ? findFacilityConflict(reservationsData, conflictRequest)
+    ? findFacilityConflict(reservationsData, conflictRequest, inventoryFacilities)
     : null;
   const liveConflictEndDate = liveConflict?.endDate
     || calculateEndDate(liveConflict?.eventDate, liveConflict?.days || 1);
@@ -500,12 +570,16 @@ const Reservation = () => {
 
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
+    const inputValue = ['eventName', 'endorserName'].includes(field)
+      ? sanitizeAlphabeticName(value)
+      : value;
+
     setFormData(prev => {
-      const updated = { ...prev, [field]: value };
+      const updated = { ...prev, [field]: inputValue };
 
       if (field === 'endorserName') {
         const matchedEndorser = endorsersList.find(
-          e => e.cleanName.toLowerCase() === value.trim().toLowerCase()
+          e => e.cleanName.toLowerCase() === inputValue.trim().toLowerCase()
         );
         if (matchedEndorser && matchedEndorser.department) {
           updated.endorserDesignation = matchedEndorser.department;
@@ -516,19 +590,19 @@ const Reservation = () => {
       return updated;
     });
 
-    if (value && String(value).trim() !== '') {
+    if (inputValue && String(inputValue).trim() !== '') {
       clearMissingField(field);
     }
 
     if (field === 'endorserName') {
-      setShowEndorserDropdown(value.length > 0);
+      setShowEndorserDropdown(inputValue.length > 0);
     }
   };
 
   const handleEndorserSelect = (endorser) => {
     setFormData(prev => ({
       ...prev,
-      endorserName: endorser.cleanName,
+      endorserName: sanitizeAlphabeticName(endorser.cleanName),
       endorserDesignation: endorser.department || prev.endorserDesignation,
       endorserEmail: endorser.email
     }));
@@ -544,14 +618,11 @@ const Reservation = () => {
     setFormData(prev => {
       if (field === 'facilities') {
         clearMissingField('expectedParticipants');
-        if (prev[field].includes(value)) {
-          return { ...prev, [field]: [] }; // Uncheck allows clearing the array
-        } else {
-          // Prevent selecting more than 1 facility
-          if (prev[field].length >= 1) return prev; 
-          clearMissingField(field);
-          return { ...prev, [field]: [value] };
-        }
+        const updated = prev[field].includes(value)
+          ? prev[field].filter(item => item !== value)
+          : [...prev[field], value];
+        if (updated.length > 0) clearMissingField(field);
+        return { ...prev, [field]: updated };
       } else if (field === 'eventType') {
         const updated = prev[field].includes(value) ? [] : [value];
         if (updated.length > 0) clearMissingField(field);
@@ -781,7 +852,7 @@ const Reservation = () => {
   };
 
   // --- ACTION HANDLERS ---
-  const handleDiscard = () => {
+  const handleDiscard = (preserveSchedule = false) => {
     // Keep auto-filled readonly data when discarding
     const retainedFullName = formData.fullName;
     const retainedEmail = formData.emailAddress;
@@ -791,12 +862,14 @@ const Reservation = () => {
         fullName: retainedFullName,
         emailAddress: retainedEmail
     });
-    setDays(0); 
-    setEndDateInput('');
+    if (!preserveSchedule) {
+      setDays(0);
+      setEndDateInput('');
+      setEventDate('');
+      setStartTime('');
+      setEndTime('');
+    }
     setAircon(false);
-    setEventDate('');
-    setStartTime('');
-    setEndTime('');
     setSelectedEquip({});
     setCertified(false);
     setIsDraftSaved(false);
@@ -823,8 +896,6 @@ const Reservation = () => {
     }
 
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
-    const hasFacility = formData.facilities.length > 0;
-
     // Validate all required fields in top-to-bottom order
     const requiredOrder = [
       { key: 'fullName', missing: !formData.fullName.trim() },
@@ -872,11 +943,17 @@ const Reservation = () => {
       return;
     }
 
-    if (participantCountOutOfRange) {
+    if (
+      !Number.isInteger(expectedParticipantCount)
+      || expectedParticipantCount <= 0
+      || (selectedFacilityCapacity.max !== null && expectedParticipantCount > selectedFacilityCapacity.max)
+    ) {
       setMissingFields({ expectedParticipants: true });
       setCustomAlert({
         title: 'Participant Limit',
-        message: participantCapacityHint || 'Enter a whole number of participants.',
+        message: expectedParticipantCount <= 0 || !Number.isInteger(expectedParticipantCount)
+          ? 'Enter a positive whole number of participants.'
+          : `The selected facility can accommodate up to ${selectedFacilityCapacity.max} participants.`,
         isSuccess: false
       });
       fieldRefs.current.expectedParticipants?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -908,6 +985,11 @@ const Reservation = () => {
         || calculateEndDate(liveConflict.eventDate, liveConflict.days || 1);
       setConflictEvent({
         eventName: liveConflict.eventName || 'Untitled Event',
+        facilityName: liveConflict.conflictFacilityName,
+        conflictType: liveConflict.conflictType,
+        occupiedCapacity: liveConflict.occupiedCapacity,
+        requestedCapacity: liveConflict.requestedCapacity,
+        maxCapacity: liveConflict.maxCapacity,
         date: conflictEndDate !== liveConflict.eventDate
           ? `${liveConflict.eventDate} - ${conflictEndDate}`
           : liveConflict.eventDate || 'N/A',
@@ -927,13 +1009,22 @@ const Reservation = () => {
           id: document.id,
           ...document.data()
         }));
-        const conflictingReservation = findFacilityConflict(reservations, conflictRequest);
+        const conflictingReservation = findFacilityConflict(
+          reservations,
+          conflictRequest,
+          inventoryFacilities
+        );
 
         if (conflictingReservation) {
           const conflictEndDate = conflictingReservation.endDate
             || calculateEndDate(conflictingReservation.eventDate, conflictingReservation.days || 1);
           setConflictEvent({
             eventName: conflictingReservation.eventName || 'Untitled Event',
+            facilityName: conflictingReservation.conflictFacilityName,
+            conflictType: conflictingReservation.conflictType,
+            occupiedCapacity: conflictingReservation.occupiedCapacity,
+            requestedCapacity: conflictingReservation.requestedCapacity,
+            maxCapacity: conflictingReservation.maxCapacity,
             date: conflictEndDate !== conflictingReservation.eventDate
               ? `${conflictingReservation.eventDate} - ${conflictEndDate}`
               : conflictingReservation.eventDate || 'N/A',
@@ -985,12 +1076,13 @@ const Reservation = () => {
             batch.update(doc(db, 'equipments', eqId), { lastUpdated: updateTimestamp });
           }
         }
+
         await batch.commit();
       } catch (inventoryErr) {
         console.warn("Inventory update skipped due to permissions:", inventoryErr);
       }
 
-      handleDiscard(); 
+      handleDiscard(true);
       setCustomAlert({
         title: 'Success',
         message: `Reservation submitted successfully! Your Reference No. is ${generatedRefNo}.`,
@@ -1010,7 +1102,22 @@ const Reservation = () => {
   };
 
   return (
-    <div className="reservation-container">
+    <div
+      className={`reservation-container ${isSubmitting ? 'is-submitting' : ''}`}
+      aria-busy={isSubmitting}
+      onKeyDownCapture={(event) => {
+        if (isSubmitting) event.preventDefault();
+      }}
+    >
+      {isSubmitting && (
+        <div className="reservation-submitting-overlay" role="status" aria-live="assertive">
+          <div className="reservation-loading-screen">
+            <span className="reservation-submitting-spinner" aria-hidden="true" />
+            <strong>Submitting reservation</strong>
+            <span>Please wait while we process your request.</span>
+          </div>
+        </div>
+      )}
       
       <div className="form-header">
         <div className="title">
@@ -1100,6 +1207,7 @@ const Reservation = () => {
                     type="text" 
                     value={formData.endorserName} 
                     onChange={(e) => handleInputChange('endorserName', e.target.value)} 
+                    pattern="[A-Za-z ]*"
                     onFocus={() => setShowEndorserDropdown(formData.endorserName.length > 0)}
                     onBlur={() => setTimeout(() => setShowEndorserDropdown(false), 200)}
                     maxLength={50}
@@ -1172,8 +1280,10 @@ const Reservation = () => {
             ) : (
               inventoryFacilities.map((item) => {
                 const isSelected = formData.facilities.includes(item.id);
-                const isAtLimit = formData.facilities.length >= 1 && !isSelected;
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance' || isAtLimit;
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
+                const maxCapacity = getFacilityCapacityLimits(item).max;
+
+                const displayCapacityLeft = getAvailableFacilityCapacity(item);
 
                 return (
                   <label
@@ -1195,8 +1305,15 @@ const Reservation = () => {
                       <span className="facility-meta">
                         {[item.location, getFacilityCapacityLabel(item)].filter(Boolean).join(' | ')}
                       </span>
-                      <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
-                        ● {item.status}
+                      <span className="facility-availability">
+                        <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
+                          ● {item.status}
+                        </span>
+                        {maxCapacity !== null && item.status?.toLowerCase() === 'available' && (
+                          <span className="facility-capacity-left">
+                            {displayCapacityLeft} / {maxCapacity} capacity left
+                          </span>
+                        )}
                       </span>
                     </div>
                   </label>
@@ -1229,7 +1346,7 @@ const Reservation = () => {
             ) : (
               mappedEquipmentList.map((item) => {
                 const count = selectedEquip[item.id] || 0;
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
+                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance' || !hasFacility;
                 const isAvailable = !isLocked && item.computedAvailable > 0;
 
                 return (
@@ -1289,6 +1406,7 @@ const Reservation = () => {
               type="text" 
               value={formData.eventName} 
               onChange={(e) => handleInputChange('eventName', e.target.value)} 
+              pattern="[A-Za-z ]*"
               maxLength={75}
               placeholder="e.g. Annual General Assembly" 
               className={missingFields.eventName ? 'input-error' : ''}
@@ -1305,16 +1423,20 @@ const Reservation = () => {
               <i className="ph ph-users"></i>
               <input 
               type="number"
+              min="1"
               step="1"
-              min={selectedFacilityCapacity.min ?? undefined}
               max={selectedFacilityCapacity.max ?? undefined}
               value={formData.expectedParticipants}
-              onChange={(e) => handleInputChange('expectedParticipants', e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                if (value === '' || (/^\d+$/.test(value) && Number(value) > 0)) {
+                  handleInputChange('expectedParticipants', value);
+                }
+              }}
               placeholder="e.g. 150"
               className={missingFields.expectedParticipants || participantCountOutOfRange ? 'input-error' : ''}
             />
             </div>
-            {participantCapacityHint && <span className="helper-text">{participantCapacityHint}</span>}
           </div>
 
           {/* Row 2 Left: Event Type & Taken Schedules */}
@@ -1507,15 +1629,33 @@ const Reservation = () => {
 
           {liveConflict && (
             <div className="schedule-conflict-notice full-width" role="alert" aria-live="assertive">
-              <strong>Schedule conflict — this reservation cannot be submitted.</strong>
+              <strong>
+                {liveConflict.conflictType === 'capacity'
+                  ? 'Facility capacity exceeded — this reservation cannot be submitted.'
+                  : 'Schedule conflict — this reservation cannot be submitted.'}
+              </strong>
+              <span><strong>Conflicting facility:</strong> {liveConflict.conflictFacilityName}.</span>
               <span>
-                {liveConflict.eventName || 'Another reservation'} already uses the selected facility
-                {' '}from {liveConflict.eventDate || 'an overlapping date'}
+                {liveConflict.eventName || 'Another reservation'} is scheduled from{' '}
+                {liveConflict.eventDate || 'an overlapping date'}
                 {liveConflictEndDate && liveConflictEndDate !== liveConflict.eventDate
-                  ? ` to ${liveConflictEndDate}`
-                  : ''} at {liveConflict.startTime}–{liveConflict.endTime}.
-                {' '}Choose a different date, time, or facility.
+                  ? ` to ${liveConflictEndDate}` : ''} at{' '}
+                {liveConflict.startTime}–{liveConflict.endTime}.
               </span>
+              {liveConflict.conflictType === 'capacity' && (
+                <span>
+                  {liveConflict.occupiedCapacity} of {liveConflict.maxCapacity} participants are already
+                  {' '}reserved during this time. Adding {liveConflict.requestedCapacity} would exceed
+                  {' '}the facility maximum by{' '}
+                  {liveConflict.occupiedCapacity + liveConflict.requestedCapacity - liveConflict.maxCapacity}.
+                </span>
+              )}
+              {liveConflict.conflictType === 'unknown-capacity' && (
+                <span>
+                  The existing reservation does not have a valid participant count, so the facility’s
+                  {' '}remaining capacity cannot be verified.
+                </span>
+              )}
             </div>
           )}
 
@@ -1618,7 +1758,7 @@ const Reservation = () => {
       </div>
 
       <div className="form-actions">
-        <button className="btn-outline" onClick={handleDiscard}>
+        <button className="btn-outline" onClick={() => handleDiscard()}>
           <i className="ph ph-trash"></i> Discard Form
         </button>
         <div className="right-actions">
@@ -1637,7 +1777,7 @@ const Reservation = () => {
 
       {/* Custom React Modal for General Alerts */}
       {customAlert && (
-        <div className="modal-overlay">
+        <div className={`modal-overlay ${customAlert.isSuccess ? 'reservation-success-overlay' : ''}`}>
           <div className="modal-card">
             <h3 className={customAlert.isSuccess ? 'modal-title success' : 'modal-title error'}>
               {customAlert.title}
@@ -1660,10 +1800,22 @@ const Reservation = () => {
           <div className="modal-card">
             <h3 className="modal-title error">Schedule Conflict</h3>
             <p className="modal-message">
-              The selected facility or room is already reserved during the selected multi-day time window
-              {conflictEvent && (
-                <> by <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time})</>
-              )}. Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
+              {conflictEvent?.conflictType === 'capacity'
+                ? <>
+                    <strong>{conflictEvent.facilityName}</strong> has a capacity conflict with{' '}
+                    <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time}).
+                  </>
+                : <>
+                    The conflict is with <strong>{conflictEvent?.facilityName || 'the selected facility'}</strong>,
+                    {' '}which is already reserved during the selected multi-day time window
+                    {conflictEvent && (
+                      <> by <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time})</>
+                    )}.
+                  </>}
+              {conflictEvent?.conflictType === 'capacity' && (
+                <>. {conflictEvent.occupiedCapacity} of {conflictEvent.maxCapacity} participants are already reserved, and adding {conflictEvent.requestedCapacity} would exceed the maximum.</>
+              )}
+              {' '}Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
             </p>
             <div className="modal-actions">
               <button onClick={() => { setShowOverlapWarning(false); setConflictEvent(null); }} className="modal-button">
