@@ -25,6 +25,7 @@ export default function App() {
   const navigate = useNavigate(); 
   const location = useLocation(); 
   const initialRedirectDone = useRef(false);
+  const isLoggingOut = useRef(false);
 
   // --- AUTO-CLOSE SIDEBAR ON NAVIGATION ---
   useEffect(() => {
@@ -58,6 +59,9 @@ export default function App() {
     // 1. Let Firebase automatically detect the returned session
     // 1. Let Firebase automatically detect the returned session
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+
+      if (isLoggingOut.current) return;
+
       if (user) {
         
         // --- NEW: Check if user logged in via Email/Password (Super Admin) ---
@@ -237,6 +241,8 @@ export default function App() {
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
         onLogout={async () => {
+          isLoggingOut.current = true;
+
           // 1. Clear local storage cache
           if (auth.currentUser) {
             localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
@@ -252,6 +258,7 @@ export default function App() {
           // 4. Delay the Firebase logout slightly so React finishes unmounting 
           setTimeout(async () => {
             await signOut(auth);
+            isLoggingOut.current = false;
           }, 150); // Increased timeout to ensure full unmount
         }} 
         userRole={userRole} 
