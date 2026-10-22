@@ -210,7 +210,7 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [navigate, location.pathname]); 
+  }, [navigate]); 
 
   // --- LOADING SCREEN ---
   if (isAuthLoading) {

@@ -19,6 +19,7 @@ const formatName = (fullName) => {
 
 const Approval = ({ currentUserRole = '' }) => {
     const [currentUser, setCurrentUser] = useState(null);
+    const isSuperAdmin = normalizeApprovalRoleKey(currentUserRole) === 'super admin';
 
     // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
@@ -59,11 +60,7 @@ const Approval = ({ currentUserRole = '' }) => {
                         const userData = userSnap.data();
                         const rawRole = userData.role || 'user';
                         const normalizedRole = normalizeApprovalRoleKey(rawRole);
-                        setApproverRoleKey(
-                            (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin'
-                                ? 'mis'
-                                : normalizedRole
-                        );
+                        setApproverRoleKey(isSuperAdmin ? 'super admin' : normalizedRole);
                     }
                 } catch (err) {
                     console.error("Failed to fetch approver data", err);
@@ -71,7 +68,7 @@ const Approval = ({ currentUserRole = '' }) => {
             }
         });
         return () => unsubscribeAuth();
-    }, [currentUserRole]);
+    }, [currentUserRole, isSuperAdmin]);
 
     // --- GET CURRENT LOGGED-IN USER NAME ---
     const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};
@@ -108,10 +105,11 @@ const Approval = ({ currentUserRole = '' }) => {
             if (!approverRoleKey) return null;
             
             const myRecord = res.approvals?.[approverRoleKey];
-            if (myRecord?.status === 'approved') return 'approved';
-            if (myRecord?.status === 'rejected') return 'rejected';
+            if (!isSuperAdmin && myRecord?.status === 'approved') return 'approved';
+            if (!isSuperAdmin && myRecord?.status === 'rejected') return 'rejected';
 
-            if (res.status === 'Rejected' || res.status === 'Approved') return null;
+            if (['rejected', 'approved', 'to modify'].includes((res.status || '').toLowerCase().trim())) return null;
+            if (isSuperAdmin) return 'your-turn';
 
             const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
             const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
@@ -285,7 +283,7 @@ const Approval = ({ currentUserRole = '' }) => {
                             ✕
                         </button>
                         <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                            <PendingRequest data={selectedRequest.fullData} />
+                            <PendingRequest data={selectedRequest.fullData} isSuperAdmin={isSuperAdmin} />
                         </div>
                     </div>
                 </div>

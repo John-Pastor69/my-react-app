@@ -75,10 +75,24 @@ export const archiveExpiredPendingReservations = async (user) => {
   for (let index = 0; index < expiredReservations.length; index += 200) {
     const batch = writeBatch(db);
     expiredReservations.slice(index, index + 200).forEach(({ id, data }) => {
+      const expiredAt = now.toISOString();
+      const expirationLog = {
+        id: `expired-${id}`,
+        role: 'System',
+        badge: 'Expired',
+        date: expiredAt,
+        approverName: 'System',
+        text: 'Pending reservation expired after its scheduled start date and time.',
+        state: 'expired'
+      };
       batch.set(doc(db, 'archive', id), {
         ...data,
         status: 'Expired',
-        expiredAt: now.toISOString()
+        expiredAt,
+        historyLogs: [
+          ...(Array.isArray(data.historyLogs) ? data.historyLogs : []),
+          expirationLog
+        ]
       }, { merge: true });
       batch.delete(doc(db, 'reservations', id));
     });

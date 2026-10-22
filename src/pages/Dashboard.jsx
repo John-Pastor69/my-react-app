@@ -157,8 +157,9 @@ const Dashboard = ({ currentUserRole }) => {
       || user.email === currentUser?.email
   );
   const normalizedCurrentRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
-  const approverRoleKey = normalizedCurrentRole === 'super admin'
-    ? 'mis'
+  const isSuperAdmin = normalizedCurrentRole === 'super admin';
+  const approverRoleKey = isSuperAdmin
+    ? 'super admin'
     : normalizeApprovalRoleKey(currentUserRecord?.role);
   const dashboardRole = (currentUserRole || approverRoleKey)
     .toLowerCase()
@@ -194,11 +195,11 @@ const Dashboard = ({ currentUserRole }) => {
     if (!approverRoleKey) return false;
 
     const myRecord = reservation.approvals?.[approverRoleKey];
-    const reservationStatus = (reservation.status || 'pending').toLowerCase();
-    if (myRecord?.status === 'approved' || myRecord?.status === 'rejected') return false;
-    if (reservationStatus === 'rejected' || reservationStatus === 'approved') return false;
+    const reservationStatus = (reservation.status || 'pending').toLowerCase().trim();
+    if (!isSuperAdmin && (myRecord?.status === 'approved' || myRecord?.status === 'rejected')) return false;
+    if (['rejected', 'approved', 'to modify'].includes(reservationStatus)) return false;
 
-    if (APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) <= 0) return false;
+    if (!isSuperAdmin && APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) <= 0) return false;
 
     const requestor = usersData.find(
       (user) => user.email === reservation.userEmail || user.uid === reservation.userId
@@ -207,14 +208,14 @@ const Dashboard = ({ currentUserRole }) => {
     const isStaffRequestor = requestorRole !== 'requestor' && requestorRole !== 'user';
     const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker';
 
-    if (approverRoleKey === 'endorser') {
+    if (!isSuperAdmin && approverRoleKey === 'endorser') {
       if (isStaffRequestor || !reservation.endorserName) return false;
       if (normalizeName(reservation.endorserName).toLowerCase() !== normalizeName(currentUserRecord?.name).toLowerCase()) {
         return false;
       }
     }
 
-    return isApprovalStepReady(reservation.approvals, approverRoleKey, {
+    return isSuperAdmin || isApprovalStepReady(reservation.approvals, approverRoleKey, {
       hasEndorser: Boolean(reservation.endorserName),
       isStaffRequestor,
       isRoomCheckerRequestor,
@@ -224,9 +225,9 @@ const Dashboard = ({ currentUserRole }) => {
     const firstDate = parseDate(first.createdAt || first.eventDate)?.getTime() || 0;
     const secondDate = parseDate(second.createdAt || second.eventDate)?.getTime() || 0;
     return secondDate - firstDate;
-  }), [reservationsData, usersData, approverRoleKey, currentUserRecord]);
+  }), [reservationsData, usersData, approverRoleKey, currentUserRecord, isSuperAdmin]);
   const pendingApprovals = pendingApprovalReservations.length;
-  const canReviewApprovals = APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
+  const canReviewApprovals = isSuperAdmin || APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
   const matchingUsers = useMemo(() => {
     const query = userSearchQuery.trim().toLowerCase();
     if (!query) return [];

@@ -10,8 +10,15 @@ import '../styles/TopBar.scss';
 // Helper function to format timestamp into "X ago"
 const timeAgo = (dateInput) => {
   if (!dateInput) return 'Just now';
-  const date = new Date(dateInput);
+  const normalizedDateInput = typeof dateInput === 'string'
+    ? dateInput.replace(/\s+at\s+/i, ' ')
+    : dateInput;
+  const date = typeof normalizedDateInput?.toDate === 'function'
+    ? normalizedDateInput.toDate()
+    : new Date(normalizedDateInput);
+  if (Number.isNaN(date.getTime())) return 'Just now';
   const seconds = Math.floor((new Date() - date) / 1000);
+  if (seconds < 0) return 'Just now';
   let interval = seconds / 31536000;
   if (interval > 1) return Math.floor(interval) + " years ago";
   interval = seconds / 2592000;
@@ -202,16 +209,24 @@ const TopBar = ({ toggleSidebar }) => {
       
       // --- 1. REQUESTOR NOTIFICATIONS ---
       if (res.userId === uid || res.userEmail === email) {
-        const status = (res.status || '').toLowerCase();
-        if (status === 'approved' || status === 'rejected' || status === 'cancelled' || status === 'expired') {
+        const status = (res.status || '').toLowerCase().trim();
+        if (['approved', 'rejected', 'cancelled', 'expired', 'to modify'].includes(status)) {
+          const isToModify = status === 'to modify';
           const notificationType = status === 'approved'
             ? 'approved'
-            : status === 'rejected' ? 'rejected' : status;
-          const notificationTitle = status.charAt(0).toUpperCase() + status.slice(1);
+            : status === 'rejected' ? 'rejected' : isToModify ? 'to_modify' : status;
+          const notificationTitle = isToModify
+            ? 'To Modify'
+            : status.charAt(0).toUpperCase() + status.slice(1);
+          const modificationRemark = typeof res.modificationRemark === 'string'
+            ? res.modificationRemark.trim()
+            : '';
           const message = status === 'approved'
             ? `Your reservation for ${res.eventName || 'an event'} has been approved.`
             : status === 'rejected'
               ? `Your request for ${res.eventName || 'an event'} was declined.`
+              : isToModify
+                ? `Your reservation for ${res.eventName || 'an event'} was returned for modification.${modificationRemark ? ` Remarks: ${modificationRemark}` : ''}`
               : status === 'cancelled'
                 ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
                 : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`;
@@ -219,10 +234,17 @@ const TopBar = ({ toggleSidebar }) => {
             ? res.cancelledAt || res.updatedAt || res.createdAt
             : status === 'expired'
               ? res.expiredAt || res.updatedAt || res.createdAt
+              : isToModify
+                ? res.modificationRequestedAt || res.updatedAt || res.createdAt
               : res.updatedAt || res.createdAt;
+          const latestModificationLog = isToModify && Array.isArray(res.historyLogs)
+            ? [...res.historyLogs].reverse().find(log => log.state === 'to_modify')
+            : null;
 
           newNotifs.push({
-            id: `${res.id}-${status}`,
+            id: isToModify
+              ? `${res.id}-to_modify-${latestModificationLog?.id || notificationTime || ''}`
+              : `${res.id}-${status}`,
             type: notificationType,
             title: notificationTitle,
             message,
@@ -236,7 +258,12 @@ const TopBar = ({ toggleSidebar }) => {
       // --- 2. APPROVER NOTIFICATIONS ---
       const myIndex = APPROVAL_ROLE_HIERARCHY.indexOf(myRoleKey);
       
-      if (myIndex > 0 && res.status !== 'Rejected' && res.status !== 'Approved' && !isExpired(res.eventDate, res.endTime, res.days)) {
+      const reservationStatus = (res.status || '').toLowerCase().trim();
+      if (
+        myIndex > 0
+        && !['rejected', 'approved', 'to modify'].includes(reservationStatus)
+        && !isExpired(res.eventDate, res.endTime, res.days)
+      ) {
         
         if (myRoleKey === 'endorser' && res.endorserEmail !== email) {
           return; 
@@ -267,8 +294,6 @@ const TopBar = ({ toggleSidebar }) => {
     });
 
     historyData.forEach((res) => {
-      if (res.userId !== uid && res.userEmail !== email) return;
-
       const status = (res.status || '').toLowerCase();
       if (status !== 'expired' && status !== 'cancelled') return;
 
@@ -276,17 +301,36 @@ const TopBar = ({ toggleSidebar }) => {
       const notificationTime = isCancelled
         ? res.cancelledAt || res.updatedAt || res.createdAt
         : res.expiredAt || res.updatedAt || res.createdAt;
-      newNotifs.push({
-        id: `${res.id}-${status}`,
-        type: status,
-        title: isCancelled ? 'Cancelled' : 'Expired',
-        message: isCancelled
-          ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
-          : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`,
-        time: notificationTime,
-        rawDate: new Date(notificationTime || 0),
-        fullData: res
-      });
+
+      if (res.userId === uid || res.userEmail === email) {
+        newNotifs.push({
+          id: `${res.id}-${status}`,
+          type: status,
+          title: isCancelled ? 'Cancelled' : 'Expired',
+          message: isCancelled
+            ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
+            : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`,
+          time: notificationTime,
+          rawDate: new Date(notificationTime || 0),
+          fullData: res
+        });
+      }
+
+      if (isCancelled && ['mis', 'mis admin', 'building admin', 'super admin'].includes(myRoleKey)) {
+        const cancellationRemark = typeof res.cancellationRemark === 'string'
+          ? res.cancellationRemark.trim()
+          : '';
+        const cancelledBy = res.cancelledByEmail || res.fullName || 'the requestor';
+        newNotifs.push({
+          id: `${res.id}-cancelled-admin-${res.cancelledAt || res.updatedAt || ''}`,
+          type: 'cancelled',
+          title: 'Reservation Cancelled',
+          message: `${res.eventName || 'A reservation'} was cancelled by ${cancelledBy}.${cancellationRemark ? ` Remark: ${cancellationRemark}` : ''}`,
+          time: notificationTime,
+          rawDate: new Date(notificationTime || 0),
+          fullData: res
+        });
+      }
     });
 
     // Filter out notifications that the user explicitly cleared
@@ -383,6 +427,7 @@ const TopBar = ({ toggleSidebar }) => {
                           {notif.type === 'approved' && <div className="notif-avatar bg-green">✓</div>}
                           {notif.type === 'action' && <div className="notif-avatar bg-blue">ℹ</div>}
                           {notif.type === 'rejected' && <div className="notif-avatar bg-red">✕</div>}
+                          {notif.type === 'to_modify' && <div className="notif-avatar bg-yellow">✎</div>}
                           {notif.type === 'expired' && <div className="notif-avatar bg-charcoal">!</div>}
                           {notif.type === 'cancelled' && <div className="notif-avatar bg-gray">×</div>}
                           

@@ -47,6 +47,7 @@ const Profile = ({ currentUserRole }) => {
     avatarUrl: '',
     bannerUrl: ''
   });
+  const isSuperAdminProfile = formData.role.toLowerCase().trim().replace(/_/g, ' ') === 'super admin';
             
   // --- FETCH PROFILE DATA ON LOAD ---
   useEffect(() => {
@@ -397,10 +398,12 @@ const Profile = ({ currentUserRole }) => {
                 <label>LAST NAME</label>
                 <input type="text" name="lastName" value={formData.lastName} readOnly className="profile-readonly-input" />
               </div>
-              <div className="input-group full-width">
-                <label>EMAIL</label>
-                <input type="email" name="email" value={formData.email} readOnly className="profile-readonly-input" />
-              </div>
+              {!isSuperAdminProfile && (
+                <div className="input-group full-width">
+                  <label>EMAIL</label>
+                  <input type="email" name="email" value={formData.email} readOnly className="profile-readonly-input" />
+                </div>
+              )}
               <div className="input-group">
                 <label>ROLE</label>
                 <input type="text" name="role" value={formData.role} readOnly className="profile-readonly-input" />

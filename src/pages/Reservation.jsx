@@ -1,14 +1,18 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { 
   collection, 
   onSnapshot, 
   doc, 
   addDoc, 
+  arrayUnion,
+  deleteField,
   getDocs, 
   query, 
   where, 
   writeBatch, 
-  getDoc 
+  getDoc,
+  updateDoc
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
@@ -47,10 +51,10 @@ const canSkipReservationLeadTime = (role) => {
   return ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRole);
 };
 
-const getReservationDateMinimum = (role) => {
+const getReservationDateMinimum = (role, skipLeadTime = false) => {
   const minDate = new Date();
   minDate.setHours(0, 0, 0, 0);
-  if (!canSkipReservationLeadTime(role)) minDate.setDate(minDate.getDate() + 7);
+  if (!skipLeadTime && !canSkipReservationLeadTime(role)) minDate.setDate(minDate.getDate() + 7);
   return minDate;
 };
 
@@ -196,6 +200,7 @@ const getOverlappingFacilityReservations = (reservations, request, facilityId) =
   ) return [];
 
   return reservations.filter((reservation) => {
+    if (reservation.id === request.excludeReservationId) return false;
     const status = (reservation.status || '').toLowerCase().trim();
     if (['rejected', 'cancelled', 'expired', 'archived'].includes(status)) return false;
 
@@ -317,9 +322,13 @@ const calculateEndDate = (startDateStr, numDays) => {
 };
 
 const Reservation = () => {
+  const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const editReservationId = searchParams.get('edit');
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('requestor');
+  const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editReservationId));
 
   // --- FORM STATES ---
   const [formData, setFormData] = useState(initialFormState);
@@ -349,6 +358,7 @@ const Reservation = () => {
   const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
   const [reservationsLoaded, setReservationsLoaded] = useState(false);
+  const [editingReservation, setEditingReservation] = useState(null);
   const [dateError, setDateError] = useState('');
   const [daysDateError, setDaysDateError] = useState('');
   const [showCalendar, setShowCalendar] = useState(false);
@@ -357,6 +367,12 @@ const Reservation = () => {
   const [daysCalendarView, setDaysCalendarView] = useState(new Date());
   const [missingFields, setMissingFields] = useState({});
   const fieldRefs = useRef({});
+
+  useEffect(() => {
+    if (!editReservationId) return;
+
+    document.querySelector('.page-content')?.scrollTo(0, 0);
+  }, [editReservationId, editingReservation]);
 
   // --- ENDORSER DROPDOWN STATE ---
   const [endorsersList, setEndorsersList] = useState([]);
@@ -381,7 +397,8 @@ const Reservation = () => {
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const userData = userSnap.data();
-            setUserRole(userData.role?.toLowerCase() || 'requestor');
+            const normalizedRole = (userData.role || 'requestor').toLowerCase().trim().replace(/_/g, ' ');
+            setUserRole(normalizedRole);
             
             const cleanName = formatName(userData.name);
 
@@ -389,7 +406,9 @@ const Reservation = () => {
               ...prev,
               fullName: prev.fullName || cleanName,
               contactNumber: prev.contactNumber || userData.phone || '',
-              emailAddress: prev.emailAddress || userData.email || user.email || '',
+              emailAddress: normalizedRole === 'super admin'
+                ? 'null@gmail.com'
+                : prev.emailAddress || userData.email || user.email || '',
             }));
           }
         } catch (err) {
@@ -402,8 +421,85 @@ const Reservation = () => {
     return () => unsubscribeAuth();
   }, []);
 
+  useEffect(() => {
+    if (!editReservationId) {
+      setIsLoadingEdit(false);
+      setEditingReservation(null);
+      return;
+    }
+    if (!currentUser) return;
+
+    let isActive = true;
+
+    const loadReservationForEdit = async () => {
+      try {
+        const reservationSnap = await getDoc(doc(db, 'reservations', editReservationId));
+        if (!reservationSnap.exists()) {
+          throw new Error('The reservation could not be found.');
+        }
+
+        const reservation = { id: reservationSnap.id, ...reservationSnap.data() };
+        const isOwner = reservation.userId === currentUser.uid
+          || reservation.userEmail === currentUser.email;
+        if (!isOwner || (reservation.status || '').toLowerCase().trim() !== 'to modify') {
+          throw new Error('This reservation is not available for modification.');
+        }
+
+        if (!isActive) return;
+
+        const startDate = reservation.eventDate || reservation.date || '';
+        const endDate = reservation.endDate
+          || calculateEndDate(startDate, reservation.days || 1);
+        setEditingReservation(reservation);
+        setFormData({
+          fullName: reservation.fullName || '',
+          contactNumber: reservation.contactNumber || '',
+          emailAddress: reservation.emailAddress || '',
+          eventName: sanitizeAlphabeticName(reservation.eventName || ''),
+          expectedParticipants: String(reservation.expectedParticipants || ''),
+          eventType: Array.isArray(reservation.eventType)
+            ? reservation.eventType.slice(0, 1)
+            : reservation.eventType ? [reservation.eventType] : [],
+          purpose: reservation.purpose || '',
+          facilities: reservation.facilities || [],
+          specificRoom: reservation.specificRoom || '',
+          otherEquipment: reservation.otherEquipment || '',
+          airconOnTime: reservation.airconOnTime || '',
+          airconOffTime: reservation.airconOffTime || '',
+          endorserName: sanitizeAlphabeticName(reservation.endorserName || ''),
+          endorserDesignation: reservation.endorserDesignation || '',
+          endorserEmail: reservation.endorserEmail || ''
+        });
+        setEventDate(startDate);
+        setEndDateInput(endDate);
+        setStartTime(formatTimeForPicker(reservation.startTime || ''));
+        setEndTime(formatTimeForPicker(reservation.endTime || ''));
+        setDays(Number(reservation.days) || 1);
+        setAircon(Boolean(reservation.aircon));
+        setSelectedEquip(reservation.selectedEquip || {});
+      } catch (error) {
+        console.error('Failed to load reservation for modification:', error);
+        if (isActive) {
+          setCustomAlert({
+            title: 'Unable to Edit Reservation',
+            message: error.message || 'The reservation could not be loaded.',
+            isSuccess: false
+          });
+        }
+      } finally {
+        if (isActive) setIsLoadingEdit(false);
+      }
+    };
+
+    loadReservationForEdit();
+    return () => {
+      isActive = false;
+    };
+  }, [currentUser, editReservationId]);
+
   // --- LOAD DRAFT ON MOUNT ---
   useEffect(() => {
+    if (editReservationId) return;
     const draft = localStorage.getItem('reservationDraft');
     if (draft) {
       try {
@@ -430,7 +526,7 @@ const Reservation = () => {
         console.error("Failed to parse draft", e);
       }
     }
-  }, []);
+  }, [editReservationId]);
 
   // Reset Draft toggle when form changes
   useEffect(() => {
@@ -499,7 +595,7 @@ const Reservation = () => {
     reservationsData.forEach(res => {
       const statusLower = (res.status || '').toLowerCase().trim();
       if (statusLower !== 'rejected' && statusLower !== 'cancelled') {
-        if (res.selectedEquip && res.selectedEquip[item.id]) {
+        if (res.id !== editReservationId && res.selectedEquip && res.selectedEquip[item.id]) {
           reservedCount += Number(res.selectedEquip[item.id]);
         }
       }
@@ -528,7 +624,8 @@ const Reservation = () => {
     startTime,
     endTime,
     facilities: formData.facilities,
-    expectedParticipants: formData.expectedParticipants
+    expectedParticipants: formData.expectedParticipants,
+    excludeReservationId: editReservationId
   };
   const getAvailableFacilityCapacity = (facility) => {
     const maxCapacity = getFacilityCapacityLimits(facility).max;
@@ -690,10 +787,10 @@ const Reservation = () => {
         const [m, d, y] = val.split('/').map(Number);
         const inputDate = new Date(y, m - 1, d);
         
-        const minDate = getReservationDateMinimum(userRole);
+        const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
         
         if (inputDate < minDate) {
-          setDateError(canSkipReservationLeadTime(userRole)
+          setDateError(canSkipReservationLeadTime(userRole) || editingReservation
             ? 'Date cannot be in the past'
             : 'Must be at least 7 days from today');
         } else {
@@ -722,10 +819,10 @@ const Reservation = () => {
         const [m, d, y] = val.split('/').map(Number);
         const inputDate = new Date(y, m - 1, d);
         
-        const minDate = getReservationDateMinimum(userRole);
+        const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
         
         if (inputDate < minDate) {
-          setDaysDateError(canSkipReservationLeadTime(userRole)
+          setDaysDateError(canSkipReservationLeadTime(userRole) || editingReservation
             ? 'Date cannot be in the past'
             : 'Must be at least 7 days from today');
         } else {
@@ -798,7 +895,7 @@ const Reservation = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
 
-    const minDate = getReservationDateMinimum(userRole);
+    const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-${i}`} className="calendar-day empty"></div>
@@ -839,7 +936,7 @@ const Reservation = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
 
-    const minDate = getReservationDateMinimum(userRole);
+    const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-days-${i}`} className="calendar-day empty"></div>
@@ -1048,16 +1145,17 @@ const Reservation = () => {
         }
       }
 
-      const generatedRefNo = `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
       const calculatedEndDate = endDateInput || calculateEndDate(eventDate, days);
+      const generatedRefNo = editingReservation
+        ? editingReservation.refNo
+        : `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
 
-      // 2. SUBMIT RESERVATION WITH END DATE
-      await addDoc(collection(db, 'reservations'), {
+      const reservationUpdate = {
         refNo: generatedRefNo,
         ...formData,
-        userId: currentUser.uid,        
-        userEmail: currentUser.email,   
-        userRole: userRole,
+        userId: editingReservation?.userId || currentUser.uid,
+        userEmail: editingReservation?.userEmail || currentUser.email,
+        userRole: editingReservation?.userRole || userRole,
         eventDate,
         endDate: calculatedEndDate,
         startTime: formatTimeForStorage(startTime),
@@ -1067,8 +1165,38 @@ const Reservation = () => {
         aircon,
         selectedEquip,
         status: 'Pending',
-        createdAt: new Date().toISOString()
-      });
+        updatedAt: new Date().toISOString()
+      };
+
+      if (editingReservation) {
+        const resubmissionLog = {
+          id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
+          role: 'Requestor',
+          badge: 'Resubmitted',
+          date: new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          approverName: formData.fullName,
+          text: 'Reservation updated and resubmitted for approval.',
+          state: 'pending'
+        };
+        await updateDoc(doc(db, 'reservations', editingReservation.id), {
+          ...reservationUpdate,
+          modificationRemark: deleteField(),
+          modificationRequestedBy: deleteField(),
+          modificationRequestedAt: deleteField(),
+          historyLogs: arrayUnion(resubmissionLog)
+        });
+      } else {
+        await addDoc(collection(db, 'reservations'), {
+          ...reservationUpdate,
+          createdAt: new Date().toISOString()
+        });
+      }
 
       if (formData.endorserEmail) {
         await sendReservationEmail(
@@ -1095,10 +1223,14 @@ const Reservation = () => {
       }
 
       handleDiscard(true);
+      if (editingReservation) setEditingReservation(null);
       setCustomAlert({
         title: 'Success',
-        message: `Reservation submitted successfully! Your Reference No. is ${generatedRefNo}.`,
-        isSuccess: true
+        message: editingReservation
+          ? `Reservation ${generatedRefNo} has been updated and resubmitted for approval.`
+          : `Reservation submitted successfully! Your Reference No. is ${generatedRefNo}.`,
+        isSuccess: true,
+        returnToSchedule: Boolean(editingReservation)
       });
 
     } catch (error) {
@@ -1133,12 +1265,21 @@ const Reservation = () => {
       
       <div className="form-header">
         <div className="title">
-          <i className="ph"></i>Reservation Form
+          <i className="ph"></i>{editReservationId ? 'Modify Reservation' : 'Reservation Form'}
         </div>
         <div className="required-note">
           All fields marked <span className="req">*</span> are required
         </div>
       </div>
+      {editingReservation?.modificationRemark && (
+        <div className="info-box modification-request">
+          <i className="ph ph-info"></i>
+          <div>
+            <strong>Requested changes:</strong>{' '}
+            <span>{editingReservation.modificationRemark}</span>
+          </div>
+        </div>
+      )}
 
       {/* Requestor & Endorser Information */}
       <div className="form-card">
@@ -1785,19 +1926,26 @@ const Reservation = () => {
       </div>
 
       <div className="form-actions">
-        <button className="btn-outline" onClick={() => handleDiscard()}>
-          <i className="ph ph-trash"></i> Discard Form
+        <button
+          className="btn-outline"
+          onClick={() => editReservationId ? navigate('/schedule') : handleDiscard()}
+          disabled={isSubmitting}
+        >
+          <i className={`ph ${editingReservation ? 'ph-arrow-left' : 'ph-trash'}`}></i>
+          {editReservationId ? 'Cancel Changes' : 'Discard Form'}
         </button>
         <div className="right-actions">
-          <button className="btn-outline" onClick={handleSaveDraft}>
+          {!editReservationId && (
+            <button className="btn-outline" onClick={handleSaveDraft}>
             <i className="ph ph-floppy-disk"></i> {isDraftSaved ? '✓ Draft Saved' : 'Save Draft'}
-          </button>
+            </button>
+          )}
           <button 
             className="btn-primary" 
             onClick={handleSubmit} 
-            disabled={!certified || isSubmitting || !!liveConflict}
+            disabled={!certified || isSubmitting || !!liveConflict || isLoadingEdit || Boolean(editReservationId && !editingReservation)}
           >
-            {isSubmitting ? 'Submitting...' : 'Submit Reservation'}
+            {isLoadingEdit ? 'Loading Reservation...' : isSubmitting ? 'Submitting...' : editingReservation ? 'Resubmit Reservation' : 'Submit Reservation'}
           </button>
         </div>
       </div>
@@ -1813,7 +1961,14 @@ const Reservation = () => {
               {customAlert.message}
             </p>
             <div className="modal-actions">
-              <button onClick={() => setCustomAlert(null)} className="modal-button">
+              <button
+                onClick={() => {
+                  const returnToSchedule = customAlert.returnToSchedule;
+                  setCustomAlert(null);
+                  if (returnToSchedule) navigate('/schedule');
+                }}
+                className="modal-button"
+              >
                 OK
               </button>
             </div>

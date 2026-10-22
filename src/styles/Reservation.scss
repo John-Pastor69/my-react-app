@@ -403,6 +403,23 @@ $orange-main: #F59E0B;
       i { color: $blue-main; } 
     }
 
+    &.modification-request {
+      margin: 0 auto 1.0667rem;
+      max-width: 87.5rem;
+      color: #B91C1C;
+      background: #FEF2F2;
+      border: 1px solid #FECACA;
+
+      > div {
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      i {
+        color: $red-main;
+      }
+    }
+
     &.duration-box { 
       margin-top: 1rem; 
       margin-bottom: 0; 

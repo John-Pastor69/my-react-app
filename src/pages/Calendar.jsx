@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from "../Firebase";
-import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, writeBatch } from "firebase/firestore"; 
+import { collection, onSnapshot, doc, getDoc, writeBatch } from "firebase/firestore";
 import "../styles/Calendar.scss";
 import ReservationDetails from './ReservationDetails';
+import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -83,6 +84,7 @@ const Calendar = ({ currentUserRole }) => {
   const [archiveFilter, setArchiveFilter] = useState('All');
   const [archiveSort, setArchiveSort] = useState('Latest');
   const [itemToDelete, setItemToDelete] = useState(null);
+  const [deleteError, setDeleteError] = useState('');
 
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -130,17 +132,6 @@ const Calendar = ({ currentUserRole }) => {
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const resData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReservationsData(resData);
-
-      resData.forEach(async (res) => {
-        if (res.status === 'Approved' || (res.status || '').toLowerCase() === 'approved') {
-          try {
-            const { id, approvals, historyLogs, ...cleanHistoryData } = res;
-            await setDoc(doc(db, 'archive', id), cleanHistoryData, { merge: true });
-          } catch (err) {
-            console.error('Failed to back up approved reservation to archive:', err);
-          }
-        }
-      });
     }, (error) => console.error('Failed to load reservations:', error));
 
     const unsubHistory = onSnapshot(collection(db, 'archive'), (snapshot) => {
@@ -235,6 +226,31 @@ const Calendar = ({ currentUserRole }) => {
     return archiveSort === 'Latest' ? dateB - dateA : dateA - dateB;
   });
 
+  const archivedReservation = historySelectedRequest?.fullData;
+  const submittedAt = archivedReservation?.createdAt;
+  const submittedDate = submittedAt
+    ? (typeof submittedAt.toDate === 'function' ? submittedAt.toDate() : new Date(submittedAt))
+    : null;
+  const archiveDateSubmitted = submittedDate && !Number.isNaN(submittedDate.getTime())
+    ? submittedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+    : 'Unknown';
+  const archivedRequestorRole = (
+    archivedReservation?.userRole
+    || archivedReservation?.role
+    || 'requestor'
+  ).toLowerCase().trim();
+  const archiveTrackerSteps = archivedReservation
+    ? getApprovalTrackerSteps({
+      approvals: archivedReservation.approvals,
+      dateSubmitted: archiveDateSubmitted,
+      hasEndorser: Boolean(archivedReservation.endorserName),
+      isStaffRequestor: !['requestor', 'user'].includes(archivedRequestorRole),
+      isRoomCheckerRequestor: normalizeApprovalRoleKey(archivedRequestorRole) === 'room checker',
+      hasSpecificRoom: Boolean(archivedReservation.specificRoom?.trim()),
+      reservationStatus: archivedReservation.status
+    })
+    : [];
+
   const handleViewArchiveItem = (data) => {
     const facilityNames = (data.facilities || []).map(id => facilitiesMap[id]?.name || id);
     const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'N/A';
@@ -261,20 +277,28 @@ const Calendar = ({ currentUserRole }) => {
 
   const confirmDelete = async () => {
     if (!itemToDelete) return;
+    setDeleteError('');
     try {
       if (itemToDelete.type === 'single') {
-        await deleteDoc(doc(db, 'archive', itemToDelete.id));
-      } else if (itemToDelete.type === 'all') {
         const batch = writeBatch(db);
-        filteredHistory.forEach(item => {
-          batch.delete(doc(db, 'archive', item.id));
-        });
+        batch.delete(doc(db, 'archive', itemToDelete.id));
+        batch.delete(doc(db, 'reservations', itemToDelete.id));
         await batch.commit();
+      } else if (itemToDelete.type === 'all') {
+        for (let startIndex = 0; startIndex < filteredHistory.length; startIndex += 250) {
+          const batch = writeBatch(db);
+          filteredHistory.slice(startIndex, startIndex + 250).forEach(item => {
+            batch.delete(doc(db, 'archive', item.id));
+            batch.delete(doc(db, 'reservations', item.id));
+          });
+          await batch.commit();
+        }
       }
+      setItemToDelete(null);
     } catch (error) {
       console.error("Error deleting history:", error);
+      setDeleteError('Failed to delete reservation. Please try again.');
     }
-    setItemToDelete(null);
   };
 
   // 4. NAVIGATION CONTROLLERS
@@ -451,7 +475,10 @@ const Calendar = ({ currentUserRole }) => {
                   <option value="Latest">Latest First</option>
                   <option value="Oldest">Oldest First</option>
                 </select>
-                <button className="btn-danger" onClick={() => setItemToDelete({ type: 'all' })} disabled={filteredHistory.length === 0}>
+                <button className="btn-danger" onClick={() => {
+                  setDeleteError('');
+                  setItemToDelete({ type: 'all' });
+                }} disabled={filteredHistory.length === 0}>
                   Delete All
                 </button>
               </div>
@@ -476,7 +503,10 @@ const Calendar = ({ currentUserRole }) => {
                       </div>
                       <div className="item-actions">
                         <button className="btn-view" onClick={() => handleViewArchiveItem(item)}>View</button>
-                        <button className="btn-delete" onClick={() => setItemToDelete({ type: 'single', id: item.id })}>Delete</button>
+                        <button className="btn-delete" onClick={() => {
+                          setDeleteError('');
+                          setItemToDelete({ type: 'single', id: item.id });
+                        }}>Delete</button>
                       </div>
                     </div>
                   );
@@ -652,6 +682,17 @@ const Calendar = ({ currentUserRole }) => {
                     </div>
                   )}
 
+                  {historySelectedRequest.fullData.modificationRemark && (
+                    <div className="details-card">
+                      <h3 className="details-card-header">Requested Changes</h3>
+                      <div className="details-grid">
+                        <div className="details-full-width">
+                          <div className="details-value">{historySelectedRequest.fullData.modificationRemark}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="details-card">
                     <h3 className="details-card-header">🏢 Facility Details</h3>
                     <div className="details-grid">
@@ -685,6 +726,68 @@ const Calendar = ({ currentUserRole }) => {
                       </div>
                     </div>
                   )}
+
+                  <div className="details-card archive-tracker-card">
+                    <h3 className="details-card-header">📊 Approval Tracker</h3>
+                    <div className="archive-tracker-pipeline">
+                      {archiveTrackerSteps.map((step, index) => (
+                        <div key={step.key} className={`archive-tracker-step ${step.state}`}>
+                          {index < archiveTrackerSteps.length - 1 && <div className="archive-tracker-line" />}
+                          <div className="archive-tracker-circle">
+                            {step.state === 'approved' ? '✓' : step.state === 'rejected' ? '✕' : index + 1}
+                          </div>
+                          <div className="archive-tracker-title">{step.label}</div>
+                          <span className="archive-tracker-status">{step.status}</span>
+                          <div className="archive-tracker-date">{step.date}</div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="details-card archive-history-card">
+                    <h3 className="details-card-header">📑 Approval History &amp; Remarks</h3>
+                    <div className="archive-history-list">
+                      <div className="archive-history-entry approved">
+                        <strong>Requestor <span>Submitted</span></strong>
+                        <span>{archiveDateSubmitted}</span>
+                        <p>Reservation request submitted for {historySelectedRequest.title || 'Untitled Event'}.</p>
+                      </div>
+                      {(Array.isArray(historySelectedRequest.fullData.historyLogs)
+                        ? historySelectedRequest.fullData.historyLogs
+                        : []
+                      ).map((log, index) => (
+                        <div className={`archive-history-entry ${log.state || 'pending'}`} key={log.id || index}>
+                          <strong>
+                            {log.role || 'Approver'}
+                            {log.badge && <span>{log.badge}</span>}
+                          </strong>
+                          <span>{log.date || 'Date unavailable'}{log.approverName ? ` · ${log.approverName}` : ''}</span>
+                          <p>{log.text || 'No remarks provided.'}</p>
+                        </div>
+                      ))}
+                      {historySelectedRequest.fullData.cancellationRemark && (
+                        <div className="archive-history-entry cancelled">
+                          <strong>Cancellation Remark</strong>
+                          <span>{historySelectedRequest.fullData.cancelledAt || 'Date unavailable'}</span>
+                          <p>{historySelectedRequest.fullData.cancellationRemark}</p>
+                        </div>
+                      )}
+                      {historySelectedRequest.fullData.rejectionRemark && (
+                        <div className="archive-history-entry rejected">
+                          <strong>Rejection Remark</strong>
+                          <span>{historySelectedRequest.fullData.rejectedAt || 'Date unavailable'}</span>
+                          <p>{historySelectedRequest.fullData.rejectionRemark}</p>
+                        </div>
+                      )}
+                      {historySelectedRequest.fullData.expiredAt && (
+                        <div className="archive-history-entry pending">
+                          <strong>Reservation Expired</strong>
+                          <span>{historySelectedRequest.fullData.expiredAt}</span>
+                          <p>Pending reservation expired after its scheduled start date and time.</p>
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
 
                 <div className="details-right-column details-card">
@@ -717,11 +820,15 @@ const Calendar = ({ currentUserRole }) => {
             <h3 className="modal-title error">Confirm Deletion</h3>
             <p className="modal-message">
               {itemToDelete.type === 'all' 
-                ? "Are you sure you want to delete ALL matching history records? This cannot be undone." 
-                : "Are you sure you want to delete this record? This cannot be undone."}
+                ? "Are you sure you want to permanently delete ALL matching archive records and their calendar reservations? This cannot be undone."
+                : "Are you sure you want to permanently delete this archive record and its calendar reservation? This cannot be undone."}
             </p>
+            {deleteError && <p className="modal-message" role="alert">{deleteError}</p>}
             <div className="modal-actions" style={{ gap: '0.8rem' }}>
-              <button onClick={() => setItemToDelete(null)} className="btn-cancel">Cancel</button>
+              <button onClick={() => {
+                setDeleteError('');
+                setItemToDelete(null);
+              }} className="btn-cancel">Cancel</button>
               <button onClick={confirmDelete} className="btn-danger">Delete</button>
             </div>
           </div>

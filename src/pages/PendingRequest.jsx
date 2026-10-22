@@ -37,7 +37,7 @@ const formatEventDateRange = (startDateStr, numDays) => {
   return `${startFormatted} - ${endFormatted}`;
 };
 
-const PendingRequest = ({ data }) => {
+const PendingRequest = ({ data, isSuperAdmin = false }) => {
   // Live sync state for this specific reservation document
   const [currentData, setCurrentData] = useState(data);
   const [facilitiesMap, setFacilitiesMap] = useState({});
@@ -48,7 +48,8 @@ const PendingRequest = ({ data }) => {
   const [remarks, setRemarks] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
   const [customAlert, setCustomAlert] = useState(null); 
-  const [pendingAction, setPendingAction] = useState(null); // 'approved' or 'rejected' for confirmation modal
+  const [pendingAction, setPendingAction] = useState(null);
+  const [actionRemarkError, setActionRemarkError] = useState('');
   
   const [currentUser, setCurrentUser] = useState(null);
 
@@ -116,7 +117,7 @@ const PendingRequest = ({ data }) => {
             const cleanName = formatName(userData.name);
             const rawRole = userData.role || 'user';
             
-            let displayRole = rawRole.replace(/_/g, ' ').toLowerCase().trim();
+            let displayRole = isSuperAdmin ? 'super admin' : rawRole.replace(/_/g, ' ').toLowerCase().trim();
             if (displayRole === 'mis' || displayRole === 'osa') {
               displayRole = displayRole.toUpperCase();
             } else {
@@ -126,7 +127,7 @@ const PendingRequest = ({ data }) => {
             setApprover({
               name: cleanName,
               role: displayRole,
-              roleKey: normalizeApprovalRoleKey(rawRole),
+              roleKey: isSuperAdmin ? 'super admin' : normalizeApprovalRoleKey(rawRole),
               avatarUrl: userData.avatarUrl || '',
               initials: cleanName.charAt(0).toUpperCase()
             });
@@ -137,7 +138,7 @@ const PendingRequest = ({ data }) => {
       }
     });
     return () => unsubscribeAuth();
-  }, []);
+  }, [isSuperAdmin]);
   // 2. Fetch facilities and equipments mapping
   useEffect(() => {
     if (!currentUser) return; // Added safeguard
@@ -228,13 +229,26 @@ const PendingRequest = ({ data }) => {
     reservationStatus: currentData.status
   });
 
+  const nextSuperAdminStep = isSuperAdmin
+    ? trackerSteps.find((step) => (
+      step.key !== 'requestor'
+      && step.state !== 'approved'
+      && step.state !== 'rejected'
+    ))
+    : null;
+  const approvalRoleKey = isSuperAdmin ? nextSuperAdminStep?.key : approver.roleKey;
+  const approvalRoleLabel = isSuperAdmin && nextSuperAdminStep
+    ? `${nextSuperAdminStep.label} (Super Admin)`
+    : approver.role;
   const myStep = trackerSteps.find((step) => step.key === approver.roleKey);
-  const canAct = myStep?.state === 'your-turn'
-    && (currentData.status || '').toLowerCase() === 'pending'
-    && !currentData.approvals?.[approver.roleKey];
+  const canAct = (currentData.status || '').toLowerCase() === 'pending'
+    && (isSuperAdmin
+      ? Boolean(nextSuperAdminStep)
+      : !currentData.approvals?.[approver.roleKey] && myStep?.state === 'your-turn');
 
-  const myApprovalRecord = currentData.approvals?.[approver.roleKey];
-  const myApprovalStatus = myApprovalRecord?.status;
+  const myApprovalStatus = isSuperAdmin
+    ? null
+    : currentData.approvals?.[approver.roleKey]?.status;
 
   const baseHistory = [{
     role: 'Requestor',
@@ -248,8 +262,24 @@ const PendingRequest = ({ data }) => {
   const fullHistory = [...baseHistory, ...dbHistoryLogs];
 
   // --- ACTION HANDLERS ---
+  const requestActionConfirmation = (actionType) => {
+    if (['rejected', 'to_modify'].includes(actionType) && !remarks.trim()) {
+      setActionRemarkError('Enter a remark above before continuing.');
+      return;
+    }
+    setActionRemarkError('');
+    setPendingAction(actionType);
+  };
+
   const handleAction = async (actionType) => {
+    const remark = remarks.trim();
+    if (['rejected', 'to_modify'].includes(actionType) && !remark) {
+      setActionRemarkError('Enter a remark above before continuing.');
+      setPendingAction(null);
+      return;
+    }
     setPendingAction(null);
+    setActionRemarkError('');
     if (!canAct || isProcessing) return;
     setIsProcessing(true);
 
@@ -260,40 +290,59 @@ const PendingRequest = ({ data }) => {
       const dateTimeString = `${dateString} at ${timeString}`;
 
       const isApprove = actionType === 'approved';
+      const isReject = actionType === 'rejected';
+      const isToModify = actionType === 'to_modify';
       
       const newLog = {
         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
-        role: approver.role,
-        badge: isApprove ? 'Approved' : 'Rejected',
+        role: approvalRoleLabel,
+        badge: isApprove ? 'Approved' : isReject ? 'Rejected' : 'To Modify',
         date: dateTimeString,
         approverName: approver.name,
-        text: remarks.trim() ? remarks : (isApprove ? 'Approved reservation request without remarks.' : 'Rejected reservation request.'),
-        state: isApprove ? 'approved' : 'rejected'
+        text: remark || 'Approved reservation request without remarks.',
+        state: isApprove ? 'approved' : isReject ? 'rejected' : 'to_modify'
       };
 
-      const updatePayload = {
-        [`approvals.${approver.roleKey}.status`]: isApprove ? 'approved' : 'rejected',
-        [`approvals.${approver.roleKey}.date`]: dateString,
-        historyLogs: arrayUnion(newLog)
+      const updatePayload = { historyLogs: arrayUnion(newLog) };
+      const currentApprovalRecord = currentData.approvals?.[approvalRoleKey];
+      const archivedApprovals = {
+        ...currentData.approvals,
+        [approvalRoleKey]: {
+          ...(currentApprovalRecord && typeof currentApprovalRecord === 'object'
+            ? currentApprovalRecord
+            : {}),
+          status: isApprove ? 'approved' : 'rejected',
+          date: dateString
+        }
       };
 
-      if (!isApprove) {
+      if (isToModify) {
+        updatePayload.status = 'To Modify';
+        updatePayload.modificationRemark = remark;
+        updatePayload.modificationRequestedBy = approver.name;
+        updatePayload.modificationRequestedAt = dateTimeString;
+      } else {
+        updatePayload[`approvals.${approvalRoleKey}.status`] = isApprove ? 'approved' : 'rejected';
+        updatePayload[`approvals.${approvalRoleKey}.date`] = dateString;
+      }
+
+      if (isReject) {
         updatePayload.status = 'Rejected';
-      } else if (isApprove && approver.roleKey === 'school admin') {
+      } else if (isApprove && approvalRoleKey === 'school admin') {
         updatePayload.status = 'Approved';
       }
 
-      if (isApprove) {
+      if (isApprove || isToModify) {
         await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
       } else {
         const batch = writeBatch(db);
         batch.update(doc(db, 'reservations', currentData.id), updatePayload);
         const cleanHistoryData = { ...currentData };
         delete cleanHistoryData.id;
-        delete cleanHistoryData.approvals;
-        delete cleanHistoryData.historyLogs;
         batch.set(doc(db, 'archive', currentData.id), {
           ...cleanHistoryData,
+          approvals: archivedApprovals,
+          historyLogs: [...(currentData.historyLogs || []), newLog],
           status: 'Rejected',
           rejectionRemark: remarks.trim()
         }, { merge: true });
@@ -301,15 +350,16 @@ const PendingRequest = ({ data }) => {
       }
 
       // --- AUTO-SYNC TO HISTORY COLLECTION UPON SCHOOL ADMIN APPROVAL ---
-      if (isApprove && approver.roleKey === 'school admin') {
+      if (isApprove && approvalRoleKey === 'school admin') {
         try {
           const updatedResData = {
             ...currentData,
-            status: 'Approved'
+            status: 'Approved',
+            approvals: archivedApprovals,
+            historyLogs: [...(currentData.historyLogs || []), newLog]
           };
-          const { id, approvals, historyLogs, ...cleanHistoryData } = updatedResData;
+          const { id, ...cleanHistoryData } = updatedResData;
 
-          // Writes/overwrites directly to the archive collection excluding approvals and historyLogs, using the same reservation ID
           await setDoc(doc(db, 'archive', currentData.id), cleanHistoryData, { merge: true });
         } catch (historyErr) {
           console.error('Failed to back up approved reservation to archive:', historyErr);
@@ -319,8 +369,10 @@ const PendingRequest = ({ data }) => {
 
       // --- SEND EMAIL NOTIFICATION ---
       const emailMessage = isApprove 
-        ? `Your reservation has been approved by the ${approver.role}.` 
-        : `Your reservation has been rejected by the ${approver.role}. Remarks: ${remarks || 'None'}`;
+        ? `Your reservation has been approved by the ${approvalRoleLabel}.`
+        : isReject
+          ? `Your reservation has been rejected by the ${approvalRoleLabel}. Remarks: ${remark}`
+          : `Your reservation has been returned for modification by the ${approvalRoleLabel}. Please review the remarks: ${remark}`;
 
       await sendReservationEmail(
         email, 
@@ -343,7 +395,10 @@ const PendingRequest = ({ data }) => {
     }
   };
 
-  const bannerStatusClass = currentData.status === 'Approved' ? 'approved' : currentData.status === 'Rejected' ? 'rejected' : 'pending';
+  const normalizedReservationStatus = (currentData.status || '').toLowerCase().trim();
+  const bannerStatusClass = normalizedReservationStatus === 'approved'
+    ? 'approved'
+    : normalizedReservationStatus === 'rejected' ? 'rejected' : 'pending';
 
   return (
     <div className="mis-reservation-details-content">
@@ -352,7 +407,15 @@ const PendingRequest = ({ data }) => {
         <div className="banner-info">
           <span className="icon">🛡</span>
           <div>
-            <strong>Reservation {currentData.status === 'Rejected' ? 'Rejected' : currentData.status === 'Approved' ? 'Approved' : 'Pending for Approval'}</strong>
+            <strong>
+              Reservation {normalizedReservationStatus === 'rejected'
+                ? 'Rejected'
+                : normalizedReservationStatus === 'approved'
+                  ? 'Approved'
+                  : normalizedReservationStatus === 'to modify'
+                    ? 'Returned for Modification'
+                    : 'Pending for Approval'}
+            </strong>
             <p>This reservation is currently {canAct || myApprovalStatus ? `waiting on your decision as ${approver.role}` : `processing through the approval pipeline.`}</p>
           </div>
         </div>
@@ -535,16 +598,22 @@ const PendingRequest = ({ data }) => {
             </div>
 
             <div className="form-group">
-              <label htmlFor="approvalRemarks">REMARKS <span>(optional)</span></label>
+              <label htmlFor="approvalRemarks">
+                REMARKS <span>(required for reject or modify)</span>
+              </label>
               <textarea
                 id="approvalRemarks"
                 name="approvalRemarks"
                 value={remarks}
-                onChange={(e) => setRemarks(e.target.value)}
+                onChange={(e) => {
+                  setRemarks(e.target.value);
+                  if (e.target.value.trim()) setActionRemarkError('');
+                }}
                 placeholder={canAct ? "Add your administrative remarks or conditions here..." : "You can only add remarks when it is your turn to approve."}
                 rows={3}
                 disabled={!canAct || isProcessing || !!myApprovalStatus}
               />
+              {actionRemarkError && <p className="action-remark-error" role="alert">{actionRemarkError}</p>}
             </div>
 
             <div className="action-buttons">
@@ -555,15 +624,22 @@ const PendingRequest = ({ data }) => {
               ) : (
                 <>
                   <button 
-                    className="btn-approve" 
-                    onClick={() => setPendingAction('approved')}
+                    className="btn-approve"
+                    onClick={() => requestActionConfirmation('approved')}
                     disabled={!canAct || isProcessing}
                   >
                     {isProcessing ? 'Processing...' : '✓ Approve Reservation'}
                   </button>
+                  <button
+                    className="btn-modify"
+                    onClick={() => requestActionConfirmation('to_modify')}
+                    disabled={!canAct || isProcessing}
+                  >
+                    {isProcessing ? 'Processing...' : '✎ To Modify Reservation'}
+                  </button>
                   <button 
                     className="btn-reject" 
-                    onClick={() => setPendingAction('rejected')}
+                    onClick={() => requestActionConfirmation('rejected')}
                     disabled={!canAct || isProcessing}
                   >
                     {isProcessing ? 'Processing...' : '✕ Reject Reservation'}
@@ -572,9 +648,11 @@ const PendingRequest = ({ data }) => {
               )}
             </div>
             
-            {!canAct && !myApprovalStatus && currentData.status !== 'Rejected' && currentData.status !== 'Approved' && (
+            {!canAct && !myApprovalStatus && !['rejected', 'approved', 'to modify'].includes(normalizedReservationStatus) && (
               <div className="hierarchy-disabled-hint">
-                Buttons are disabled because it is not currently your turn in the approval hierarchy.
+                {isSuperAdmin
+                  ? 'The approval tracker is complete.'
+                  : 'Buttons are disabled because it is not currently your turn in the approval hierarchy.'}
               </div>
             )}
           </div>
@@ -665,24 +743,34 @@ const PendingRequest = ({ data }) => {
       {pendingAction && (
         <div className="modal-overlay high-z">
           <div className="modal-card" onClick={(e) => e.stopPropagation()}>
-            <h3 className={`modal-title ${pendingAction === 'rejected' ? 'error' : 'success'}`}>
-              Confirm {pendingAction === 'approved' ? 'Approval' : 'Rejection'}
+            <h3 className={`modal-title ${pendingAction === 'approved' ? 'success' : 'error'}`}>
+              Confirm {pendingAction === 'approved' ? 'Approval' : pendingAction === 'rejected' ? 'Rejection' : 'Return for Modification'}
             </h3>
             <p className="modal-message">
-              This action will update the status and notify the requestor.
+              {pendingAction === 'to_modify'
+                ? 'This will return the reservation to the requestor for changes and notify them using the remark entered above.'
+                : pendingAction === 'rejected'
+                  ? 'This will reject the reservation and notify the requestor using the remark entered above.'
+                  : 'This action will update the status and notify the requestor.'}
             </p>
             <div className="modal-actions">
               <button 
-                onClick={() => setPendingAction(null)}
+                onClick={() => {
+                  setPendingAction(null);
+                  setActionRemarkError('');
+                }}
                 className="modal-button cancel-btn"
               >
                 Cancel
               </button>
               <button 
                 onClick={() => handleAction(pendingAction)}
-                className={`modal-button ${pendingAction === 'rejected' ? 'confirm-reject-btn' : 'confirm-approve-btn'}`}
+                disabled={['rejected', 'to_modify'].includes(pendingAction) && !remarks.trim()}
+                className={`modal-button ${pendingAction === 'approved'
+                  ? 'confirm-approve-btn'
+                  : pendingAction === 'to_modify' ? 'confirm-modify-btn' : 'confirm-reject-btn'}`}
               >
-                {pendingAction === 'approved' ? 'Approve' : 'Reject'}
+                {pendingAction === 'approved' ? 'Approve' : pendingAction === 'rejected' ? 'Reject' : 'To Modify'}
               </button>
             </div>
           </div>

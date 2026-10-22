@@ -858,3 +858,149 @@ $charcoal: #364152;
 .summary-ref {
   color: $blue-main;
 }
+
+.archive-tracker-pipeline {
+  display: flex;
+  gap: 12px;
+  overflow-x: auto;
+  padding: 4px 2px 12px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.archive-tracker-step {
+  position: relative;
+  flex: 1 0 88px;
+  min-width: 88px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.archive-tracker-line {
+  position: absolute;
+  z-index: 0;
+  top: 14px;
+  left: calc(50% + 14px);
+  width: calc(100% - 4px);
+  height: 2px;
+  background: #cbd5e1;
+}
+
+.archive-tracker-step.approved .archive-tracker-line {
+  background: #10b981;
+}
+
+.archive-tracker-circle {
+  z-index: 1;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: #e2e8f0;
+  color: #ffffff;
+  font-size: var(--font-body);
+}
+
+.archive-tracker-step.approved .archive-tracker-circle {
+  background: #10b981;
+}
+
+.archive-tracker-step.rejected .archive-tracker-circle {
+  background: #ef4444;
+}
+
+.archive-tracker-step.pending .archive-tracker-circle {
+  background: #f59e0b;
+  color: #78350f;
+}
+
+.archive-tracker-step.your-turn .archive-tracker-circle {
+  background: #3b82f6;
+}
+
+.archive-tracker-title {
+  font-size: var(--font-body);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.archive-tracker-status,
+.archive-tracker-date {
+  color: #64748b;
+  font-size: calc(var(--font-body) * 0.9);
+  line-height: 1.3;
+}
+
+.archive-tracker-step.approved .archive-tracker-status {
+  color: #047857;
+}
+
+.archive-tracker-step.rejected .archive-tracker-status {
+  color: #b91c1c;
+}
+
+.archive-history-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.archive-history-entry {
+  padding: 12px 14px;
+  border-left: 3px solid #cbd5e1;
+  border-radius: 4px;
+  background: #f8fafc;
+  overflow-wrap: anywhere;
+
+  strong {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    color: $text-dark;
+    font-size: var(--font-body);
+
+    span {
+      padding: 2px 7px;
+      border-radius: 4px;
+      background: #e2e8f0;
+      color: #475569;
+      font-size: calc(var(--font-body) * 0.85);
+      font-weight: 500;
+    }
+  }
+
+  > span {
+    display: block;
+    margin-top: 4px;
+    color: $text-light;
+    font-size: calc(var(--font-body) * 0.9);
+  }
+
+  p {
+    margin: 8px 0 0;
+    color: $text-dark;
+    font-size: var(--font-body);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+  }
+
+  &.approved {
+    border-left-color: #10b981;
+  }
+
+  &.rejected {
+    border-left-color: #ef4444;
+  }
+
+  &.to_modify {
+    border-left-color: #f59e0b;
+  }
+
+  &.cancelled {
+    border-left-color: #64748b;
+  }
+}

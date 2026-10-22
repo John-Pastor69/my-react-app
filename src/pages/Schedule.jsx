@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, deleteDoc, setDoc, updateDoc } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
+import { collection, onSnapshot, doc, deleteDoc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 
 const Schedule = ({ currentUserRole = '' }) => {
+  const navigate = useNavigate();
   // --- STATE MANAGEMENT ---
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -46,7 +48,11 @@ const Schedule = ({ currentUserRole = '' }) => {
 
   // --- MAP & JOIN DATA ---
   const scheduleData = reservationsData
-    .filter(res => currentUser && (res.userId === currentUser.uid || res.userEmail === currentUser.email))
+    .filter(res => (
+      currentUser
+      && (res.userId === currentUser.uid || res.userEmail === currentUser.email)
+      && (res.status || '').toLowerCase().trim() !== 'rejected'
+    ))
     .map((res, index) => {
       const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
       
@@ -82,10 +88,11 @@ const Schedule = ({ currentUserRole = '' }) => {
         : fullName;
 
       const getScheduleStatus = () => {
-        const status = (res.status || 'Pending').toLowerCase();
+        const status = (res.status || 'Pending').toLowerCase().trim();
         if (status === 'approved') return 'approved';
         if (status === 'rejected') return 'rejected';
         if (status === 'cancelled') return 'cancelled';
+        if (status === 'to modify') return 'to_modify';
         return 'pending'; 
       };
 
@@ -130,19 +137,33 @@ const Schedule = ({ currentUserRole = '' }) => {
     setCancellationError('');
     try {
       const cancelledAt = new Date().toISOString();
+      const cancellationLog = {
+        id: `cancelled-${Date.now()}`,
+        role: 'Requestor',
+        badge: 'Cancelled',
+        date: cancelledAt,
+        approverName: deleteModalData.fullData.fullName || currentUser?.email || 'Requestor',
+        text: remark,
+        state: 'cancelled'
+      };
       const cancellationData = {
         status: 'Cancelled',
         cancellationRemark: remark,
         cancelledAt,
         cancelledBy: currentUser?.uid || '',
-        cancelledByEmail: currentUser?.email || ''
+        cancelledByEmail: currentUser?.email || '',
+        historyLogs: arrayUnion(cancellationLog)
       };
       const reservationRef = doc(db, 'reservations', deleteModalData.id);
       await updateDoc(reservationRef, cancellationData);
       const { id, ...reservationData } = deleteModalData.fullData;
       await setDoc(doc(db, 'archive', id), {
         ...reservationData,
-        ...cancellationData
+        ...cancellationData,
+        historyLogs: [
+          ...(Array.isArray(reservationData.historyLogs) ? reservationData.historyLogs : []),
+          cancellationLog
+        ]
       }, { merge: true });
       await deleteDoc(reservationRef);
       setDeleteModalData(null);
@@ -196,6 +217,7 @@ const Schedule = ({ currentUserRole = '' }) => {
                         {row.scheduleStatus === 'approved' && <span className="status-dot approved" title="Approved"></span>}
                         {row.scheduleStatus === 'rejected' && <span className="status-dot rejected" title="Rejected"></span>}
                         {row.scheduleStatus === 'cancelled' && <span className="status-dot cancelled" title="Cancelled"></span>}
+                        {row.scheduleStatus === 'to_modify' && <span className="status-dot pending" title="Returned for modification"></span>}
                       </strong>
                       <span>Submitted {row.submit}</span>
                     </div>
@@ -219,10 +241,20 @@ const Schedule = ({ currentUserRole = '' }) => {
                     </div>
                   </div>
                   <div className="col-action">
-                    <button className="btn-view" onClick={() => setSelectedRequest(row)}>
-                      <i className="ph ph-eye"></i> View Details
-                    </button>
-                    {(row.scheduleStatus !== 'approved' || canCancelApprovedReservations) && (
+                    {row.scheduleStatus === 'to_modify' ? (
+                      <button
+                        className="btn-view btn-edit-reservation"
+                        onClick={() => navigate(`/reserve?edit=${encodeURIComponent(row.id)}`)}
+                      >
+                        <i className="ph ph-pencil-simple"></i> Edit Reservation
+                      </button>
+                    ) : (
+                      <button className="btn-view" onClick={() => setSelectedRequest(row)}>
+                        <i className="ph ph-eye"></i> View Details
+                      </button>
+                    )}
+                    {row.scheduleStatus !== 'rejected'
+                      && (row.scheduleStatus !== 'approved' || canCancelApprovedReservations) && (
                       <button
                         className="btn-delete"
                         onClick={() => {

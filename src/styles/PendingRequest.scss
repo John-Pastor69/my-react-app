@@ -382,10 +382,21 @@ $danger-red: #ef4444;
         color: #fff;
       }
 
+      .btn-modify {
+        background-color: #f59e0b;
+        color: #fff;
+      }
+
       .btn-reject {
         background-color: $danger-red;
         color: #fff;
       }
+    }
+
+    .action-remark-error {
+      margin: 0.35rem 0 0;
+      color: $danger-red;
+      font-size: var(--font-small);
     }
 
     .already-acted-msg {
@@ -715,6 +726,11 @@ $danger-red: #ef4444;
 
         &.confirm-approve-btn {
           background: $success-green;
+          color: #FFFFFF;
+        }
+
+        &.confirm-modify-btn {
+          background: #f59e0b;
           color: #FFFFFF;
         }
 

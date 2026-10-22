@@ -217,8 +217,11 @@ const ReservationDetails = ({ data }) => {
   const dbHistoryLogs = currentData.historyLogs || [];
   const fullHistory = [...baseHistory, ...dbHistoryLogs];
 
-  const bannerStatusClass = currentData.status === 'Approved' ? 'approved' : currentData.status === 'Rejected' ? 'rejected' : 'pending';
-  const isApprovedStatus = (currentData.status || '').toLowerCase().trim() === 'approved';
+  const normalizedReservationStatus = (currentData.status || '').toLowerCase().trim();
+  const bannerStatusClass = normalizedReservationStatus === 'approved'
+    ? 'approved'
+    : normalizedReservationStatus === 'rejected' ? 'rejected' : 'pending';
+  const isApprovedStatus = normalizedReservationStatus === 'approved';
   const isPdfAdmin = ['building admin', 'mis', 'mis admin', 'super admin'].includes(
     currentUserRole.replace(/_/g, ' ')
   );
@@ -400,7 +403,15 @@ const ReservationDetails = ({ data }) => {
         <div className="banner-info">
           <span className="icon">🛡</span>
           <div>
-            <strong>Reservation {currentData.status === 'Rejected' ? 'Rejected' : currentData.status === 'Approved' ? 'Approved' : 'Pending for Approval'}</strong>
+            <strong>
+              Reservation {normalizedReservationStatus === 'rejected'
+                ? 'Rejected'
+                : normalizedReservationStatus === 'approved'
+                  ? 'Approved'
+                  : normalizedReservationStatus === 'to modify'
+                    ? 'Returned for Modification'
+                    : 'Pending for Approval'}
+            </strong>
           </div>
         </div>
         <span className="banner-badge">Status: {currentData.status || 'Pending'}</span>
