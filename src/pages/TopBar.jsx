@@ -200,9 +200,17 @@ const TopBar = ({ toggleSidebar }) => {
     const uid = auth.currentUser.uid;
     const email = auth.currentUser.email;
     let newNotifs = [];
+    const resolveUserName = (userId, userEmail, fallbackName) => {
+      const user = usersData.find(candidate => (
+        (userId && candidate.uid === userId)
+        || (userEmail && candidate.email === userEmail)
+      ));
+      return user?.name || user?.fullName || user?.displayName || fallbackName || 'the requestor';
+    };
 
     reservationsData.forEach(res => {
       const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+      const requestorName = requestor.name || requestor.fullName || requestor.displayName || res.fullName || 'the requestor';
       const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
       const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
       const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
@@ -221,14 +229,21 @@ const TopBar = ({ toggleSidebar }) => {
           const modificationRemark = typeof res.modificationRemark === 'string'
             ? res.modificationRemark.trim()
             : '';
+          const actionState = isToModify ? 'to_modify' : status;
+          const latestActionLog = Array.isArray(res.historyLogs)
+            ? [...res.historyLogs].reverse().find(log => log.state === actionState)
+            : null;
+          const actionBy = latestActionLog?.approverName
+            || (isToModify ? res.modificationRequestedBy : '');
+          const actionByText = actionBy ? ` by ${actionBy}` : '';
           const message = status === 'approved'
-            ? `Your reservation for ${res.eventName || 'an event'} has been approved.`
+            ? `Your reservation for ${res.eventName || 'an event'} has been approved${actionByText}.`
             : status === 'rejected'
-              ? `Your request for ${res.eventName || 'an event'} was declined.`
+              ? `Your request for ${res.eventName || 'an event'} was declined${actionByText}.`
               : isToModify
-                ? `Your reservation for ${res.eventName || 'an event'} was returned for modification.${modificationRemark ? ` Remarks: ${modificationRemark}` : ''}`
+                ? `Your reservation for ${res.eventName || 'an event'} was returned for modification${actionByText}.${modificationRemark ? ` Remarks: ${modificationRemark}` : ''}`
               : status === 'cancelled'
-                ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
+                ? `Your reservation for ${res.eventName || 'an event'} was cancelled by ${resolveUserName(res.cancelledBy, res.cancelledByEmail, requestorName)}.`
                 : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`;
           const notificationTime = status === 'cancelled'
             ? res.cancelledAt || res.updatedAt || res.createdAt
@@ -237,13 +252,9 @@ const TopBar = ({ toggleSidebar }) => {
               : isToModify
                 ? res.modificationRequestedAt || res.updatedAt || res.createdAt
               : res.updatedAt || res.createdAt;
-          const latestModificationLog = isToModify && Array.isArray(res.historyLogs)
-            ? [...res.historyLogs].reverse().find(log => log.state === 'to_modify')
-            : null;
-
           newNotifs.push({
             id: isToModify
-              ? `${res.id}-to_modify-${latestModificationLog?.id || notificationTime || ''}`
+              ? `${res.id}-to_modify-${latestActionLog?.id || notificationTime || ''}`
               : `${res.id}-${status}`,
             type: notificationType,
             title: notificationTitle,
@@ -308,7 +319,7 @@ const TopBar = ({ toggleSidebar }) => {
           type: status,
           title: isCancelled ? 'Cancelled' : 'Expired',
           message: isCancelled
-            ? `Your reservation for ${res.eventName || 'an event'} was cancelled.`
+            ? `Your reservation for ${res.eventName || 'an event'} was cancelled by ${resolveUserName(res.cancelledBy, res.cancelledByEmail, resolveUserName(res.userId, res.userEmail, res.fullName))}.`
             : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`,
           time: notificationTime,
           rawDate: new Date(notificationTime || 0),
@@ -320,7 +331,11 @@ const TopBar = ({ toggleSidebar }) => {
         const cancellationRemark = typeof res.cancellationRemark === 'string'
           ? res.cancellationRemark.trim()
           : '';
-        const cancelledBy = res.cancelledByEmail || res.fullName || 'the requestor';
+        const cancelledBy = resolveUserName(
+          res.cancelledBy,
+          res.cancelledByEmail,
+          resolveUserName(res.userId, res.userEmail, res.fullName)
+        );
         newNotifs.push({
           id: `${res.id}-cancelled-admin-${res.cancelledAt || res.updatedAt || ''}`,
           type: 'cancelled',
