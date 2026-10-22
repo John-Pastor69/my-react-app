@@ -4,7 +4,7 @@ import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 
-const Schedule = () => {
+const Schedule = ({ currentUserRole = '' }) => {
   // --- STATE MANAGEMENT ---
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRequest, setSelectedRequest] = useState(null);
@@ -15,6 +15,8 @@ const Schedule = () => {
   const [reservationsData, setReservationsData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
+  const normalizedUserRole = currentUserRole.toLowerCase().trim().replace(/_/g, ' ');
+  const canCancelApprovedReservations = ['mis', 'mis admin', 'building admin'].includes(normalizedUserRole);
   
   // --- REAL-TIME FIRESTORE LISTENERS ---
   useEffect(() => {
@@ -220,17 +222,19 @@ const Schedule = () => {
                     <button className="btn-view" onClick={() => setSelectedRequest(row)}>
                       <i className="ph ph-eye"></i> View Details
                     </button>
-                    <button
-                      className="btn-delete"
-                      onClick={() => {
-                        setDeleteModalData(row);
-                        setCancellationRemark('');
-                        setCancellationError('');
-                      }}
-                      title="Cancel Reservation"
-                    >
-                      <i className="ph ph-x"></i>
-                    </button>
+                    {(row.scheduleStatus !== 'approved' || canCancelApprovedReservations) && (
+                      <button
+                        className="btn-delete"
+                        onClick={() => {
+                          setDeleteModalData(row);
+                          setCancellationRemark('');
+                          setCancellationError('');
+                        }}
+                        title="Cancel Reservation"
+                      >
+                        <i className="ph ph-x"></i>
+                      </button>
+                    )}
                   </div>
                 </div>
               ))
