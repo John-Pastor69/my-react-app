@@ -18,6 +18,8 @@ const Schedule = () => {
   
   // --- REAL-TIME FIRESTORE LISTENERS ---
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const resList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
       setReservationsData(resList);
@@ -32,7 +34,7 @@ const Schedule = () => {
       unsubRes();
       unsubUsers();
     };
-  }, []);
+  }, [currentUser]);
 
   // --- TRACK CURRENT USER ---
   useEffect(() => {

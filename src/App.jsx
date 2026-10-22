@@ -93,8 +93,7 @@ export default function App() {
           if (userSnap.exists()) {
             resolvedRole = userSnap.data().role || 'requestor';
             
-            // OPTIMIZATION: Non-blocking write (removed 'await')
-            // The UI no longer waits for the server to acknowledge this update
+            // OPTIMIZATION: Non-blocking write
             updateDoc(userRef, {
               status: 'Active',
               lastActive: nowIso
@@ -117,7 +116,7 @@ export default function App() {
               resolvedRole = 'requestor'; // Fallback for unknown formats
             }
 
-            // OPTIMIZATION: Non-blocking write (removed 'await')
+            // OPTIMIZATION: Non-blocking write
             setDoc(userRef, {
               email: user.email,
               name: rawName,
@@ -129,12 +128,6 @@ export default function App() {
               status: 'Active',
               lastActive: nowIso
             }).catch(err => console.error("User creation failed:", err));
-          }
-
-          try {
-            await archiveExpiredPendingReservations(user);
-          } catch (error) {
-            console.error("Failed to archive expired reservations during login:", error);
           }
 
           // 3. Update the state and the cache with the verified database role
@@ -204,7 +197,7 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [navigate]); // Removed location.pathname to prevent looping
+  }, [navigate]);
 
   // --- LOADING SCREEN ---
   if (isAuthLoading) {
@@ -230,13 +223,23 @@ export default function App() {
       <SideBar 
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
-        onLogout={() => {
-         if (auth.currentUser) {
-           localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
-         }
-         setIsAuthenticated(false); 
-         setUserRole('requestor'); 
-         navigate('/', { replace: true }); // Clear the URL on logout
+        onLogout={async () => {
+          // 1. Clear local storage cache
+          if (auth.currentUser) {
+            localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
+          }
+          
+          // 2. Clear URL FIRST so child components unmount immediately
+          navigate('/', { replace: true });
+
+          // 3. Destroy authenticated state to kill child component listeners
+          setIsAuthenticated(false); 
+          setUserRole('requestor'); 
+          
+          // 4. Delay the Firebase logout slightly so React finishes unmounting 
+          setTimeout(async () => {
+            await signOut(auth);
+          }, 150); // Increased timeout to ensure full unmount
         }} 
         userRole={userRole} 
       />

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch, deleteField } from 'firebase/firestore';
-import { db } from '../../Firebase';
+import { db, auth } from '../../Firebase';
 import '../../styles/buildingadmin/BuildingFacilitiesManagement.scss';
 
 // Helper function to get real-time date and time
@@ -13,6 +13,13 @@ const getCurrentDateTime = () => {
     minute: '2-digit'
   });
 };
+
+const [currentUser, setCurrentUser] = useState(null); 
+
+useEffect(() => {
+  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+  return () => unsubscribeAuth();
+}, []);
 
 const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
 
@@ -52,6 +59,8 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
 
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     const unsubFacilities = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setFacilitiesData(list);
@@ -61,7 +70,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
     return () => {
       unsubFacilities();
     };
-  }, []);
+  }, [currentUser]);
 
   // --- ACTION HANDLERS ---
   const handleAddClick = () => {

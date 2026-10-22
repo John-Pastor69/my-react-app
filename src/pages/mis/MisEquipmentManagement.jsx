@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
-import { db } from '../../Firebase';
+import { db, auth } from '../../Firebase';
 import "../../styles/mis/MisEquipmentManagement.scss";
 
 // Helper function to get real-time date and time
@@ -13,6 +13,14 @@ const getCurrentDateTime = () => {
     minute: '2-digit'
   });
 };
+
+const [currentUser, setCurrentUser] = useState(null);
+
+// Add this completely new auth listener below your state variables:
+useEffect(() => {
+  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+  return () => unsubscribeAuth();
+}, []);
 
 const MisEquipmentManagement = ({ currentUserRole }) => {
   // --- FIRESTORE STATES ---
@@ -36,6 +44,8 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
 
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     // 1. Listen to Equipments
     const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -53,7 +63,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       unsubEquipments();
       unsubReservations();
     };
-  }, []);
+  }, [currentUser]);
 
   // --- DYNAMICALLY CALCULATE RESERVED AND AVAILABLE COUNTS ---
   const mappedEquipmentData = equipmentData.map(item => {

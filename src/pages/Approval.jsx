@@ -16,6 +16,8 @@ const formatName = (fullName) => {
     return name;
 };
 
+const [currentUser, setCurrentUser] = useState(null);
+
 const Approval = () => {
     // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
@@ -26,6 +28,8 @@ const Approval = () => {
     
     // --- REAL-TIME FIRESTORE LISTENERS ---
     useEffect(() => {
+        if (!currentUser) return;
+
         const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
             const resList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
             setReservationsData(resList);
@@ -40,11 +44,12 @@ const Approval = () => {
             unsubRes();
             unsubUsers();
         };
-    }, []);
+    }, [currentUser]);
 
     // --- FETCH CURRENT USER ROLE ---
     useEffect(() => {
         const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+            setCurrentUser(user);
             if (user) {
                 try {
                     const userRef = doc(db, 'users', user.uid);

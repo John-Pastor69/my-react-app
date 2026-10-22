@@ -50,6 +50,8 @@ const PendingRequest = ({ data }) => {
   const [customAlert, setCustomAlert] = useState(null); 
   const [pendingAction, setPendingAction] = useState(null); // 'approved' or 'rejected' for confirmation modal
   
+  const [currentUser, setCurrentUser] = useState(null);
+
   // State for the currently logged-in user (Approver)
   const [approver, setApprover] = useState({
     name: 'Loading...',
@@ -61,14 +63,14 @@ const PendingRequest = ({ data }) => {
 
   // Real-time listener for this specific reservation doc so changes reflect instantly
   useEffect(() => {
-    if (!data?.id) return;
-    const unsubscribe = onSnapshot(doc(db, 'reservations', data.id), (docSnap) => {
-      if (docSnap.exists()) {
-        setCurrentData({ id: docSnap.id, ...docSnap.data() });
-      }
-    });
-    return () => unsubscribe();
-  }, [data?.id]);
+  if (!currentUser || !data?.id) return; // Added safeguard
+  const unsubscribe = onSnapshot(doc(db, 'reservations', data.id), (docSnap) => {
+    if (docSnap.exists()) {
+      setCurrentData({ id: docSnap.id, ...docSnap.data() });
+    }
+  });
+  return () => unsubscribe();
+}, [currentUser, data?.id]); // Added dependency
 
   // Fetch requestor's actual role to determine if endorser should be skipped
   useEffect(() => {
@@ -103,6 +105,7 @@ const PendingRequest = ({ data }) => {
   // 1. Fetch current logged-in user for "Approving as" box
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      setCurrentUser(user); // Added
       if (user) {
         try {
           const userRef = doc(db, 'users', user.uid);
@@ -135,9 +138,9 @@ const PendingRequest = ({ data }) => {
     });
     return () => unsubscribeAuth();
   }, []);
-
   // 2. Fetch facilities and equipments mapping
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
       snapshot.forEach(doc => { fMap[doc.id] = doc.data(); });
@@ -151,7 +154,7 @@ const PendingRequest = ({ data }) => {
     });
 
     return () => { unsubFac(); unsubEq(); };
-  }, []);
+  }, [currentUser]); // Added dependency
 
   if (!currentData) return <div className="loading-container">Loading request details...</div>;
 

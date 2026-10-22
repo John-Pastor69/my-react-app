@@ -1,9 +1,16 @@
 import { jsPDF } from 'jspdf';
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
-import { db } from '../Firebase';
+import { db, auth } from '../Firebase';
 import { getApprovalTrackerSteps } from '../services/approvalWorkflow';
 import '../styles/ReservationDetails.scss';
+
+const [currentUser, setCurrentUser] = useState(null);
+
+useEffect(() => {
+  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+  return () => unsubscribeAuth();
+}, []);
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -45,14 +52,14 @@ const ReservationDetails = ({ data }) => {
 
   // Real-time listener for this specific reservation doc
   useEffect(() => {
-    if (!data?.id) return;
+    if (!currentUser || !data?.id) return;
     const unsubscribe = onSnapshot(doc(db, 'reservations', data.id), (docSnap) => {
       if (docSnap.exists()) {
         setCurrentData({ id: docSnap.id, ...docSnap.data() });
       }
     });
     return () => unsubscribe();
-  }, [data?.id]);
+  }, [currentUser, data?.id]);
 
   // Fetch requestor's actual role to determine if endorser should be skipped
   useEffect(() => {
@@ -86,6 +93,7 @@ const ReservationDetails = ({ data }) => {
 
   // Fetch facilities and equipments mapping
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
       snapshot.forEach(doc => { fMap[doc.id] = doc.data(); });
@@ -99,7 +107,7 @@ const ReservationDetails = ({ data }) => {
     });
 
     return () => { unsubFac(); unsubEq(); };
-  }, []);
+  }, [currentUser]); // Added dependency
 
   if (!currentData) return <div className="loading-text">Loading reservation details...</div>;
 

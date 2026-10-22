@@ -1,8 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
-import { db } from '../../Firebase';
+import { db, auth } from '../../Firebase';
 import "../../styles/mis/MisUserManagement.scss";
+
+const [currentUser, setCurrentUser] = useState(null);
+
+useEffect(() => {
+  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+  return () => unsubscribeAuth();
+}, []);
+  
 
 const ROLE_OPTIONS = [
   { value: 'mis', label: 'MIS' },
@@ -75,6 +83,8 @@ const MisUserManagement = ({ currentUserRole }) => {
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
 
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     const unsubscribe = onSnapshot(
       collection(db, 'users'),
       (snapshot) => {
@@ -129,7 +139,7 @@ const MisUserManagement = ({ currentUserRole }) => {
     );
 
     return () => unsubscribe();
-  }, []);
+  }, [currentUser]);
 
   const handleOpenRoleModal = (user) => {
     setRoleModalUser(user);

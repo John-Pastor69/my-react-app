@@ -45,8 +45,7 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
         });
       }
       
-      // Now perform the actual logout
-      await signOut(auth); 
+      // Tell App.jsx to handle the unmounting and logout sequence
       onLogout();          
     } catch (error) {
       console.error("Error signing out:", error);

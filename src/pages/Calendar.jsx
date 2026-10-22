@@ -4,6 +4,8 @@ import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, writeBatch } fr
 import "../styles/Calendar.scss";
 import ReservationDetails from './ReservationDetails';
 
+const [currentUser, setCurrentUser] = useState(null);
+
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
   if (!fullName) return 'N/A';
@@ -104,6 +106,7 @@ const Calendar = ({ currentUserRole }) => {
   // 1.5. FETCH CURRENT USER ROLE
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
+      setCurrentUser(user);
       if (user) {
         try {
           const userRef = doc(db, 'users', user.uid);
@@ -122,6 +125,8 @@ const Calendar = ({ currentUserRole }) => {
 
   // 2. LIVE LISTENERS
   useEffect(() => {
+    if (!currentUser) return;
+
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const resData = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
       setReservationsData(resData);
@@ -155,7 +160,7 @@ const Calendar = ({ currentUserRole }) => {
     }, (error) => console.error('Failed to load equipments:', error));
 
     return () => { unsubRes(); unsubHistory(); unsubFac(); unsubEq(); };
-  }, []);
+  }, [currentUser]);
 
   // 3. REUSABLE MAPPING FUNCTION WITH RANGE EXPANSION
   const mapToEvents = (sourceData, includeRejected = false, isHistoryEvent = false) => {

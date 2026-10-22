@@ -111,6 +111,8 @@ const Dashboard = ({ currentUserRole }) => {
   });
 
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
       setCurrentUser(user);
     });
@@ -146,7 +148,7 @@ const Dashboard = ({ currentUserRole }) => {
       unsubscribeAuth();
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, []);
+  }, [currentUser]);
 
   const currentUserRecord = usersData.find(
     (user) => user.uid === currentUser?.uid
@@ -165,13 +167,15 @@ const Dashboard = ({ currentUserRole }) => {
   const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
 
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     return onSnapshot(collection(db, 'history'), (snapshot) => {
       setHistoryData(snapshot.docs.map((document) => ({
         id: document.id,
         ...document.data()
       })));
     }, (error) => console.error('Failed to load reservation history:', error));
-  }, []);
+  }, [currentUser]);
 
   const scheduleCount = currentUser
     ? reservationsData.filter(

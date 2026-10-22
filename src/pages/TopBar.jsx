@@ -96,6 +96,8 @@ const TopBar = ({ toggleSidebar }) => {
   // Derived state: Check if there is AT LEAST ONE unread notification
   const hasUnread = notifications.some(notif => !readNotifs.includes(notif.id));
 
+  const [currentUser, setCurrentUser] = useState(null);
+
   useEffect(() => {
     const intervalId = setInterval(() => setCurrentDateTime(new Date()), 60_000);
     return () => clearInterval(intervalId);
@@ -112,50 +114,58 @@ const TopBar = ({ toggleSidebar }) => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // Fetch Current User Identity
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
-      if (user) {
-        const docRef = doc(db, 'users', user.uid);
-        const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data();
-            const rawName = data.name || '';
-            
-            let finalDisplayName = rawName;
-            let finalAvatarName = rawName.replace(/ /g, '+');
-
-            if (rawName.includes(',')) {
-              const nameParts = rawName.split(',');
-              const parsedLastName = nameParts[0].trim();
-              const parsedFirstName = (nameParts[1] || '').replace(/\s*\(.*\)$/, '').trim();
-              
-              finalDisplayName = `${parsedFirstName} ${parsedLastName}`;
-              finalAvatarName = `${parsedFirstName}+${parsedLastName}`;
-            }
-
-            let fetchedRole = data.role ? data.role : 'Requestor';
-            const lowerRole = fetchedRole.toLowerCase();
-            
-            if (lowerRole === 'mis') fetchedRole = 'MIS';
-            else if (lowerRole === 'osa') fetchedRole = 'OSA';
-
-            setUserData({
-              displayName: finalDisplayName,
-              avatarName: finalAvatarName,
-              role: fetchedRole,
-              avatarUrl: data.avatarUrl || null
-            });
-          }
-        });
-        return () => unsubscribeSnapshot();
-      }
+      setCurrentUser(user);
     });
     return () => unsubscribeAuth();
   }, []);
 
+  // Fetch Current User Identity
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const docRef = doc(db, 'users', currentUser.uid);
+    const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
+      if (docSnap.exists()) {
+        const data = docSnap.data();
+        const rawName = data.name || '';
+        
+        let finalDisplayName = rawName;
+        let finalAvatarName = rawName.replace(/ /g, '+');
+
+        if (rawName.includes(',')) {
+          const nameParts = rawName.split(',');
+          const parsedLastName = nameParts[0].trim();
+          const parsedFirstName = (nameParts[1] || '').replace(/\s*\(.*\)$/, '').trim();
+          
+          finalDisplayName = `${parsedFirstName} ${parsedLastName}`;
+          finalAvatarName = `${parsedFirstName}+${parsedLastName}`;
+        }
+
+        let fetchedRole = data.role ? data.role : 'Requestor';
+        const lowerRole = fetchedRole.toLowerCase();
+        
+        if (lowerRole === 'mis') fetchedRole = 'MIS';
+        else if (lowerRole === 'osa') fetchedRole = 'OSA';
+
+        setUserData({
+          displayName: finalDisplayName,
+          avatarName: finalAvatarName,
+          role: fetchedRole,
+          avatarUrl: data.avatarUrl || null
+        });
+      }
+    });
+    
+    // Now this correctly returns to the React useEffect cleanup!
+    return () => unsubscribeSnapshot();
+  }, [currentUser]);
+
   // Fetch Global Reservations & Users for Notification Logic
   useEffect(() => {
+    if (!currentUser) return;
+
     const unsubRes = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       setReservationsData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
@@ -173,7 +183,7 @@ const TopBar = ({ toggleSidebar }) => {
       unsubHistory();
       unsubUsers();
     };
-  }, []);
+  }, [currentUser]);
 
   // Process active reservation and archived reservation notifications
   useEffect(() => {

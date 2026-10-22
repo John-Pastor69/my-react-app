@@ -443,6 +443,8 @@ const Reservation = () => {
 
   // --- LIVE LISTEN TO FACILITIES, EQUIPMENTS, RESERVATIONS & USERS (For Endorsers) ---
   useEffect(() => {
+    if (!currentUser) return; // Added safeguard
+
     const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setInventoryEquipments(list);
@@ -476,7 +478,7 @@ const Reservation = () => {
       unsubReservations();
       unsubUsers();
     };
-  }, []);
+  }, [currentUser]);
 
   // --- DYNAMICALLY CALCULATE AVAILABLE COUNTS ---
   const mappedEquipmentList = inventoryEquipments.map(item => {
