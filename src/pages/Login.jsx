@@ -25,6 +25,11 @@ export default function Login({ error, setError }) {
   const handleMicrosoftLogin = async (e) => {
     e.preventDefault();
     if (setError) setError('');
+
+    microsoftProvider.setCustomParameters({
+      prompt: 'select_account'
+    });
+
     try {
       if (window.location.hostname === 'localhost') {
         await signInWithPopup(auth, microsoftProvider);
