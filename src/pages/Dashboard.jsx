@@ -1012,8 +1012,8 @@ const Dashboard = ({ currentUserRole }) => {
           <section className="dashboard-filters" aria-label="Dashboard filters">
             <div className="filter-heading">
               <div>
-                <h2>Analytics filters</h2>
-                <p>Filter booking metrics by event date, start time, and status.</p>
+                <h2>Filter by Date</h2>
+                <p>Filter reservation by event date, start time, and status.</p>
               </div>
               <button
                 className="filter-reset"
@@ -1303,8 +1303,8 @@ const Dashboard = ({ currentUserRole }) => {
             <article className="dashboard-panel recent-activity-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Recent reservations</h2>
-                  <p>Latest requests matching your filters.</p>
+                  <h2>Matched reservations</h2>
+                  <p>All requests matching your filters.</p>
                 </div>
               </div>
               {activity.recentReservations.length ? (
