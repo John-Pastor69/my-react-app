@@ -14,14 +14,6 @@ const getCurrentDateTime = () => {
   });
 };
 
-const [currentUser, setCurrentUser] = useState(null);
-
-// Add this completely new auth listener below your state variables:
-useEffect(() => {
-  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
-  return () => unsubscribeAuth();
-}, []);
-
 const MisEquipmentManagement = ({ currentUserRole }) => {
   // --- FIRESTORE STATES ---
   const [equipmentData, setEquipmentData] = useState([]);
@@ -41,6 +33,14 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   });
   const [selectedIds, setSelectedIds] = useState([]);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // Add this completely new auth listener below your state variables:
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+    return () => unsubscribeAuth();
+  }, []);
 
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {

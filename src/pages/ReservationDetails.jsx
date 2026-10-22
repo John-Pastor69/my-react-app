@@ -5,13 +5,6 @@ import { db, auth } from '../Firebase';
 import { getApprovalTrackerSteps } from '../services/approvalWorkflow';
 import '../styles/ReservationDetails.scss';
 
-const [currentUser, setCurrentUser] = useState(null);
-
-useEffect(() => {
-  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
-  return () => unsubscribeAuth();
-}, []);
-
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
   if (!fullName) return 'Unknown User';
@@ -49,6 +42,11 @@ const ReservationDetails = ({ data }) => {
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+    return () => unsubscribeAuth();
+  }, []);
 
   // Real-time listener for this specific reservation doc
   useEffect(() => {
@@ -110,6 +108,8 @@ const ReservationDetails = ({ data }) => {
   }, [currentUser]); // Added dependency
 
   if (!currentData) return <div className="loading-text">Loading reservation details...</div>;
+
+  const [currentUser, setCurrentUser] = useState(null);
 
   // --- DYNAMIC DATA MAPPING ---
   const refNo = currentData.refNo || 'N/A';

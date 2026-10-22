@@ -4,8 +4,6 @@ import { collection, onSnapshot, doc, setDoc, getDoc, deleteDoc, writeBatch } fr
 import "../styles/Calendar.scss";
 import ReservationDetails from './ReservationDetails';
 
-const [currentUser, setCurrentUser] = useState(null);
-
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
   if (!fullName) return 'N/A';
@@ -85,6 +83,8 @@ const Calendar = ({ currentUserRole }) => {
   const [archiveFilter, setArchiveFilter] = useState('All');
   const [archiveSort, setArchiveSort] = useState('Latest');
   const [itemToDelete, setItemToDelete] = useState(null);
+
+  const [currentUser, setCurrentUser] = useState(null);
 
   const handleDateClick = (dateStr) => {
     setSelectedDate(dateStr);

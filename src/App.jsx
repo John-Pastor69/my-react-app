@@ -3,7 +3,6 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './Firebase';
-import { archiveExpiredPendingReservations } from './services/reservationExpiration';
 
 import SideBar from './pages/SideBar';
 import TopBar from './pages/TopBar'; 
@@ -197,7 +196,7 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [navigate]);
+  }, [navigate, location.pathname]); 
 
   // --- LOADING SCREEN ---
   if (isAuthLoading) {

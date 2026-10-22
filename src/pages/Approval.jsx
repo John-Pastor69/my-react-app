@@ -16,9 +16,10 @@ const formatName = (fullName) => {
     return name;
 };
 
-const [currentUser, setCurrentUser] = useState(null);
 
 const Approval = () => {
+    const [currentUser, setCurrentUser] = useState(null);
+
     // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
     const [selectedRequest, setSelectedRequest] = useState(null);
@@ -68,7 +69,6 @@ const Approval = () => {
     }, []);
 
     // --- GET CURRENT LOGGED-IN USER NAME ---
-    const currentUser = auth.currentUser;
     const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};
     const currentUserName = formatName(currentUserDoc.name || '');
 

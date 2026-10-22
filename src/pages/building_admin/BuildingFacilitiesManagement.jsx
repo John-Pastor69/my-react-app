@@ -14,12 +14,6 @@ const getCurrentDateTime = () => {
   });
 };
 
-const [currentUser, setCurrentUser] = useState(null); 
-
-useEffect(() => {
-  const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
-  return () => unsubscribeAuth();
-}, []);
 
 const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
 
@@ -56,6 +50,13 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   
   const [selectedIds, setSelectedIds] = useState([]);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
+
+  const [currentUser, setCurrentUser] = useState(null); 
+
+  useEffect(() => {
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
+    return () => unsubscribeAuth();
+  }, []);
 
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {
