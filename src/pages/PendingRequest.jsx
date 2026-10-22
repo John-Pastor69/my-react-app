@@ -192,6 +192,9 @@ const PendingRequest = ({ data }) => {
   const equipArray = Object.entries(currentData.selectedEquip || {})
     .filter(([id, qty]) => Number(qty) > 0)
     .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
+  if (typeof currentData.otherEquipment === 'string' && currentData.otherEquipment.trim()) {
+    equipArray.push(currentData.otherEquipment.trim());
+  }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);

@@ -461,6 +461,9 @@ const Dashboard = ({ currentUserRole }) => {
         const equipmentNames = Object.entries(reservation.selectedEquip || {})
           .filter(([, quantity]) => Number(quantity) > 0)
           .map(([id, quantity]) => `${quantity} × ${equipmentById.get(id)?.name || 'Equipment'}`);
+        if (typeof reservation.otherEquipment === 'string' && reservation.otherEquipment.trim()) {
+          equipmentNames.push(reservation.otherEquipment.trim());
+        }
 
         return {
           ...reservation,
@@ -950,6 +953,9 @@ const Dashboard = ({ currentUserRole }) => {
                   const equipmentNames = Object.entries(reservation.selectedEquip || {})
                     .filter(([, quantity]) => Number(quantity) > 0)
                     .map(([id, quantity]) => `${quantity} × ${equipmentById.get(id)?.name || id}`);
+                  if (typeof reservation.otherEquipment === 'string' && reservation.otherEquipment.trim()) {
+                    equipmentNames.push(reservation.otherEquipment.trim());
+                  }
 
                   return (
                     <button

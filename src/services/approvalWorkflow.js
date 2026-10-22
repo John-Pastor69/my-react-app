@@ -1,9 +1,9 @@
 export const APPROVAL_STEPS = [
   { key: 'requestor', label: 'Requestor Submitted' },
   { key: 'endorser', label: 'Endorser' },
+  { key: 'osa', label: 'OSA' },
   { key: 'building admin', label: 'Building Admin' },
   { key: 'mis', label: 'MIS' },
-  { key: 'osa', label: 'OSA' },
   { key: 'academic head', label: 'Academic Head' },
   { key: 'school admin', label: 'School Admin' }
 ];

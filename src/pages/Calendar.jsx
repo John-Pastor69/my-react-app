@@ -181,6 +181,9 @@ const Calendar = ({ currentUserRole }) => {
       const equipArray = Object.entries(data.selectedEquip || {})
         .filter(([id, qty]) => Number(qty) > 0)
         .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
+      if (typeof data.otherEquipment === 'string' && data.otherEquipment.trim()) {
+        equipArray.push(data.otherEquipment.trim());
+      }
       const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
 
       const datesRange = getDatesInRange(data.eventDate || data.date, data.days || 1);
@@ -237,6 +240,9 @@ const Calendar = ({ currentUserRole }) => {
     const equipArray = Object.entries(data.selectedEquip || {})
       .filter(([id, qty]) => Number(qty) > 0)
       .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
+    if (typeof data.otherEquipment === 'string' && data.otherEquipment.trim()) {
+      equipArray.push(data.otherEquipment.trim());
+    }
     const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
 
     setHistorySelectedRequest({

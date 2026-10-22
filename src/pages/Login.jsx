@@ -75,7 +75,7 @@ export default function Login({ error, setError }) {
                 
                 <button className="btn-office" onClick={handleMicrosoftLogin}>
                   <i className="ph-fill ph-windows-logo"></i>
-                  Log in with Office 365
+                  Log in with Microsoft Entra ID  
                 </button>
               </div>
 

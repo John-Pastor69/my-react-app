@@ -26,6 +26,7 @@ const initialFormState = {
   purpose: '',
   facilities: [], 
   specificRoom: '', 
+  otherEquipment: '',
   airconOnTime: '', 
   airconOffTime: '',
   endorserName: '', 
@@ -501,7 +502,7 @@ const Reservation = () => {
   const selectedFacilityCapacity = selectedFacility
     ? getFacilityCapacityLimits(selectedFacility)
     : { min: null, max: null };
-  const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
+  const hasFacility = formData.facilities.length > 0;
   const expectedParticipantCount = Number(formData.expectedParticipants);
   const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
     !Number.isInteger(expectedParticipantCount)
@@ -897,7 +898,8 @@ const Reservation = () => {
       return;
     }
 
-    const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0);
+    const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0)
+      || Boolean(formData.otherEquipment.trim());
     // Validate all required fields in top-to-bottom order
     const requiredOrder = [
       { key: 'fullName', missing: !formData.fullName.trim() },
@@ -1389,6 +1391,21 @@ const Reservation = () => {
               })
             )}
           </div>
+
+          <div className="input-group room-field">
+            <label>Other Equipment</label>
+            <div className="input-with-icon left-icon">
+              <i className="ph ph-package"></i>
+              <input
+                type="text"
+                value={formData.otherEquipment}
+                onChange={(e) => handleInputChange('otherEquipment', e.target.value)}
+                placeholder="e.g. TV Remote, Speaker"
+              />
+            </div>
+            <span className="helper-text">Leave blank if not applicable</span>
+          </div>
+
         </div>
       </div>
 

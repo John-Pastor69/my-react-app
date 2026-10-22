@@ -43,6 +43,8 @@ const ReservationDetails = ({ data }) => {
   const [equipmentMap, setEquipmentMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
 
+  const [currentUser, setCurrentUser] = useState(null);
+
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
     return () => unsubscribeAuth();
@@ -109,8 +111,6 @@ const ReservationDetails = ({ data }) => {
 
   if (!currentData) return <div className="loading-text">Loading reservation details...</div>;
 
-  const [currentUser, setCurrentUser] = useState(null);
-
   // --- DYNAMIC DATA MAPPING ---
   const refNo = currentData.refNo || 'N/A';
   const eventName = currentData.eventName || 'Untitled Event';
@@ -145,6 +145,9 @@ const ReservationDetails = ({ data }) => {
   const equipArray = Object.entries(currentData.selectedEquip || {})
     .filter(([id, qty]) => Number(qty) > 0)
     .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
+  if (typeof currentData.otherEquipment === 'string' && currentData.otherEquipment.trim()) {
+    equipArray.push(currentData.otherEquipment.trim());
+  }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
