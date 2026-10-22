@@ -170,7 +170,7 @@ const TopBar = ({ toggleSidebar }) => {
       setReservationsData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
-    const unsubHistory = onSnapshot(collection(db, 'history'), (snapshot) => {
+    const unsubHistory = onSnapshot(collection(db, 'archive'), (snapshot) => {
       setHistoryData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 

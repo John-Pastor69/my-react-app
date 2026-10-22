@@ -135,17 +135,17 @@ const Calendar = ({ currentUserRole }) => {
         if (res.status === 'Approved' || (res.status || '').toLowerCase() === 'approved') {
           try {
             const { id, approvals, historyLogs, ...cleanHistoryData } = res;
-            await setDoc(doc(db, 'history', id), cleanHistoryData, { merge: true });
+            await setDoc(doc(db, 'archive', id), cleanHistoryData, { merge: true });
           } catch (err) {
-            console.error('Failed to backup approved reservation to history:', err);
+            console.error('Failed to back up approved reservation to archive:', err);
           }
         }
       });
     }, (error) => console.error('Failed to load reservations:', error));
 
-    const unsubHistory = onSnapshot(collection(db, 'history'), (snapshot) => {
+    const unsubHistory = onSnapshot(collection(db, 'archive'), (snapshot) => {
       setHistoryData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
-    }, (error) => console.error('Failed to load history:', error));
+    }, (error) => console.error('Failed to load archive:', error));
 
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
@@ -215,7 +215,9 @@ const Calendar = ({ currentUserRole }) => {
   const events = isArchiveVisible ? historyEvents : activeEvents;
 
   const normalizedRole = (currentUserRole || userRole).toLowerCase().trim();
-  const canOpenArchiveList = normalizedRole === 'mis' || normalizedRole === 'building admin';
+  const canOpenArchiveList = ['mis', 'mis admin', 'building admin', 'super admin'].includes(
+    normalizedRole.replace(/_/g, ' ')
+  );
 
   // --- ARCHIVE COMPUTATIONS ---
   const filteredHistory = historyData.filter(item => {
@@ -261,11 +263,11 @@ const Calendar = ({ currentUserRole }) => {
     if (!itemToDelete) return;
     try {
       if (itemToDelete.type === 'single') {
-        await deleteDoc(doc(db, 'history', itemToDelete.id));
+        await deleteDoc(doc(db, 'archive', itemToDelete.id));
       } else if (itemToDelete.type === 'all') {
         const batch = writeBatch(db);
         filteredHistory.forEach(item => {
-          batch.delete(doc(db, 'history', item.id));
+          batch.delete(doc(db, 'archive', item.id));
         });
         await batch.commit();
       }

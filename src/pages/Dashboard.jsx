@@ -111,11 +111,13 @@ const Dashboard = ({ currentUserRole }) => {
   });
 
   useEffect(() => {
-    if (!currentUser) return; // Added safeguard
-
-    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+    return auth.onAuthStateChanged((user) => {
       setCurrentUser(user);
     });
+  }, []);
+
+  useEffect(() => {
+    if (!currentUser) return undefined;
 
     const unsubscribers = [
       onSnapshot(collection(db, 'reservations'), (snapshot) => {
@@ -145,7 +147,6 @@ const Dashboard = ({ currentUserRole }) => {
     ];
 
     return () => {
-      unsubscribeAuth();
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
   }, [currentUser]);
@@ -155,21 +156,27 @@ const Dashboard = ({ currentUserRole }) => {
       || user.id === currentUser?.uid
       || user.email === currentUser?.email
   );
-  const approverRoleKey = normalizeApprovalRoleKey(currentUserRecord?.role);
+  const normalizedCurrentRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  const approverRoleKey = normalizedCurrentRole === 'super admin'
+    ? 'mis'
+    : normalizeApprovalRoleKey(currentUserRecord?.role);
   const dashboardRole = (currentUserRole || approverRoleKey)
     .toLowerCase()
     .trim()
     .replace(/_/g, ' ');
-  const isAdminDashboard = ['building admin', 'mis', 'mis admin'].includes(dashboardRole);
+  const isAdminDashboard = ['building admin', 'mis', 'mis admin', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
     && !isAdminDashboard;
   const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
+  const visibleUserCount = usersData.filter(
+    (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') !== 'super admin'
+  ).length;
 
   useEffect(() => {
     if (!currentUser) return; // Added safeguard
 
-    return onSnapshot(collection(db, 'history'), (snapshot) => {
+    return onSnapshot(collection(db, 'archive'), (snapshot) => {
       setHistoryData(snapshot.docs.map((document) => ({
         id: document.id,
         ...document.data()
@@ -227,6 +234,7 @@ const Dashboard = ({ currentUserRole }) => {
     const normalizedPhoneQuery = query.replace(/\D/g, '');
     return usersData
       .filter((user) => {
+        if ((user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin') return false;
         const name = (user.name || '').toLowerCase();
         const email = (user.email || '').toLowerCase();
         const phone = String(user.phone || '');
@@ -1176,7 +1184,7 @@ const Dashboard = ({ currentUserRole }) => {
                 <span><i className="status-key pending" /> Maintenance <strong>{facilitiesUnderMaintenance}</strong></span>
                 <span><i className="status-key rejected" /> Unavailable <strong>{facilitiesUnavailable}</strong></span>
               </div>
-              <p className="snapshot-note">{usersData.length} registered users in the system</p>
+              <p className="snapshot-note">{visibleUserCount} registered users in the system</p>
             </article>
             )}
           </section>

@@ -16,7 +16,7 @@ const Schedule = ({ currentUserRole = '' }) => {
   const [usersData, setUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const normalizedUserRole = currentUserRole.toLowerCase().trim().replace(/_/g, ' ');
-  const canCancelApprovedReservations = ['mis', 'mis admin', 'building admin'].includes(normalizedUserRole);
+  const canCancelApprovedReservations = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedUserRole);
   
   // --- REAL-TIME FIRESTORE LISTENERS ---
   useEffect(() => {
@@ -140,7 +140,7 @@ const Schedule = ({ currentUserRole = '' }) => {
       const reservationRef = doc(db, 'reservations', deleteModalData.id);
       await updateDoc(reservationRef, cancellationData);
       const { id, ...reservationData } = deleteModalData.fullData;
-      await setDoc(doc(db, 'history', id), {
+      await setDoc(doc(db, 'archive', id), {
         ...reservationData,
         ...cancellationData
       }, { merge: true });

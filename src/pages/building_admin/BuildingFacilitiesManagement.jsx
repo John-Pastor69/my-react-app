@@ -222,8 +222,9 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   const totalUnavailable = facilitiesData.filter((f) => f.status === 'Unavailable').length;
 
   // --- ROLE ACCESS CHECK ---
-  const allowedRoles = ['building admin', 'mis', 'mis admin'];
-  if (!currentUserRole || !allowedRoles.includes(currentUserRole.toLowerCase().trim())) {
+  const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  const allowedRoles = ['building admin', 'mis', 'mis admin', 'super admin'];
+  if (!normalizedCurrentUserRole || !allowedRoles.includes(normalizedCurrentUserRole)) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
         <h2>Access Denied</h2>

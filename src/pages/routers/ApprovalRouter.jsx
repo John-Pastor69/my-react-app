@@ -10,6 +10,7 @@ const ApprovalRouter = ({currentUserRole}) => {
         'osa': <Approval currentUserRole={currentUserRole} />,
         'room checker': <Approval currentUserRole={currentUserRole} />,
         'mis': <Approval currentUserRole={currentUserRole} />,
+        'super admin': <Approval currentUserRole={currentUserRole} />,
         'academic head': <Approval currentUserRole={currentUserRole} />,
         'school admin': <Approval currentUserRole={currentUserRole} />,
     };

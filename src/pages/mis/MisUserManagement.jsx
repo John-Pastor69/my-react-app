@@ -92,6 +92,9 @@ const MisUserManagement = ({ currentUserRole }) => {
         const list = snapshot.docs
           .map((d) => {
             const data = d.data();
+            if ((data.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin') {
+              return null;
+            }
             let rawName = (data.name || '').trim();
             let title = '';
 
@@ -122,6 +125,7 @@ const MisUserManagement = ({ currentUserRole }) => {
 
             return { id: d.id, ...data, name: finalName };
           })
+          .filter(Boolean)
           .sort((a, b) => (a.name || '').localeCompare(b.name || ''));
 
         setUsersData(list);
@@ -197,8 +201,9 @@ const MisUserManagement = ({ currentUserRole }) => {
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase().trim())).length;
 
   // --- ROLE ACCESS CHECK ---
-  const allowedRoles = ['mis', 'mis admin', 'building admin'];
-  if (!currentUserRole || !allowedRoles.includes(currentUserRole.toLowerCase().trim())) {
+  const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  const allowedRoles = ['mis', 'mis admin', 'building admin', 'super admin'];
+  if (!normalizedCurrentUserRole || !allowedRoles.includes(normalizedCurrentUserRole)) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
         <h2>Access Denied</h2>

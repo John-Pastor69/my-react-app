@@ -11,7 +11,7 @@ const Profile = ({ currentUserRole }) => {
   const [searchParams] = useSearchParams();
   const requestedProfileId = searchParams.get('userId');
   const normalizedUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
-  const canViewOtherProfiles = ['mis', 'mis admin', 'building admin'].includes(normalizedUserRole);
+  const canViewOtherProfiles = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedUserRole);
   const viewedProfileId = canViewOtherProfiles ? requestedProfileId : '';
   const isViewingOtherProfile = Boolean(viewedProfileId);
   // --- STATE MANAGEMENT ---
@@ -75,6 +75,12 @@ const Profile = ({ currentUserRole }) => {
 
           if (docSnap.exists()) {
             const data = docSnap.data();
+            const isHiddenSuperAdmin = (data.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin'
+              && docSnap.id !== user.uid;
+            if (isHiddenSuperAdmin) {
+              setProfileLoadError('This user profile could not be found.');
+              return;
+            }
             const fullName = data.name || '';
             
             let parsedLastName = '';

@@ -42,6 +42,18 @@ const parseOptionalCapacity = (value) => {
 
 const sanitizeAlphabeticName = (value) => value.replace(/[^A-Za-z ]/g, '');
 
+const canSkipReservationLeadTime = (role) => {
+  const normalizedRole = (role || '').toLowerCase().trim().replace(/_/g, ' ');
+  return ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRole);
+};
+
+const getReservationDateMinimum = (role) => {
+  const minDate = new Date();
+  minDate.setHours(0, 0, 0, 0);
+  if (!canSkipReservationLeadTime(role)) minDate.setDate(minDate.getDate() + 7);
+  return minDate;
+};
+
 const getFacilityCapacityLimits = (facility) => ({
   min: parseOptionalCapacity(facility.minCapacity),
   max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
@@ -678,12 +690,12 @@ const Reservation = () => {
         const [m, d, y] = val.split('/').map(Number);
         const inputDate = new Date(y, m - 1, d);
         
-        const minDate = new Date();
-        minDate.setHours(0, 0, 0, 0);
-        minDate.setDate(minDate.getDate() + 7);
+        const minDate = getReservationDateMinimum(userRole);
         
         if (inputDate < minDate) {
-          setDateError('Must be at least 7 days from today');
+          setDateError(canSkipReservationLeadTime(userRole)
+            ? 'Date cannot be in the past'
+            : 'Must be at least 7 days from today');
         } else {
           setDateError('');
           clearMissingField('eventDate');
@@ -710,12 +722,12 @@ const Reservation = () => {
         const [m, d, y] = val.split('/').map(Number);
         const inputDate = new Date(y, m - 1, d);
         
-        const minDate = new Date();
-        minDate.setHours(0, 0, 0, 0);
-        minDate.setDate(minDate.getDate() + 7);
+        const minDate = getReservationDateMinimum(userRole);
         
         if (inputDate < minDate) {
-          setDaysDateError('Must be at least 7 days from today');
+          setDaysDateError(canSkipReservationLeadTime(userRole)
+            ? 'Date cannot be in the past'
+            : 'Must be at least 7 days from today');
         } else {
           setDaysDateError('');
           clearMissingField('endDateInput');
@@ -786,9 +798,7 @@ const Reservation = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
 
-    const minDate = new Date();
-    minDate.setHours(0, 0, 0, 0);
-    minDate.setDate(minDate.getDate() + 7); // 7-day restriction rule
+    const minDate = getReservationDateMinimum(userRole);
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-${i}`} className="calendar-day empty"></div>
@@ -829,9 +839,7 @@ const Reservation = () => {
     const daysInMonth = new Date(year, month + 1, 0).getDate();
     const firstDayIndex = new Date(year, month, 1).getDay(); 
 
-    const minDate = new Date();
-    minDate.setHours(0, 0, 0, 0);
-    minDate.setDate(minDate.getDate() + 7); // 7-day restriction rule
+    const minDate = getReservationDateMinimum(userRole);
     
     const blanks = Array.from({ length: firstDayIndex }, (_, i) => (
       <div key={`blank-days-${i}`} className="calendar-day empty"></div>

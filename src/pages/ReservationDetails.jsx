@@ -44,11 +44,37 @@ const ReservationDetails = ({ data }) => {
   const [requestorRole, setRequestorRole] = useState('requestor');
 
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserRole, setCurrentUserRole] = useState('');
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
     return () => unsubscribeAuth();
   }, []);
+
+  useEffect(() => {
+    let isCurrent = true;
+    const fetchCurrentUserRole = async () => {
+      if (!currentUser) {
+        setCurrentUserRole('');
+        return;
+      }
+
+      try {
+        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        if (isCurrent && userSnap.exists()) {
+          setCurrentUserRole((userSnap.data().role || '').toLowerCase().trim());
+        }
+      } catch (error) {
+        console.error('Failed to load current user role for PDF access:', error);
+        if (isCurrent) setCurrentUserRole('');
+      }
+    };
+
+    fetchCurrentUserRole();
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentUser]);
 
   // Real-time listener for this specific reservation doc
   useEffect(() => {
@@ -192,7 +218,15 @@ const ReservationDetails = ({ data }) => {
   const fullHistory = [...baseHistory, ...dbHistoryLogs];
 
   const bannerStatusClass = currentData.status === 'Approved' ? 'approved' : currentData.status === 'Rejected' ? 'rejected' : 'pending';
-  const isApprovedStatus = currentData.status === 'Approved';
+  const isApprovedStatus = (currentData.status || '').toLowerCase().trim() === 'approved';
+  const isPdfAdmin = ['building admin', 'mis', 'mis admin', 'super admin'].includes(
+    currentUserRole.replace(/_/g, ' ')
+  );
+  const isReservationOwner = Boolean(currentUser && (
+    currentData.userId === currentUser.uid
+    || (currentData.userEmail || '').toLowerCase() === (currentUser.email || '').toLowerCase()
+  ));
+  const canDownloadPdf = isApprovedStatus && (isPdfAdmin || isReservationOwner);
 
   const airconDisplay = currentData.aircon 
     ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
@@ -200,7 +234,7 @@ const ReservationDetails = ({ data }) => {
 
   // --- PROGRAMMATIC VECTOR PDF GENERATOR (NO SCREENSHOTS) ---
   const handleDownloadPDF = () => {
-    if (!isApprovedStatus) return;
+    if (!canDownloadPdf) return;
 
     const pdf = new jsPDF('p', 'mm', 'a4');
     const pageWidth = pdf.internal.pageSize.getWidth();
@@ -521,13 +555,14 @@ const ReservationDetails = ({ data }) => {
           </div>
 
           {/* Download PDF Button */}
-          <button 
-            className={`download-pdf-btn ${isApprovedStatus ? 'is-approved' : ''}`}
-            disabled={!isApprovedStatus}
-            onClick={handleDownloadPDF}
-          >
-            📄 Download PDF
-          </button>
+          {canDownloadPdf && (
+            <button
+              className="download-pdf-btn is-approved"
+              onClick={handleDownloadPDF}
+            >
+              📄 Download PDF
+            </button>
+          )}
         </div>
       </div>
 

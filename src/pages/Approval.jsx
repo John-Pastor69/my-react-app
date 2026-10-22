@@ -17,7 +17,7 @@ const formatName = (fullName) => {
 };
 
 
-const Approval = () => {
+const Approval = ({ currentUserRole = '' }) => {
     const [currentUser, setCurrentUser] = useState(null);
 
     // --- STATE MANAGEMENT ---
@@ -58,7 +58,12 @@ const Approval = () => {
                     if (userSnap.exists()) {
                         const userData = userSnap.data();
                         const rawRole = userData.role || 'user';
-                        setApproverRoleKey(normalizeApprovalRoleKey(rawRole));
+                        const normalizedRole = normalizeApprovalRoleKey(rawRole);
+                        setApproverRoleKey(
+                            (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin'
+                                ? 'mis'
+                                : normalizedRole
+                        );
                     }
                 } catch (err) {
                     console.error("Failed to fetch approver data", err);
@@ -66,7 +71,7 @@ const Approval = () => {
             }
         });
         return () => unsubscribeAuth();
-    }, []);
+    }, [currentUserRole]);
 
     // --- GET CURRENT LOGGED-IN USER NAME ---
     const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};

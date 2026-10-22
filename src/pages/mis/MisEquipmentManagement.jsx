@@ -220,8 +220,9 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   const totalReservedUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedReserved, 0);
 
   // --- ROLE ACCESS CHECK ---
-  const allowedRoles = ['mis', 'mis admin', 'building admin'];
-  if (!currentUserRole || !allowedRoles.includes(currentUserRole.toLowerCase().trim())) {
+  const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  const allowedRoles = ['mis', 'mis admin', 'building admin', 'super admin'];
+  if (!normalizedCurrentUserRole || !allowedRoles.includes(normalizedCurrentUserRole)) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>
         <h2>Access Denied</h2>

@@ -10,6 +10,7 @@ const DashboardRouter = ({ currentUserRole }) => {
     'osa': <Dashboard currentUserRole={currentUserRole} />,
     'room checker': <Dashboard currentUserRole={currentUserRole} />,
     'mis': <Dashboard currentUserRole={currentUserRole} />,
+    'super admin': <Dashboard currentUserRole={currentUserRole} />,
     'academic head': <Dashboard currentUserRole={currentUserRole} />,
     'school admin': <Dashboard currentUserRole={currentUserRole} />,
 

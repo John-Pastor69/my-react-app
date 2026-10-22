@@ -11,6 +11,7 @@ const ProfileRouter = ({currentUserRole}) => {
         'osa': <Profile currentUserRole={currentUserRole} />,
         'room checker': <Profile currentUserRole={currentUserRole} />,
         'mis': <Profile currentUserRole={currentUserRole} />,
+        'super admin': <Profile currentUserRole={currentUserRole} />,
         'academic head': <Profile currentUserRole={currentUserRole} />,
         'school admin': <Profile currentUserRole={currentUserRole} />,
     };

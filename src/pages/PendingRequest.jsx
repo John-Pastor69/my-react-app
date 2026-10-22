@@ -292,7 +292,7 @@ const PendingRequest = ({ data }) => {
         delete cleanHistoryData.id;
         delete cleanHistoryData.approvals;
         delete cleanHistoryData.historyLogs;
-        batch.set(doc(db, 'history', currentData.id), {
+        batch.set(doc(db, 'archive', currentData.id), {
           ...cleanHistoryData,
           status: 'Rejected',
           rejectionRemark: remarks.trim()
@@ -309,10 +309,10 @@ const PendingRequest = ({ data }) => {
           };
           const { id, approvals, historyLogs, ...cleanHistoryData } = updatedResData;
 
-          // Writes/overwrites directly to the history collection excluding approvals and historyLogs, using the same reservation ID
-          await setDoc(doc(db, 'history', currentData.id), cleanHistoryData, { merge: true });
+          // Writes/overwrites directly to the archive collection excluding approvals and historyLogs, using the same reservation ID
+          await setDoc(doc(db, 'archive', currentData.id), cleanHistoryData, { merge: true });
         } catch (historyErr) {
-          console.error('Failed to backup approved reservation to history:', historyErr);
+          console.error('Failed to back up approved reservation to archive:', historyErr);
         }
       }
       // -----------------------------------------------------------------

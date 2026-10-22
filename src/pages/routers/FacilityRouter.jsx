@@ -6,7 +6,8 @@ const FacilityRouter = ({currentUserRole}) => {
 
     const approvalComponents = {
         'building admin': <Facility currentUserRole={currentUserRole} />,
-        'mis': <Facility currentUserRole={currentUserRole} />
+        'mis': <Facility currentUserRole={currentUserRole} />,
+        'super admin': <Facility currentUserRole={currentUserRole} />
     };
 
     const CurrentDashboard = approvalComponents[currentUserRole] || null;

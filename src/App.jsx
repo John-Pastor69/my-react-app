@@ -56,15 +56,21 @@ export default function App() {
     });
 
     // 1. Let Firebase automatically detect the returned session
+    // 1. Let Firebase automatically detect the returned session
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       if (user) {
+        
+        // --- NEW: Check if user logged in via Email/Password (Super Admin) ---
+        const isSuperAdminProvider = user.providerData.some(p => p.providerId === 'password');
+
         const isStiEmail = user.email && (
           user.email.endsWith('@globalcity.sti.edu.ph') || 
           user.email.endsWith('@sti.edu.ph') ||
           user.email.endsWith('@globalcity.sti.edu')
         );
 
-        if (!isStiEmail) {
+        // Bypass the STI email block if they are using the Super Admin login method
+        if (!isStiEmail && !isSuperAdminProvider) {
           await signOut(auth);
           setLoginError("Access denied. Only STI institutional accounts are allowed.");
           setIsAuthenticated(false);
@@ -104,10 +110,18 @@ export default function App() {
             const day = String(d.getDate()).padStart(2, '0');
             const liveDate = `${month}/${day}/${d.getFullYear()}`;
             
-            const rawName = user.displayName || "Unknown User";
+            const rawName = user.displayName || "Super Admin";
             
-            // Determine default role dynamically based on name contents
-            if (/faculty/i.test(rawName)) {
+            // --- NEW: Force Super Admin role for Email/Password logins ---
+            if (isSuperAdminProvider) {
+              resolvedRole = 'super admin';
+            }
+            // 2. Force Endorser role for specific email domain
+            else if (user.email && user.email.endsWith('@globalcity.sti.edu')) {
+              resolvedRole = 'endorser';
+            } 
+            // 3. Fallback to name-based logic for other domains (e.g. .edu.ph)
+            else if (/faculty/i.test(rawName)) {
               resolvedRole = 'endorser';
             } else if (/student/i.test(rawName)) {
               resolvedRole = 'requestor';

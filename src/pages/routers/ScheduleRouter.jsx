@@ -11,6 +11,7 @@ const ScheduleRouter = ({currentUserRole}) => {
         'osa': <Schedule currentUserRole={currentUserRole} />,
         'room checker': <Schedule currentUserRole={currentUserRole} />,
         'mis': <Schedule currentUserRole={currentUserRole} />,
+        'super admin': <Schedule currentUserRole={currentUserRole} />,
         'academic head': <Schedule currentUserRole={currentUserRole} />,
         'school admin': <Schedule currentUserRole={currentUserRole} />,
     };

@@ -75,7 +75,7 @@ export const archiveExpiredPendingReservations = async (user) => {
   for (let index = 0; index < expiredReservations.length; index += 200) {
     const batch = writeBatch(db);
     expiredReservations.slice(index, index + 200).forEach(({ id, data }) => {
-      batch.set(doc(db, 'history', id), {
+      batch.set(doc(db, 'archive', id), {
         ...data,
         status: 'Expired',
         expiredAt: now.toISOString()
