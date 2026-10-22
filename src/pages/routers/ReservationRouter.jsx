@@ -9,6 +9,7 @@ const ReservationRouter = ({currentUserRole}) => {
         'endorser': <Reservation currentUserRole={currentUserRole} />,
         'building admin': <Reservation currentUserRole={currentUserRole} />,
         'osa': <Reservation currentUserRole={currentUserRole} />,
+        'room checker': <Reservation currentUserRole={currentUserRole} />,
         'mis': <Reservation currentUserRole={currentUserRole} />,
         'academic head': <Reservation currentUserRole={currentUserRole} />,
         'school admin': <Reservation currentUserRole={currentUserRole} />,

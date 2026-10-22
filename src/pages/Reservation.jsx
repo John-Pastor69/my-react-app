@@ -502,7 +502,7 @@ const Reservation = () => {
   const selectedFacilityCapacity = selectedFacility
     ? getFacilityCapacityLimits(selectedFacility)
     : { min: null, max: null };
-  const hasFacility = formData.facilities.length > 0;
+  const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
   const expectedParticipantCount = Number(formData.expectedParticipants);
   const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
     !Number.isInteger(expectedParticipantCount)

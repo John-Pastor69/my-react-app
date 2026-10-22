@@ -8,6 +8,7 @@ const ApprovalRouter = ({currentUserRole}) => {
         'endorser': <Approval currentUserRole={currentUserRole} />,
         'building admin': <Approval currentUserRole={currentUserRole} />,
         'osa': <Approval currentUserRole={currentUserRole} />,
+        'room checker': <Approval currentUserRole={currentUserRole} />,
         'mis': <Approval currentUserRole={currentUserRole} />,
         'academic head': <Approval currentUserRole={currentUserRole} />,
         'school admin': <Approval currentUserRole={currentUserRole} />,

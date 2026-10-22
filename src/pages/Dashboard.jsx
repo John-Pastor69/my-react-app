@@ -198,6 +198,7 @@ const Dashboard = ({ currentUserRole }) => {
     ) || {};
     const requestorRole = (requestor.role || reservation.userRole || 'requestor').toLowerCase().trim();
     const isStaffRequestor = requestorRole !== 'requestor' && requestorRole !== 'user';
+    const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker';
 
     if (approverRoleKey === 'endorser') {
       if (isStaffRequestor || !reservation.endorserName) return false;
@@ -208,7 +209,9 @@ const Dashboard = ({ currentUserRole }) => {
 
     return isApprovalStepReady(reservation.approvals, approverRoleKey, {
       hasEndorser: Boolean(reservation.endorserName),
-      isStaffRequestor
+      isStaffRequestor,
+      isRoomCheckerRequestor,
+      hasSpecificRoom: Boolean(reservation.specificRoom?.trim())
     });
   }).sort((first, second) => {
     const firstDate = parseDate(first.createdAt || first.eventDate)?.getTime() || 0;

@@ -9,6 +9,7 @@ const CalendarRouter = ({currentUserRole}) => {
         'endorser': <Calendar currentUserRole={currentUserRole} />,
         'building admin': <Calendar currentUserRole={currentUserRole} />,
         'osa': <Calendar currentUserRole={currentUserRole} />,
+        'room checker': <Calendar currentUserRole={currentUserRole} />,
         'mis': <Calendar currentUserRole={currentUserRole} />,
         'academic head': <Calendar currentUserRole={currentUserRole} />,
         'school admin': <Calendar currentUserRole={currentUserRole} />,

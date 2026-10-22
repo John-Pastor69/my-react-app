@@ -8,6 +8,7 @@ const DashboardRouter = ({ currentUserRole }) => {
     'endorser': <Dashboard currentUserRole={currentUserRole} />,
     'building admin': <Dashboard currentUserRole={currentUserRole} />,
     'osa': <Dashboard currentUserRole={currentUserRole} />,
+    'room checker': <Dashboard currentUserRole={currentUserRole} />,
     'mis': <Dashboard currentUserRole={currentUserRole} />,
     'academic head': <Dashboard currentUserRole={currentUserRole} />,
     'school admin': <Dashboard currentUserRole={currentUserRole} />,

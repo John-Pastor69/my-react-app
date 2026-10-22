@@ -2,7 +2,7 @@ import { jsPDF } from 'jspdf';
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
-import { getApprovalTrackerSteps } from '../services/approvalWorkflow';
+import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import '../styles/ReservationDetails.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -139,7 +139,7 @@ const ReservationDetails = ({ data }) => {
 
   const floorLocations = (currentData.facilities || []).map(id => facilitiesMap[id]?.location).filter(Boolean);
   const locationDisplay = currentData.specificRoom 
-    ? `Room: ${currentData.specificRoom}` 
+    ? currentData.specificRoom
     : (floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A');
 
   const equipArray = Object.entries(currentData.selectedEquip || {})
@@ -166,6 +166,8 @@ const ReservationDetails = ({ data }) => {
   const endorsedBy = currentData.endorserName ? `${endorserName} (${currentData.endorserDesignation})` : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
+  const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'
+    || normalizeApprovalRoleKey(currentData.userRole) === 'room checker';
 
   // --- HIERARCHY & TRACKER LOGIC ---
   const trackerSteps = getApprovalTrackerSteps({
@@ -173,6 +175,8 @@ const ReservationDetails = ({ data }) => {
     dateSubmitted,
     hasEndorser,
     isStaffRequestor,
+    isRoomCheckerRequestor,
+    hasSpecificRoom: Boolean(currentData.specificRoom?.trim()),
     reservationStatus: currentData.status
   });
 

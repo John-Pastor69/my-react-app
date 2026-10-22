@@ -9,6 +9,7 @@ const ScheduleRouter = ({currentUserRole}) => {
         'endorser': <Schedule currentUserRole={currentUserRole} />,
         'building admin': <Schedule currentUserRole={currentUserRole} />,
         'osa': <Schedule currentUserRole={currentUserRole} />,
+        'room checker': <Schedule currentUserRole={currentUserRole} />,
         'mis': <Schedule currentUserRole={currentUserRole} />,
         'academic head': <Schedule currentUserRole={currentUserRole} />,
         'school admin': <Schedule currentUserRole={currentUserRole} />,

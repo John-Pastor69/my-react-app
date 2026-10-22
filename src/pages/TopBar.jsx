@@ -196,8 +196,9 @@ const TopBar = ({ toggleSidebar }) => {
 
     reservationsData.forEach(res => {
       const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
-      const reqRole = (requestor.role || 'requestor').toLowerCase().trim();
+      const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
       const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
+      const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
       
       // --- 1. REQUESTOR NOTIFICATIONS ---
       if (res.userId === uid || res.userEmail === email) {
@@ -246,7 +247,9 @@ const TopBar = ({ toggleSidebar }) => {
           && !(myRoleKey === 'endorser' && isStaffRequestor)
           && isApprovalStepReady(res.approvals, myRoleKey, {
             hasEndorser: Boolean(res.endorserName),
-            isStaffRequestor
+            isStaffRequestor,
+            isRoomCheckerRequestor,
+            hasSpecificRoom: Boolean(res.specificRoom?.trim())
           });
 
         if (isMyTurn) {

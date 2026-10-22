@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, updateDoc, setDoc, arrayUnion, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
-import { APPROVAL_ROLE_HIERARCHY, getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import '../styles/PendingRequest.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -186,7 +186,7 @@ const PendingRequest = ({ data }) => {
 
   const floorLocations = (currentData.facilities || []).map(id => facilitiesMap[id]?.location).filter(Boolean);
   const locationDisplay = currentData.specificRoom 
-    ? `Room: ${currentData.specificRoom}` 
+    ? currentData.specificRoom
     : (floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A');
 
   const equipArray = Object.entries(currentData.selectedEquip || {})
@@ -213,6 +213,8 @@ const PendingRequest = ({ data }) => {
   const endorsedBy = currentData.endorserName ? `${endorserName} (${currentData.endorserDesignation})` : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
+  const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'
+    || normalizeApprovalRoleKey(currentData.userRole) === 'room checker';
 
   // --- HIERARCHY & TRACKER LOGIC ---
   const trackerSteps = getApprovalTrackerSteps({
@@ -220,13 +222,14 @@ const PendingRequest = ({ data }) => {
     dateSubmitted,
     hasEndorser,
     isStaffRequestor,
+    isRoomCheckerRequestor,
+    hasSpecificRoom: Boolean(currentData.specificRoom?.trim()),
     activeRoleKey: approver.roleKey,
     reservationStatus: currentData.status
   });
 
-  const myStepIndex = APPROVAL_ROLE_HIERARCHY.indexOf(approver.roleKey);
-  const canAct = myStepIndex !== -1
-    && trackerSteps[myStepIndex].state === 'your-turn'
+  const myStep = trackerSteps.find((step) => step.key === approver.roleKey);
+  const canAct = myStep?.state === 'your-turn'
     && (currentData.status || '').toLowerCase() === 'pending'
     && !currentData.approvals?.[approver.roleKey];
 

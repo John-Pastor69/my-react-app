@@ -110,6 +110,7 @@ const Approval = () => {
 
             const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
             const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
+            const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
 
             // Endorser specific check: matches the endorser name set up on the reservation, and must NOT be a staff requestor
             if (approverRoleKey === 'endorser') {
@@ -124,7 +125,9 @@ const Approval = () => {
 
             if (isApprovalStepReady(res.approvals, approverRoleKey, {
                 hasEndorser: Boolean(res.endorserName),
-                isStaffRequestor
+                isStaffRequestor,
+                isRoomCheckerRequestor,
+                hasSpecificRoom: Boolean(res.specificRoom?.trim())
             })) return 'your-turn';
             return null;
         };
