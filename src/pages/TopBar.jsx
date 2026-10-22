@@ -291,11 +291,14 @@ const TopBar = ({ toggleSidebar }) => {
           });
 
         if (isMyTurn) {
+          const approvalRequirement = myRoleKey === 'endorser'
+            ? 'requires your endorsement'
+            : 'requires your approval';
           newNotifs.push({
             id: `${res.id}-act`,
             type: 'action',
             title: 'Action Required',
-            message: `A new reservation request (${res.eventName || 'Untitled'}) requires your endorsement/approval.`,
+            message: `A new reservation request (${res.eventName || 'Untitled'}) ${approvalRequirement}.`,
             time: res.createdAt,
             rawDate: new Date(res.createdAt || 0),
             fullData: res
