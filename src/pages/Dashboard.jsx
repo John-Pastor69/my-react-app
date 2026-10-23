@@ -98,16 +98,12 @@ const Dashboard = ({ currentUserRole }) => {
     endDate: '',
     sort: 'latest'
   });
-  const [filters, setFilters] = useState(() => {
-    const today = new Date();
-    const thirtyDaysAgo = new Date(today.getTime() - 29 * DAY_IN_MS);
-    return {
-      startDate: toDateInputValue(thirtyDaysAgo),
-      endDate: toDateInputValue(today),
-      startTime: '',
-      endTime: '',
-      status: 'all'
-    };
+  const [filters, setFilters] = useState({
+    startDate: '',
+    endDate: '',
+    startTime: '',
+    endTime: '',
+    status: 'all'
   });
 
   useEffect(() => {
@@ -1019,17 +1015,13 @@ const Dashboard = ({ currentUserRole }) => {
               <button
                 className="filter-reset"
                 type="button"
-                onClick={() => {
-                  const today = new Date();
-                  const thirtyDaysAgo = new Date(today.getTime() - 29 * DAY_IN_MS);
-                  setFilters({
-                    startDate: toDateInputValue(thirtyDaysAgo),
-                    endDate: toDateInputValue(today),
-                    startTime: '',
-                    endTime: '',
-                    status: 'all'
-                  });
-                }}
+                onClick={() => setFilters({
+                  startDate: '',
+                  endDate: '',
+                  startTime: '',
+                  endTime: '',
+                  status: 'all'
+                })}
               >
                 Reset filters
               </button>
