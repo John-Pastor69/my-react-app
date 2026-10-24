@@ -41,6 +41,7 @@ const ReservationDetails = ({ data }) => {
   const [currentData, setCurrentData] = useState(data);
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
+  const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -119,7 +120,7 @@ const ReservationDetails = ({ data }) => {
 
   // Fetch facilities and equipments mapping
   useEffect(() => {
-    if (!currentUser) return; // Added safeguard
+    if (!currentUser) return;
     const unsubFac = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const fMap = {};
       snapshot.forEach(doc => { fMap[doc.id] = doc.data(); });
@@ -132,8 +133,14 @@ const ReservationDetails = ({ data }) => {
       setEquipmentMap(eMap);
     });
 
-    return () => { unsubFac(); unsubEq(); };
-  }, [currentUser]); // Added dependency
+    const unsubUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      const uMap = {};
+      snapshot.forEach(doc => { uMap[doc.id] = doc.data(); });
+      setUtilitiesMap(uMap);
+    });
+
+    return () => { unsubFac(); unsubEq(); unsubUtilities(); };
+  }, [currentUser]);
 
   if (!currentData) return <div className="loading-text">Loading reservation details...</div>;
 
@@ -175,6 +182,12 @@ const ReservationDetails = ({ data }) => {
     equipArray.push(currentData.otherEquipment.trim());
   }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
+  const utilityNames = (Array.isArray(currentData.selectedUtilities) ? currentData.selectedUtilities : [])
+    .map((id) => utilitiesMap[id]?.name || id);
+  if (typeof currentData.otherUtility === 'string' && currentData.otherUtility.trim()) {
+    utilityNames.push(currentData.otherUtility.trim());
+  }
+  const utilityRequested = utilityNames.length > 0 ? utilityNames.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
   const requestorTypes = Array.isArray(currentData.requestorTypes)
@@ -241,7 +254,7 @@ const ReservationDetails = ({ data }) => {
     ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
     : "OFF";
 
-  // --- PROGRAMMATIC VECTOR PDF GENERATOR (NO SCREENSHOTS) ---
+  // --- PROGRAMMATIC VECTOR PDF GENERATOR ---
   const handleDownloadPDF = () => {
     if (!canDownloadPdf) return;
 
@@ -256,9 +269,38 @@ const ReservationDetails = ({ data }) => {
     const checkPageBreak = (neededHeight) => {
       if (y + neededHeight > pageHeight - 15) {
         pdf.addPage();
+        drawWatermark();
         y = 18;
       }
     };
+
+    // Helper: Draw Custom Diagonal Watermark
+    const drawWatermark = () => {
+      pdf.saveGraphicsState();
+      pdf.setGState(new pdf.GState({ opacity: 0.15 })); 
+      // Semi-transparent Green matching Word doc settings
+      pdf.setTextColor(112, 173, 71); 
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(100);
+      
+      const text = 'APPROVED';
+      const textWidth = pdf.getStringUnitWidth(text) * pdf.internal.getFontSize() / pdf.internal.scaleFactor;
+      
+      // Calculate center position
+      const centerX = (pageWidth / 2) + 30;
+      const centerY = (pageHeight / 2) + 45;
+
+      // Rotate and draw text at center
+      pdf.text(text, centerX, centerY, { 
+        align: 'center', 
+        angle: 45, 
+        renderingMode: 'fill'
+      });
+      pdf.restoreGraphicsState();
+    };
+
+    // Draw watermark on first page
+    drawWatermark();
 
     // 1. Formal Institutional Header
     pdf.setFont('helvetica', 'bold');
@@ -276,112 +318,102 @@ const ReservationDetails = ({ data }) => {
     pdf.line(margin, y, pageWidth - margin, y);
     y += 7;
 
-    // 2. Top Reference & Status Bar
-    pdf.setFillColor(240, 253, 244);
-    pdf.setDrawColor(167, 243, 208);
-    pdf.setLineWidth(0.3);
-    pdf.roundedRect(margin, y, contentWidth, 12, 2, 2, 'FD');
-
+    // 2. Top Reference Bar (Box removed, text only)
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(9.5);
     pdf.setTextColor(6, 95, 70);
-    pdf.text(`REFERENCE NO: ${refNo}`, margin + 4, y + 7.5);
-    pdf.text(`STATUS: ${(currentData.status || 'APPROVED').toUpperCase()}`, pageWidth - margin - 4, y + 7.5, { align: 'right' });
-    y += 18;
+    pdf.text(`REFERENCE NO: ${refNo}`, margin, y);
+    y += 14;
 
-    // Helper: Draw Section Title
+    // Helper: Draw Plain Section Title
     const drawSectionHeader = (title) => {
-      checkPageBreak(14);
-      pdf.setFillColor(241, 245, 249);
-      pdf.setDrawColor(203, 213, 225);
-      pdf.setLineWidth(0.3);
-      pdf.rect(margin, y, contentWidth, 8, 'FD');
-
+      checkPageBreak(12);
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(10);
       pdf.setTextColor(30, 41, 59);
-      pdf.text(title.toUpperCase(), margin + 3, y + 5.5);
-      y += 13;
+      pdf.text(title.toUpperCase(), margin, y);
+      y += 8;
     };
 
-    // Helper: Draw 2-Column Row
+    // Helper: Draw Plain 2-Column Row
     const drawTwoColRow = (label1, val1, label2, val2) => {
       const text1 = pdf.splitTextToSize(String(val1 || 'N/A'), colWidth - 2);
       const text2 = label2 ? pdf.splitTextToSize(String(val2 || 'N/A'), colWidth - 2) : [];
       const maxLines = Math.max(text1.length, text2.length, 1);
-      const rowHeight = 5 + maxLines * 4.5 + 3;
+      const rowHeight = 4.5 + maxLines * 4.5 + 3;
 
       checkPageBreak(rowHeight);
 
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
       pdf.setTextColor(100, 116, 139);
-      pdf.text(label1.toUpperCase(), margin + 2, y);
+      pdf.text(label1.toUpperCase(), margin, y);
       if (label2) {
-        pdf.text(label2.toUpperCase(), margin + colWidth + 6, y);
+        pdf.text(label2.toUpperCase(), margin + colWidth + 4, y);
       }
 
       y += 4.5;
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9.5);
       pdf.setTextColor(15, 23, 42);
-      pdf.text(text1, margin + 2, y);
+      pdf.text(text1, margin, y);
       if (label2) {
-        pdf.text(text2, margin + colWidth + 6, y);
+        pdf.text(text2, margin + colWidth + 4, y);
       }
 
       y += maxLines * 4.5 + 3;
     };
 
-    // Helper: Draw Full-Width Row
+    // Helper: Draw Plain Full-Width Row
     const drawFullRow = (label, val) => {
       const textLines = pdf.splitTextToSize(String(val || 'N/A'), contentWidth - 4);
-      const rowHeight = 5 + textLines.length * 4.5 + 3;
+      const rowHeight = 4.5 + textLines.length * 4.5 + 3;
 
       checkPageBreak(rowHeight);
 
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8);
       pdf.setTextColor(100, 116, 139);
-      pdf.text(label.toUpperCase(), margin + 2, y);
+      pdf.text(label.toUpperCase(), margin, y);
 
       y += 4.5;
       pdf.setFont('helvetica', 'normal');
       pdf.setFontSize(9.5);
       pdf.setTextColor(15, 23, 42);
-      pdf.text(textLines, margin + 2, y);
+      pdf.text(textLines, margin, y);
 
       y += textLines.length * 4.5 + 4;
     };
 
-    // 3. Section: Event Information
-    drawSectionHeader('1. Event Information');
+    // 3. Section: Event Information (No Numbering)
+    drawSectionHeader('Event Information');
     drawTwoColRow('Event Name', eventName, 'Event Type', eventType);
     drawTwoColRow('Event Date', eventDate, 'Time', eventTime.replace('–', '-'));
     drawTwoColRow('Expected Attendees', expectedAttendees, '', '');
     drawFullRow('Event Description / Purpose', description);
-    y += 2;
+    y += 4;
 
     // 4. Section: Facility & Equipment Details
-    drawSectionHeader('2. Facility & Equipment Details');
+    drawSectionHeader('Facility & Equipment Details');
     drawTwoColRow('Facility Name', facilityDisplay, 'Room Capacity', capacityDisplay);
-    drawTwoColRow('Floor / Location', locationDisplay, 'Aircon', airconDisplay);
+    drawTwoColRow('Floor / Location', locationDisplay, 'Air Conditioning', airconDisplay);
+    drawFullRow('Utility Requested', utilityRequested);
     drawFullRow('Equipment Requested', equipmentRequested);
-    y += 2;
+    y += 4;
 
     // 5. Section: Requestor Information
-    drawSectionHeader('3. Requestor Information');
+    drawSectionHeader('Requestor Information');
     drawTwoColRow('Full Name', requestorName, 'Contact Number', contactNumber);
     drawFullRow('Requestor Type', requestorTypeDisplay);
     drawTwoColRow('Email Address', email, 'Date Submitted', dateSubmitted);
-    y += 2;
+    y += 4;
 
     // 6. Section: Endorser Information (if applicable)
     if (hasEndorser) {
-      drawSectionHeader('4. Endorser Information');
+      drawSectionHeader('Endorser Information');
       drawTwoColRow("Endorser's Full Name", endorserName, 'Designation', endorserDesignation);
       drawFullRow('Contact Email', endorserEmail);
-      y += 2;
+      y += 4;
     }
 
     // 7. Footer Timestamp
@@ -475,8 +507,12 @@ const ReservationDetails = ({ data }) => {
                 <div className="val word-break">{locationDisplay}</div>
               </div>
               <div>
-                <label>AIRCON</label>
+                <label>AIR CONDITIONING</label>
                 <div className="val">{airconDisplay}</div>
+              </div>
+              <div className="equipment-requested-field">
+                <label>UTILITY REQUESTED</label>
+                <div className="val">{utilityRequested}</div>
               </div>
               <div className="equipment-requested-field">
                 <label>EQUIPMENT REQUESTED</label>

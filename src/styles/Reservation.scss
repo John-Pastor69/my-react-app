@@ -102,6 +102,12 @@ $orange-main: #F59E0B;
     border-top: 1px dashed #CBD5E1; 
   }
 
+  .utility-optional-note {
+    margin: -0.5rem 0 1rem;
+    color: $text-muted;
+    font-size: var(--font-body);
+  }
+
   .form-grid {
     display: grid; 
     grid-template-columns: 1fr; 

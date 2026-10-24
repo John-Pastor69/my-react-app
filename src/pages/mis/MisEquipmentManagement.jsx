@@ -110,9 +110,12 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
 
   // --- MAP UTILITIES (NEW) ---
   const mappedUtilitiesData = utilitiesData.map(item => {
-    const effectiveStatusClass = item.status === 'Unavailable' ? 'status-unavailable' : 
-                                 item.status === 'Maintenance' ? 'status-maintenance' : 'status-available';
-    return { ...item, statusClass: effectiveStatusClass };
+    const status = item.status === 'Unavailable' ? 'Unavailable' : 'Available';
+    return {
+      ...item,
+      status,
+      statusClass: status === 'Unavailable' ? 'status-unavailable' : 'status-available'
+    };
   });
 
   // --- EQUIPMENT ACTION HANDLERS ---
@@ -193,16 +196,19 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     } catch (error) { console.error('Failed to delete utility:', error); }
   };
 
-  const handleEditUtilityClick = (item) => setEditingUtility(item);
+  const handleEditUtilityClick = (item) => setEditingUtility({
+    ...item,
+    status: item.status === 'Unavailable' ? 'Unavailable' : 'Available'
+  });
 
   const handleSaveEditUtility = async (e) => {
     e.preventDefault();
     if (!editingUtility) return;
-    let statusClass = editingUtility.status === 'Unavailable' ? 'status-unavailable' : 
-                      editingUtility.status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+    const status = editingUtility.status === 'Unavailable' ? 'Unavailable' : 'Available';
+    const statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
     try {
       await updateDoc(doc(db, 'utilities', editingUtility.id), {
-        status: editingUtility.status,
+        status,
         statusClass: statusClass,
         lastUpdated: getCurrentDateTime()
       });
@@ -212,9 +218,8 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
 
   const handleSaveNewUtility = async (e) => {
     e.preventDefault();
-    let status = newUtility.status;
-    let statusClass = status === 'Unavailable' ? 'status-unavailable' : 
-                      status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+    const status = newUtility.status === 'Unavailable' ? 'Unavailable' : 'Available';
+    const statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
     try {
       await addDoc(collection(db, 'utilities'), {
         name: newUtility.name.trim() || 'Untitled Utility',
@@ -536,7 +541,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                 <label>Status</label>
                 <select value={editingUtility.status} onChange={(e) => setEditingUtility({ ...editingUtility, status: e.target.value })}>
                   <option value="Available">Available</option>
-                  <option value="Maintenance">Maintenance</option>
                   <option value="Unavailable">Unavailable</option>
                 </select>
               </div>
@@ -566,7 +570,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                 <label>Status</label>
                 <select value={newUtility.status} onChange={(e) => setNewUtility({ ...newUtility, status: e.target.value })}>
                   <option value="Available">Available</option>
-                  <option value="Maintenance">Maintenance</option>
                   <option value="Unavailable">Unavailable</option>
                 </select>
               </div>

@@ -32,6 +32,7 @@ const initialFormState = {
   facilities: [], 
   specificRoom: '', 
   otherEquipment: '',
+  otherUtility: '',
   airconOnTime: '', 
   airconOffTime: '',
   endorserName: '', 
@@ -344,6 +345,7 @@ const Reservation = () => {
   
   // DYNAMIC SELECTION CARTS
   const [selectedEquip, setSelectedEquip] = useState({});
+  const [selectedUtilities, setSelectedUtilities] = useState([]);
 
   const [certified, setCertified] = useState(false);
   const [isDraftSaved, setIsDraftSaved] = useState(false);
@@ -356,6 +358,7 @@ const Reservation = () => {
 
   // --- UI & VALIDATION STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
+  const [inventoryUtilities, setInventoryUtilities] = useState([]);
   const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
   const [reservationsLoaded, setReservationsLoaded] = useState(false);
@@ -468,6 +471,7 @@ const Reservation = () => {
           facilities: reservation.facilities || [],
           specificRoom: reservation.specificRoom || '',
           otherEquipment: reservation.otherEquipment || '',
+          otherUtility: reservation.otherUtility || '',
           airconOnTime: reservation.airconOnTime || '',
           airconOffTime: reservation.airconOffTime || '',
           endorserName: sanitizeAlphabeticName(reservation.endorserName || ''),
@@ -481,6 +485,7 @@ const Reservation = () => {
         setDays(Number(reservation.days) || 1);
         setAircon(Boolean(reservation.aircon));
         setSelectedEquip(reservation.selectedEquip || {});
+        setSelectedUtilities(Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : []);
       } catch (error) {
         console.error('Failed to load reservation for modification:', error);
         if (isActive) {
@@ -529,6 +534,7 @@ const Reservation = () => {
         if (parsed.startTime) setStartTime(formatTimeForPicker(parsed.startTime));
         if (parsed.endTime) setEndTime(formatTimeForPicker(parsed.endTime));
         if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
+        if (Array.isArray(parsed.selectedUtilities)) setSelectedUtilities(parsed.selectedUtilities);
       } catch (e) {
         console.error("Failed to parse draft", e);
       }
@@ -566,6 +572,11 @@ const Reservation = () => {
       setInventoryEquipments(list);
     }, (error) => console.error('Failed to load equipment:', error));
 
+    const unsubUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setInventoryUtilities(list);
+    }, (error) => console.error('Failed to load utilities:', error));
+
     const unsubFacilities = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setInventoryFacilities(list);
@@ -590,6 +601,7 @@ const Reservation = () => {
 
     return () => {
       unsubEquipments();
+      unsubUtilities();
       unsubFacilities();
       unsubReservations();
       unsubUsers();
@@ -759,7 +771,7 @@ const Reservation = () => {
   };
 
   const updateEquip = (item, delta) => {
-    if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
+    if (item.status === 'Unavailable') return;
     const currentSelected = selectedEquip[item.id] || 0;
     const newSelected = currentSelected + delta;
     if (newSelected < 0 || newSelected > item.computedAvailable) return;
@@ -767,7 +779,7 @@ const Reservation = () => {
   };
 
   const handleEquipInputChange = (item, val) => {
-    if (item.status === 'Unavailable' || item.status === 'Maintenance') return;
+    if (item.status === 'Unavailable') return;
     if (val === '') {
       setSelectedEquip(prev => ({ ...prev, [item.id]: 0 }));
       return;
@@ -986,6 +998,7 @@ const Reservation = () => {
     }
     setAircon(false);
     setSelectedEquip({});
+    setSelectedUtilities([]);
     setCertified(false);
     setIsDraftSaved(false);
     setMissingFields({});
@@ -993,7 +1006,7 @@ const Reservation = () => {
   };
 
   const handleSaveDraft = () => {
-    const draftData = { formData, days, endDateInput, aircon, eventDate, startTime, endTime, selectedEquip };
+    const draftData = { formData, days, endDateInput, aircon, eventDate, startTime, endTime, selectedEquip, selectedUtilities };
     localStorage.setItem('reservationDraft', JSON.stringify(draftData));
     setIsDraftSaved(true);
   };
@@ -1177,6 +1190,7 @@ const Reservation = () => {
         days,
         aircon,
         selectedEquip,
+        selectedUtilities,
         status: 'Pending',
         updatedAt: new Date().toISOString()
       };
@@ -1469,7 +1483,7 @@ const Reservation = () => {
             ) : (
               inventoryFacilities.map((item) => {
                 const isSelected = formData.facilities.includes(item.id);
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance';
+                const isLocked = item.status === 'Unavailable';
                 const maxCapacity = getFacilityCapacityLimits(item).max;
 
                 const displayCapacityLeft = getAvailableFacilityCapacity(item);
@@ -1535,7 +1549,7 @@ const Reservation = () => {
             ) : (
               mappedEquipmentList.map((item) => {
                 const count = selectedEquip[item.id] || 0;
-                const isLocked = item.status === 'Unavailable' || item.status === 'Maintenance' || !hasFacility;
+                const isLocked = item.status === 'Unavailable' || !hasFacility;
                 const isAvailable = !isLocked && item.computedAvailable > 0;
 
                 return (
@@ -1886,11 +1900,72 @@ const Reservation = () => {
         </div>
       </div>
 
-      {/* Air Conditioning Schedule */}
+      {/* Utility Requests */}
       <div className="form-card">
         <div className="section-header">
-          Air Condition
+          Utility
         </div>
+        <div className="checkbox-grid facility-list utility-list">
+          {inventoryUtilities.length === 0 ? (
+            <div className="empty-list">No utilities currently listed.</div>
+          ) : (
+            inventoryUtilities.map((item) => {
+              const isSelected = (selectedUtilities || []).includes(item.id);
+              const isUnavailable = (item.status || '').toLowerCase() === 'unavailable';
+              const status = isUnavailable ? 'Unavailable' : 'Available';
+
+              return (
+                <label
+                  key={item.id}
+                  className={`facility-option ${isSelected ? 'is-selected' : ''} ${isUnavailable ? 'is-locked' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    className="facility-checkbox"
+                    checked={isSelected}
+                    onChange={() => {
+                      setSelectedUtilities(prev =>
+                        (prev || []).includes(item.id)
+                          ? prev.filter(id => id !== item.id)
+                          : [...(prev || []), item.id]
+                      );
+                    }}
+                    disabled={isUnavailable}
+                  />
+                  <div className="facility-icon">
+                    <i className="ph ph-lightning"></i>
+                  </div>
+                  <div>
+                    <strong>{item.name || 'Untitled Utility'}</strong>
+                    <span className="facility-meta">{item.sku || 'Utility'}</span>
+                    <span className="facility-availability">
+                      <span className={`facility-status ${status.toLowerCase()}`}>
+                        ● {status}
+                      </span>
+                    </span>
+                  </div>
+                </label>
+              );
+            })
+          )}
+        </div>
+
+        <div className="input-group room-field utility-other-field">
+          <label>Other Utility</label>
+          <div className="input-with-icon left-icon">
+            <i className="ph ph-lightning"></i>
+            <input
+              type="text"
+              value={formData.otherUtility}
+              onChange={(e) => handleInputChange('otherUtility', e.target.value)}
+              placeholder="Enter another utility"
+            />
+          </div>
+          <span className="helper-text">Leave blank if not applicable</span>
+        </div>
+
+        <hr className="section-divider" />
+        <div className="section-header utility-aircon-heading">Air Conditioning</div>
         <div className="aircon-controls">
           
           <div className="aircon-inputs-row">

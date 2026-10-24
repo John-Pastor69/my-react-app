@@ -42,6 +42,7 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
   const [currentData, setCurrentData] = useState(data);
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
+  const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
   
   // States for processing & modals
@@ -154,7 +155,13 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
       setEquipmentMap(eMap);
     });
 
-    return () => { unsubFac(); unsubEq(); };
+    const unsubUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      const uMap = {};
+      snapshot.forEach(doc => { uMap[doc.id] = doc.data(); });
+      setUtilitiesMap(uMap);
+    });
+
+    return () => { unsubFac(); unsubEq(); unsubUtilities(); };
   }, [currentUser]); // Added dependency
 
   if (!currentData) return <div className="loading-container">Loading request details...</div>;
@@ -197,6 +204,12 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
     equipArray.push(currentData.otherEquipment.trim());
   }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
+  const utilityNames = (Array.isArray(currentData.selectedUtilities) ? currentData.selectedUtilities : [])
+    .map((id) => utilitiesMap[id]?.name || id);
+  if (typeof currentData.otherUtility === 'string' && currentData.otherUtility.trim()) {
+    utilityNames.push(currentData.otherUtility.trim());
+  }
+  const utilityRequested = utilityNames.length > 0 ? utilityNames.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
   const requestorTypes = Array.isArray(currentData.requestorTypes)
@@ -482,12 +495,16 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
                 <div className="val">{locationDisplay}</div>
               </div>
               <div>
-                <label>AIRCON</label>
+                <label>AIR CONDITIONING</label>
                 <div className="val">
                   {currentData.aircon 
                     ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
                     : "OFF"}
                 </div>
+              </div>
+              <div className="equipment-grid-col">
+                <label>UTILITY REQUESTED</label>
+                <div className="val">{utilityRequested}</div>
               </div>
               <div className="equipment-grid-col">
                 <label>EQUIPMENT REQUESTED</label>

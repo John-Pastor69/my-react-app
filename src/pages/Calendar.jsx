@@ -71,6 +71,7 @@ const Calendar = ({ currentUserRole }) => {
   const [historyData, setHistoryData] = useState([]); 
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
+  const [utilitiesMap, setUtilitiesMap] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [userRole, setUserRole] = useState('');
   
@@ -150,7 +151,13 @@ const Calendar = ({ currentUserRole }) => {
       setEquipmentMap(eMap);
     }, (error) => console.error('Failed to load equipments:', error));
 
-    return () => { unsubRes(); unsubHistory(); unsubFac(); unsubEq(); };
+    const unsubUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      const uMap = {};
+      snapshot.forEach(doc => { uMap[doc.id] = doc.data(); });
+      setUtilitiesMap(uMap);
+    }, (error) => console.error('Failed to load utilities:', error));
+
+    return () => { unsubRes(); unsubHistory(); unsubFac(); unsubEq(); unsubUtilities(); };
   }, [currentUser]);
 
   // 3. REUSABLE MAPPING FUNCTION WITH RANGE EXPANSION
@@ -699,7 +706,15 @@ const Calendar = ({ currentUserRole }) => {
                       <div><div className="details-label">Facility Name</div><div className="details-value">{historySelectedRequest.facility || 'None'}</div></div>
                       <div><div className="details-label">Room Capacity</div><div className="details-value">{historySelectedRequest.fullData.capacity || 'N/A'}</div></div>
                       <div><div className="details-label">Floor / Location</div><div className="details-value">{historySelectedRequest.fullData.location || 'N/A'}</div></div>
-                      <div><div className="details-label">Aircon</div><div className="details-value">{historySelectedRequest.fullData.aircon === true ? 'ON' : (historySelectedRequest.fullData.aircon === false ? 'OFF' : 'N/A')}</div></div>
+                      <div><div className="details-label">Air Conditioning</div><div className="details-value">{historySelectedRequest.fullData.aircon === true ? `ON${historySelectedRequest.fullData.airconOnTime || historySelectedRequest.fullData.airconOffTime ? ` (${historySelectedRequest.fullData.airconOnTime || '?'} - ${historySelectedRequest.fullData.airconOffTime || '?'})` : ''}` : (historySelectedRequest.fullData.aircon === false ? 'OFF' : 'N/A')}</div></div>
+                      <div className="details-full-width"><div className="details-label">Utility Requested</div><div className="details-value">{[
+                        ...(Array.isArray(historySelectedRequest.fullData.selectedUtilities)
+                          ? historySelectedRequest.fullData.selectedUtilities.map((id) => utilitiesMap[id]?.name || id)
+                          : []),
+                        ...(typeof historySelectedRequest.fullData.otherUtility === 'string' && historySelectedRequest.fullData.otherUtility.trim()
+                          ? [historySelectedRequest.fullData.otherUtility.trim()]
+                          : [])
+                      ].join(', ') || 'None'}</div></div>
                       <div className="details-full-width"><div className="details-label">Equipment Requested</div><div className="details-value">{historySelectedRequest.equipment || 'N/A'}</div></div>
                     </div>
                   </div>
