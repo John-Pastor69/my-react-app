@@ -177,6 +177,12 @@ const ReservationDetails = ({ data }) => {
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
+  const requestorTypes = Array.isArray(currentData.requestorTypes)
+    ? currentData.requestorTypes
+    : [];
+  const requestorTypeDisplay = requestorTypes.length > 0
+    ? requestorTypes.join(', ')
+    : 'None selected';
   const contactNumber = currentData.contactNumber || 'N/A';
   const email = currentData.emailAddress || currentData.userEmail || 'N/A';
   
@@ -366,6 +372,7 @@ const ReservationDetails = ({ data }) => {
     // 5. Section: Requestor Information
     drawSectionHeader('3. Requestor Information');
     drawTwoColRow('Full Name', requestorName, 'Contact Number', contactNumber);
+    drawFullRow('Requestor Indication', requestorTypeDisplay);
     drawTwoColRow('Email Address', email, 'Date Submitted', dateSubmitted);
     y += 2;
 
@@ -485,6 +492,8 @@ const ReservationDetails = ({ data }) => {
               <div>
                 <label>FULL NAME</label>
                 <div className="val font-bold word-break">{requestorName}</div>
+                <label>INDICATION</label>
+                <div className="val word-break">{requestorTypeDisplay}</div>
               </div>
               <div>
                 <label>CONTACT NUMBER</label>

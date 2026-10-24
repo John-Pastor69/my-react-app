@@ -22,6 +22,7 @@ import '../styles/Reservation.scss';
 
 const initialFormState = {
   fullName: '', 
+  requestorTypes: [],
   contactNumber: '', 
   emailAddress: '', 
   eventName: '', 
@@ -453,6 +454,9 @@ const Reservation = () => {
         setEditingReservation(reservation);
         setFormData({
           fullName: reservation.fullName || '',
+          requestorTypes: Array.isArray(reservation.requestorTypes)
+            ? reservation.requestorTypes.slice(0, 1)
+            : [],
           contactNumber: reservation.contactNumber || '',
           emailAddress: reservation.emailAddress || '',
           eventName: sanitizeAlphabeticName(reservation.eventName || ''),
@@ -508,6 +512,9 @@ const Reservation = () => {
           setFormData(prev => ({
             ...prev,
             ...parsed.formData,
+            requestorTypes: Array.isArray(parsed.formData.requestorTypes)
+              ? parsed.formData.requestorTypes.slice(0, 1)
+              : [],
             eventName: sanitizeAlphabeticName(parsed.formData.eventName || ''),
             endorserName: sanitizeAlphabeticName(parsed.formData.endorserName || ''),
             eventType: Array.isArray(parsed.formData.eventType)
@@ -1303,6 +1310,21 @@ const Reservation = () => {
                 readOnly={true}
                 className={missingFields.fullName ? 'input-error' : ''}
               />
+            </div>
+            <div className="requestor-type-options" aria-label="Requestor type">
+              {['Student', 'Student Leader', 'Admin Staff'].map((type) => (
+                <label
+                  key={type}
+                  className={`requestor-type-option ${formData.requestorTypes.includes(type) ? 'is-selected' : ''}`}
+                >
+                  <input
+                    type="checkbox"
+                    checked={formData.requestorTypes.includes(type)}
+                    onChange={(e) => handleInputChange('requestorTypes', e.target.checked ? [type] : [])}
+                  />
+                  {type}
+                </label>
+              ))}
             </div>
           </div>
           <div 
