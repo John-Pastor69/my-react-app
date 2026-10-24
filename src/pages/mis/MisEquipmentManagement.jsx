@@ -15,28 +15,34 @@ const getCurrentDateTime = () => {
 };
 
 const MisEquipmentManagement = ({ currentUserRole }) => {
-  // --- FIRESTORE STATES ---
+  const [currentUser, setCurrentUser] = useState(null);
+
+  // ==========================================
+  // 1. EQUIPMENT STATES & HANDLERS
+  // ==========================================
   const [equipmentData, setEquipmentData] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
-
-  // --- SEARCH STATE ---
   const [searchQuery, setSearchQuery] = useState('');
-
-  // --- MODAL STATES ---
+  
   const [editingItem, setEditingItem] = useState(null);
   const [isAddingNew, setIsAddingNew] = useState(false);
-  const [newItem, setNewItem] = useState({
-    name: '',
-    sku: '',
-    quantity: '',
-    status: 'Available'
-  });
+  const [newItem, setNewItem] = useState({ name: '', sku: '', quantity: '', status: 'Available' });
   const [selectedIds, setSelectedIds] = useState([]);
   const [isConfirmingDelete, setIsConfirmingDelete] = useState(false);
 
-  const [currentUser, setCurrentUser] = useState(null);
+  // ==========================================
+  // 2. UTILITIES STATES & HANDLERS (NEW)
+  // ==========================================
+  const [utilitiesData, setUtilitiesData] = useState([]);
+  const [utilitySearchQuery, setUtilitySearchQuery] = useState('');
+  
+  const [editingUtility, setEditingUtility] = useState(null);
+  const [isAddingUtility, setIsAddingUtility] = useState(false);
+  const [newUtility, setNewUtility] = useState({ name: '', sku: '', status: 'Available' });
+  const [selectedUtilityIds, setSelectedUtilityIds] = useState([]);
+  const [isConfirmingUtilityDelete, setIsConfirmingUtilityDelete] = useState(false);
 
-  // Add this completely new auth listener below your state variables:
+  // --- AUTH LISTENER ---
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
     return () => unsubscribeAuth();
@@ -44,32 +50,38 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
 
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {
-    if (!currentUser) return; // Added safeguard
+    if (!currentUser) return;
 
-    // 1. Listen to Equipments
+    // Listen to Equipments
     const unsubEquipments = onSnapshot(collection(db, 'equipments'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setEquipmentData(list);
       setSelectedIds((prev) => prev.filter((id) => list.some((item) => item.id === id)));
     }, (error) => console.error('Failed to load equipment:', error));
 
-    // 2. Listen to Reservations for real-time dynamic reserved counts
+    // Listen to Reservations
     const unsubReservations = onSnapshot(collection(db, 'reservations'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       setReservationsData(list);
     }, (error) => console.error('Failed to load reservations:', error));
 
+    // Listen to Utilities (NEW)
+    const unsubUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
+      setUtilitiesData(list);
+      setSelectedUtilityIds((prev) => prev.filter((id) => list.some((item) => item.id === id)));
+    }, (error) => console.error('Failed to load utilities:', error));
+
     return () => {
       unsubEquipments();
       unsubReservations();
+      unsubUtilities();
     };
   }, [currentUser]);
 
-  // --- DYNAMICALLY CALCULATE RESERVED AND AVAILABLE COUNTS ---
+  // --- MAP & CALCULATE EQUIPMENT ---
   const mappedEquipmentData = equipmentData.map(item => {
     let reservedCount = 0;
-    
-    // Sum all active reservations for this specific equipment ID
     reservationsData.forEach(res => {
       const statusLower = (res.status || '').toLowerCase().trim();
       if (statusLower !== 'rejected' && statusLower !== 'cancelled') {
@@ -82,10 +94,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     const total = Number(item.totalCount) || 0;
     let availableCount = Math.max(0, total - reservedCount);
 
-    // If status is manually set to Unavailable, treat available count as 0 for metrics and summary
-    if (item.status === 'Unavailable') {
-      availableCount = 0;
-    }
+    if (item.status === 'Unavailable') availableCount = 0;
 
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : (item.status || 'Available');
     const effectiveStatusClass = effectiveStatus === 'Unavailable' ? 'status-unavailable' : 'status-available';
@@ -99,70 +108,42 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     };
   });
 
-  // --- ACTION HANDLERS ---
-  const handleAddClick = () => {
-    setNewItem({ name: '', sku: '', quantity: '', status: 'Available' });
-    setIsAddingNew(true);
-  };
+  // --- MAP UTILITIES (NEW) ---
+  const mappedUtilitiesData = utilitiesData.map(item => {
+    const effectiveStatusClass = item.status === 'Unavailable' ? 'status-unavailable' : 
+                                 item.status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+    return { ...item, statusClass: effectiveStatusClass };
+  });
 
-  const toggleSelectAll = (e) => {
-    setSelectedIds(e.target.checked ? filteredData.map((item) => item.id) : []);
-  };
-
-  const toggleSelectOne = (id) => {
-    setSelectedIds((prev) =>
-      prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]
-    );
-  };
-
-  const handleDeleteSelected = () => {
-    if (selectedIds.length === 0) return;
-    setIsConfirmingDelete(true);
-  };
-
+  // --- EQUIPMENT ACTION HANDLERS ---
+  const handleAddClick = () => { setNewItem({ name: '', sku: '', quantity: '', status: 'Available' }); setIsAddingNew(true); };
+  const toggleSelectAll = (e) => setSelectedIds(e.target.checked ? filteredData.map((item) => item.id) : []);
+  const toggleSelectOne = (id) => setSelectedIds((prev) => prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]);
+  const handleDeleteSelected = () => { if (selectedIds.length > 0) setIsConfirmingDelete(true); };
+  
   const confirmDelete = async () => {
     try {
       const batch = writeBatch(db);
       selectedIds.forEach((id) => batch.delete(doc(db, 'equipments', id)));
       await batch.commit();
-      
       setSelectedIds([]);
       setIsConfirmingDelete(false);
-      
-    } catch (error) {
-      console.error('Failed to delete equipment:', error);
-    }
+    } catch (error) { console.error('Failed to delete equipment:', error); }
   };
 
-  const handleEditClick = (item) => {
-    setEditingItem({ 
-      ...item, 
-      adjustment: 0 
-    });
-  };
+  const handleEditClick = (item) => setEditingItem({ ...item, adjustment: 0 });
 
-  // Save changes to Firestore
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingItem) return;
-    
-    // The adjustment applies to the BASE inventory (totalCount)
     const adjTotal = parseInt(editingItem.adjustment, 10) || 0;
     const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal);
-    
-    // Automatically re-compute available based on the true real-time reservations
     let newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
     let status = editingItem.status;
-
-    // Auto-switch to Unavailable if stock drops to 0
-    if (newAvailable === 0) {
-      status = 'Unavailable';
-    }
-
+    if (newAvailable === 0) status = 'Unavailable';
     let statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     try {
-      // Sync the true availableCount back to DB so other files see the correct number
       await updateDoc(doc(db, 'equipments', editingItem.id), {
         totalCount: newTotal,
         availableCount: status === 'Unavailable' ? 0 : newAvailable,
@@ -171,23 +152,15 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
         lastUpdated: getCurrentDateTime()
       });
       setEditingItem(null); 
-    } catch (error) {
-      console.error('Failed to update equipment:', error);
-    }
+    } catch (error) { console.error('Failed to update equipment:', error); }
   };
 
-  // Save new equipment to Firestore
   const handleSaveNewEquipment = async (e) => {
     e.preventDefault();
     let newAvailable = Number(newItem.quantity) || 0;
     let status = newItem.status;
-    let newReserved = 0;
-
-    if (newAvailable === 0) {
-      status = 'Unavailable';
-    }
-
-    const newTotal = newAvailable + newReserved;
+    if (newAvailable === 0) status = 'Unavailable';
+    const newTotal = newAvailable;
     let statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     try {
@@ -201,18 +174,68 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
         lastUpdated: getCurrentDateTime()
       });
       setIsAddingNew(false);
-    } catch (error) {
-      console.error('Failed to add equipment to Firestore:', error);
-    }
+    } catch (error) { console.error('Failed to add equipment to Firestore:', error); }
   };
 
-  // --- FILTERING LOGIC (Uses Mapped Data) ---
+  // --- UTILITY ACTION HANDLERS (NEW) ---
+  const handleAddUtilityClick = () => { setNewUtility({ name: '', sku: '', status: 'Available' }); setIsAddingUtility(true); };
+  const toggleSelectAllUtilities = (e) => setSelectedUtilityIds(e.target.checked ? filteredUtilities.map((item) => item.id) : []);
+  const toggleSelectOneUtility = (id) => setSelectedUtilityIds((prev) => prev.includes(id) ? prev.filter((sid) => sid !== id) : [...prev, id]);
+  const handleDeleteSelectedUtilities = () => { if (selectedUtilityIds.length > 0) setIsConfirmingUtilityDelete(true); };
+
+  const confirmDeleteUtility = async () => {
+    try {
+      const batch = writeBatch(db);
+      selectedUtilityIds.forEach((id) => batch.delete(doc(db, 'utilities', id)));
+      await batch.commit();
+      setSelectedUtilityIds([]);
+      setIsConfirmingUtilityDelete(false);
+    } catch (error) { console.error('Failed to delete utility:', error); }
+  };
+
+  const handleEditUtilityClick = (item) => setEditingUtility(item);
+
+  const handleSaveEditUtility = async (e) => {
+    e.preventDefault();
+    if (!editingUtility) return;
+    let statusClass = editingUtility.status === 'Unavailable' ? 'status-unavailable' : 
+                      editingUtility.status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+    try {
+      await updateDoc(doc(db, 'utilities', editingUtility.id), {
+        status: editingUtility.status,
+        statusClass: statusClass,
+        lastUpdated: getCurrentDateTime()
+      });
+      setEditingUtility(null); 
+    } catch (error) { console.error('Failed to update utility:', error); }
+  };
+
+  const handleSaveNewUtility = async (e) => {
+    e.preventDefault();
+    let status = newUtility.status;
+    let statusClass = status === 'Unavailable' ? 'status-unavailable' : 
+                      status === 'Maintenance' ? 'status-maintenance' : 'status-available';
+    try {
+      await addDoc(collection(db, 'utilities'), {
+        name: newUtility.name.trim() || 'Untitled Utility',
+        sku: newUtility.sku.trim() || `UTIL-${Date.now().toString().slice(-4)}`,
+        status: status,
+        statusClass,
+        lastUpdated: getCurrentDateTime()
+      });
+      setIsAddingUtility(false);
+    } catch (error) { console.error('Failed to add utility to Firestore:', error); }
+  };
+
+  // --- FILTERING ---
   const filteredData = mappedEquipmentData.filter((item) => {
     const query = searchQuery.toLowerCase();
-    return (
-      (item.name && item.name.toLowerCase().includes(query)) || 
-      (item.sku && item.sku.toLowerCase().includes(query))
-    );
+    return (item.name && item.name.toLowerCase().includes(query)) || (item.sku && item.sku.toLowerCase().includes(query));
+  });
+
+  const filteredUtilities = mappedUtilitiesData.filter((item) => {
+    const query = utilitySearchQuery.toLowerCase();
+    return (item.name && item.name.toLowerCase().includes(query)) || (item.sku && item.sku.toLowerCase().includes(query));
   });
 
   // --- METRIC CALCULATIONS ---
@@ -237,60 +260,48 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       <div className="metrics-grid">
         <div className="metric-card">
           <div className="metric-info">
-            <span className="label">Available</span>
+            <span className="label">Available Equipment</span>
             <span className="count">{totalAvailableUnits}</span>
           </div>
         </div>
         <div className="metric-card">
           <div className="metric-info">
-            <span className="label">Reserved</span>
+            <span className="label">Reserved Equipment</span>
             <span className="count">{totalReservedUnits}</span>
           </div>
         </div>
       </div>
 
-      {/* Main Table Container */}
-      <div className="table-container">
+      {/* ========================================== */}
+      {/* 1. EQUIPMENT TABLE CONTAINER */}
+      {/* ========================================== */}
+      <div className="table-container" style={{ marginBottom: '2rem' }}>
         <div className="table-controls">
           <div className="controls-left">
-            <h2>Equipment Inventory</h2>
+            <h2>Equipment</h2>
             <p>{equipmentData.length} total items listed</p>
           </div>
-
           <div className="controls-right">
             <div className="search-input-wrapper">
               <span className="search-icon">🔍</span>
               <input 
-                type="text" 
-                placeholder="Search equipment..." 
-                value={searchQuery}
-                onChange={(e) => {
-                  setSearchQuery(e.target.value);
-                }}
+                type="text" placeholder="Search equipment..." 
+                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            <button
-              className="btn-danger"
-              onClick={handleDeleteSelected}
-              disabled={selectedIds.length === 0}
-            >
+            <button className="btn-danger" onClick={handleDeleteSelected} disabled={selectedIds.length === 0}>
               🗑️ Delete{selectedIds.length > 0 ? ` (${selectedIds.length})` : ''}
             </button>
             <button className="btn-primary" onClick={handleAddClick}>+ Add Equipment</button>
           </div>
         </div>
 
-        {/* Equipment Table */}
         <div className="table-scroll-wrapper">
         <table className="equipment-table">
           <thead>
             <tr>
               <th className="checkbox-col">
-                <input
-                  type="checkbox"
-                  checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.includes(item.id))}
-                  onChange={toggleSelectAll}
-                />
+                <input type="checkbox" checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.includes(item.id))} onChange={toggleSelectAll} />
               </th>
               <th>EQUIPMENT NAME</th>
               <th>AVAILABLE</th>
@@ -307,7 +318,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                   <div className="empty-state">
                     <span className="empty-state-icon">📦</span>
                     <p className="empty-state-title">{searchQuery ? 'No matching equipment found' : 'No equipment yet'}</p>
-                    <p className="empty-state-subtitle">{searchQuery ? 'Try adjusting your search query.' : 'Add your first item to start tracking inventory.'}</p>
+                    <p className="empty-state-subtitle">Add your first item to start tracking inventory.</p>
                   </div>
                 </td>
               </tr>
@@ -315,11 +326,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               filteredData.map((item) => (
                 <tr key={item.id}>
                   <td className="checkbox-col">
-                    <input
-                      type="checkbox"
-                      checked={selectedIds.includes(item.id)}
-                      onChange={() => toggleSelectOne(item.id)}
-                    />
+                    <input type="checkbox" checked={selectedIds.includes(item.id)} onChange={() => toggleSelectOne(item.id)} />
                   </td>
                   <td>
                     <div className="item-name-cell">
@@ -331,15 +338,11 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                   </td>
                   <td className="font-semibold">{item.computedAvailable}</td>
                   <td className="font-semibold">{item.computedReserved}</td>
-                  <td>
-                    <span className={`status-badge ${item.statusClass}`}>{item.status}</span>
-                  </td>
+                  <td><span className={`status-badge ${item.statusClass}`}>{item.status}</span></td>
                   <td className="text-muted">{item.lastUpdated}</td>
                   <td>
                     <div className="action-buttons">
-                      <button className="action-btn" onClick={() => handleEditClick(item)}>
-                        ✏️ Edit
-                      </button>
+                      <button className="action-btn" onClick={() => handleEditClick(item)}>✏️ Edit</button>
                     </div>
                   </td>
                 </tr>
@@ -351,14 +354,97 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
 
         <div className="table-pagination">
           <span className="pagination-text">
-            {filteredData.length === 0
-              ? 'No equipment items to show'
-              : `Showing all ${filteredData.length} equipment items`}
+            {filteredData.length === 0 ? 'No equipment items to show' : `Showing all ${filteredData.length} equipment items`}
           </span>
         </div>
       </div>
 
-      {/* Local Edit Modal Popup */}
+      {/* ========================================== */}
+      {/* 2. UTILITIES TABLE CONTAINER (NEW) */}
+      {/* ========================================== */}
+      <div className="table-container">
+        <div className="table-controls">
+          <div className="controls-left">
+            <h2>Utility</h2>
+            <p>{utilitiesData.length} total utilities listed</p>
+          </div>
+          <div className="controls-right">
+            <div className="search-input-wrapper">
+              <span className="search-icon">🔍</span>
+              <input 
+                type="text" placeholder="Search utilities..." 
+                value={utilitySearchQuery} onChange={(e) => setUtilitySearchQuery(e.target.value)}
+              />
+            </div>
+            <button className="btn-danger" onClick={handleDeleteSelectedUtilities} disabled={selectedUtilityIds.length === 0}>
+              🗑️ Delete{selectedUtilityIds.length > 0 ? ` (${selectedUtilityIds.length})` : ''}
+            </button>
+            <button className="btn-primary" onClick={handleAddUtilityClick}>+ Add Utility</button>
+          </div>
+        </div>
+
+        <div className="table-scroll-wrapper">
+        <table className="equipment-table">
+          <thead>
+            <tr>
+              <th className="checkbox-col">
+                <input type="checkbox" checked={filteredUtilities.length > 0 && filteredUtilities.every((item) => selectedUtilityIds.includes(item.id))} onChange={toggleSelectAllUtilities} />
+              </th>
+              <th>UTILITY NAME</th>
+              <th>STATUS</th>
+              <th>LAST UPDATED</th>
+              <th>ACTIONS</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filteredUtilities.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="empty-state-cell">
+                  <div className="empty-state">
+                    <span className="empty-state-icon">⚡</span>
+                    <p className="empty-state-title">{utilitySearchQuery ? 'No matching utilities found' : 'No utilities yet'}</p>
+                    <p className="empty-state-subtitle">Add your first utility to start tracking.</p>
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              filteredUtilities.map((item) => (
+                <tr key={item.id}>
+                  <td className="checkbox-col">
+                    <input type="checkbox" checked={selectedUtilityIds.includes(item.id)} onChange={() => toggleSelectOneUtility(item.id)} />
+                  </td>
+                  <td>
+                    <div className="item-name-cell">
+                      <div>
+                        <div className="item-title">{item.name}</div>
+                        <div className="item-sku">{item.sku}</div>
+                      </div>
+                    </div>
+                  </td>
+                  <td><span className={`status-badge ${item.statusClass}`}>{item.status}</span></td>
+                  <td className="text-muted">{item.lastUpdated}</td>
+                  <td>
+                    <div className="action-buttons">
+                      <button className="action-btn" onClick={() => handleEditUtilityClick(item)}>✏️ Edit</button>
+                    </div>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+        </div>
+
+        <div className="table-pagination">
+          <span className="pagination-text">
+            {filteredUtilities.length === 0 ? 'No utility items to show' : `Showing all ${filteredUtilities.length} utility items`}
+          </span>
+        </div>
+      </div>
+
+      {/* ========================================== */}
+      {/* EQUIPMENT MODALS */}
+      {/* ========================================== */}
       {editingItem && (
         <div className="modal-overlay">
           <div className="modal-content" style={{ maxHeight: '90vh', overflowY: 'auto' }}>
@@ -366,94 +452,23 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
             <form onSubmit={handleSaveEdit}>
               <div className="form-group">
                 <label>Status</label>
-                <select
-                  value={editingItem.status}
-                  onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value })}
-                >
+                <select value={editingItem.status} onChange={(e) => setEditingItem({ ...editingItem, status: e.target.value })}>
                   <option value="Available">Available</option>
                   <option value="Unavailable">Unavailable</option>
                 </select>
               </div>
-
-              {/* 1st Field: Current Available Display */}
               <div className="form-group">
                 <label>Current Available</label>
-                <input
-                  type="number"
-                  value={editingItem.computedAvailable}
-                  readOnly
-                  style={{
-                    border: '1px solid #E2E8F0', 
-                    borderRadius: '6px', 
-                    padding: '9px 12px', 
-                    textAlign: 'center', 
-                    fontWeight: 600, 
-                    fontSize: '15px',
-                    background: '#F8FAFC',
-                    color: '#1E293B',
-                    width: '100%',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
+                <input type="number" value={editingItem.computedAvailable} readOnly style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#F8FAFC', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
               </div>
-
-              {/* 2nd Field: Add / Deduct Quantity (Adjusts Base Total Inventory) */}
               <div className="form-group">
                 <label>Add / Deduct Total Inventory</label>
-                <input
-                  type="number"
-                  value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0}
-                  onChange={(e) => {
-                    const adj = e.target.value;
-                    const adjTotal = parseInt(adj, 10) || 0;
-                    const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal);
-                    const newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
-                    setEditingItem({
-                      ...editingItem,
-                      adjustment: adj,
-                      status: newAvailable === 0 ? 'Unavailable' : 'Available'
-                    });
-                  }}
-                  style={{
-                    border: '1px solid #E2E8F0', 
-                    borderRadius: '6px', 
-                    padding: '9px 12px', 
-                    textAlign: 'center', 
-                    fontWeight: 600, 
-                    fontSize: '15px',
-                    background: '#FFFFFF',
-                    color: '#1E293B',
-                    width: '100%',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
+                <input type="number" value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const adj = e.target.value; const adjTotal = parseInt(adj, 10) || 0; const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal); const newAvailable = Math.max(0, newTotal - editingItem.computedReserved); setEditingItem({ ...editingItem, adjustment: adj, status: newAvailable === 0 ? 'Unavailable' : 'Available' }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
               </div>
-
-              {/* 3rd Field: Current Reserved Display */}
               <div className="form-group">
                 <label>Current Reserved (Automated)</label>
-                <input
-                  type="number"
-                  value={editingItem.computedReserved}
-                  readOnly
-                  style={{
-                    border: '1px solid #E2E8F0', 
-                    borderRadius: '6px', 
-                    padding: '9px 12px', 
-                    textAlign: 'center', 
-                    fontWeight: 600, 
-                    fontSize: '15px',
-                    background: '#F8FAFC',
-                    color: '#1E293B',
-                    width: '100%',
-                    outline: 'none',
-                    boxSizing: 'border-box'
-                  }}
-                />
+                <input type="number" value={editingItem.computedReserved} readOnly style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#F8FAFC', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
               </div>
-
               <div className="modal-actions">
                 <button type="button" onClick={() => setEditingItem(null)}>Cancel</button>
                 <button type="submit" className="btn-save">Save Changes</button>
@@ -463,7 +478,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
         </div>
       )}
 
-      {/* Add Equipment Modal */}
       {isAddingNew && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -471,54 +485,23 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
             <form onSubmit={handleSaveNewEquipment}>
               <div className="form-group">
                 <label>Equipment Name</label>
-                <input
-                  type="text"
-                  value={newItem.name}
-                  onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
-                  placeholder="e.g. Ring Light Kit"
-                  required
-                />
+                <input type="text" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} placeholder="e.g. Ring Light Kit" required />
               </div>
-
               <div className="form-group">
                 <label>SKU</label>
-                <input
-                  type="text"
-                  value={newItem.sku}
-                  onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })}
-                  placeholder="e.g. SKU: AV-020"
-                />
+                <input type="text" value={newItem.sku} onChange={(e) => setNewItem({ ...newItem, sku: e.target.value })} placeholder="e.g. SKU: AV-020" />
               </div>
-
               <div className="form-group">
                 <label>Quantity</label>
-                <input
-                  type="number"
-                  min="0"
-                  value={newItem.quantity}
-                  onChange={(e) => {
-                    const qty = e.target.value;
-                    setNewItem({
-                      ...newItem,
-                      quantity: qty,
-                      status: (qty !== '' && Number(qty) === 0) ? 'Unavailable' : 'Available'
-                    });
-                  }}
-                  required
-                />
+                <input type="number" min="0" value={newItem.quantity} onChange={(e) => { const qty = e.target.value; setNewItem({ ...newItem, quantity: qty, status: (qty !== '' && Number(qty) === 0) ? 'Unavailable' : 'Available' }); }} required />
               </div>
-
               <div className="form-group">
                 <label>Status</label>
-                <select
-                  value={newItem.status}
-                  onChange={(e) => setNewItem({ ...newItem, status: e.target.value })}
-                >
+                <select value={newItem.status} onChange={(e) => setNewItem({ ...newItem, status: e.target.value })}>
                   <option value="Available">Available</option>
                   <option value="Unavailable">Unavailable</option>
                 </select>
               </div>
-
               <div className="modal-actions">
                 <button type="button" onClick={() => setIsAddingNew(false)}>Cancel</button>
                 <button type="submit" className="btn-save">Add Item</button>
@@ -528,7 +511,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
         </div>
       )}
 
-      {/* Delete Confirmation Modal */}
       {isConfirmingDelete && (
         <div className="modal-overlay">
           <div className="modal-content">
@@ -541,6 +523,75 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
           </div>
         </div>
       )}
+
+      {/* ========================================== */}
+      {/* UTILITY MODALS (NEW) */}
+      {/* ========================================== */}
+      {editingUtility && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Edit {editingUtility.name}</h3>
+            <form onSubmit={handleSaveEditUtility}>
+              <div className="form-group">
+                <label>Status</label>
+                <select value={editingUtility.status} onChange={(e) => setEditingUtility({ ...editingUtility, status: e.target.value })}>
+                  <option value="Available">Available</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Unavailable">Unavailable</option>
+                </select>
+              </div>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setEditingUtility(null)}>Cancel</button>
+                <button type="submit" className="btn-save">Save Changes</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isAddingUtility && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Add Utility</h3>
+            <form onSubmit={handleSaveNewUtility}>
+              <div className="form-group">
+                <label>Utility Name</label>
+                <input type="text" value={newUtility.name} onChange={(e) => setNewUtility({ ...newUtility, name: e.target.value })} placeholder="e.g. Internet Router, Generator" required />
+              </div>
+              <div className="form-group">
+                <label>SKU</label>
+                <input type="text" value={newUtility.sku} onChange={(e) => setNewUtility({ ...newUtility, sku: e.target.value })} placeholder="e.g. UTIL-001" />
+              </div>
+              <div className="form-group">
+                <label>Status</label>
+                <select value={newUtility.status} onChange={(e) => setNewUtility({ ...newUtility, status: e.target.value })}>
+                  <option value="Available">Available</option>
+                  <option value="Maintenance">Maintenance</option>
+                  <option value="Unavailable">Unavailable</option>
+                </select>
+              </div>
+              <div className="modal-actions">
+                <button type="button" onClick={() => setIsAddingUtility(false)}>Cancel</button>
+                <button type="submit" className="btn-save">Add Utility</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {isConfirmingUtilityDelete && (
+        <div className="modal-overlay">
+          <div className="modal-content">
+            <h3>Delete {selectedUtilityIds.length} item{selectedUtilityIds.length > 1 ? 's' : ''}?</h3>
+            <p className="confirm-text">This can't be undone.</p>
+            <div className="modal-actions">
+              <button type="button" onClick={() => setIsConfirmingUtilityDelete(false)}>Cancel</button>
+              <button type="button" className="btn-danger-solid" onClick={confirmDeleteUtility}>Delete</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 };

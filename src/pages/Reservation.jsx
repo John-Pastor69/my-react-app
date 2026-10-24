@@ -1017,6 +1017,9 @@ const Reservation = () => {
       { key: 'fullName', missing: !formData.fullName.trim() },
       { key: 'contactNumber', missing: !formData.contactNumber.trim() },
       { key: 'emailAddress', missing: !formData.emailAddress.trim() },
+      ...(userRole === 'requestor' ? [
+        { key: 'requestorTypes', missing: formData.requestorTypes.length === 0 }
+      ] : []),
       ...((userRole === 'requestor' || userRole === 'user') ? [
         { key: 'endorserName', missing: !formData.endorserName.trim() },
         { key: 'endorserDesignation', missing: !formData.endorserDesignation.trim() },
@@ -1051,7 +1054,9 @@ const Reservation = () => {
       const targetEl = fieldRefs.current[firstMissingKey];
       if (targetEl) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
-        const inputEl = targetEl.querySelector('input:not([type="checkbox"]), textarea');
+        const inputEl = firstMissingKey === 'requestorTypes'
+          ? targetEl.querySelector('input[type="checkbox"]')
+          : targetEl.querySelector('input:not([type="checkbox"]), textarea');
         if (inputEl && firstMissingKey !== 'eventDate' && firstMissingKey !== 'endDateInput') {
           inputEl.focus({ preventScroll: true });
         }
@@ -1160,6 +1165,7 @@ const Reservation = () => {
       const reservationUpdate = {
         refNo: generatedRefNo,
         ...formData,
+        requestorTypes: userRole === 'requestor' ? formData.requestorTypes : [],
         userId: editingReservation?.userId || currentUser.uid,
         userEmail: editingReservation?.userEmail || currentUser.email,
         userRole: editingReservation?.userRole || userRole,
@@ -1311,21 +1317,29 @@ const Reservation = () => {
                 className={missingFields.fullName ? 'input-error' : ''}
               />
             </div>
-            <div className="requestor-type-options" aria-label="Requestor type">
-              {['Student', 'Student Leader', 'Admin Staff'].map((type) => (
-                <label
-                  key={type}
-                  className={`requestor-type-option ${formData.requestorTypes.includes(type) ? 'is-selected' : ''}`}
-                >
-                  <input
-                    type="checkbox"
-                    checked={formData.requestorTypes.includes(type)}
-                    onChange={(e) => handleInputChange('requestorTypes', e.target.checked ? [type] : [])}
-                  />
-                  {type}
-                </label>
-              ))}
-            </div>
+            {userRole === 'requestor' && (
+              <div
+                className={`requestor-type-field ${missingFields.requestorTypes ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.requestorTypes = el}
+              >
+                <label>Requestor Type <span className="req">*</span></label>
+                <div className="requestor-type-options" role="group" aria-label="Requestor type" aria-required="true">
+                  {['Student', 'Student Leader', 'Admin Staff'].map((type) => (
+                    <label
+                      key={type}
+                      className={`requestor-type-option ${formData.requestorTypes.includes(type) ? 'is-selected' : ''}`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={formData.requestorTypes.includes(type)}
+                        onChange={(e) => handleInputChange('requestorTypes', e.target.checked ? [type] : [])}
+                      />
+                      {type}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
           <div 
             className={`input-group ${missingFields.contactNumber ? 'field-missing' : ''}`}

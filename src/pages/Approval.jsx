@@ -1,9 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, getDoc } from 'firebase/firestore';
+import { collection, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import "../styles/Approval.scss";
 import PendingRequest from './PendingRequest';
-import { isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import {
+    getApprovalTrackerSteps,
+    isApprovalStepReady,
+    normalizeApprovalRoleKey
+} from '../services/approvalWorkflow';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -19,7 +23,15 @@ const formatName = (fullName) => {
 
 const Approval = ({ currentUserRole = '' }) => {
     const [currentUser, setCurrentUser] = useState(null);
-    const isSuperAdmin = normalizeApprovalRoleKey(currentUserRole) === 'super admin';
+    const normalizedCurrentUserRole = normalizeApprovalRoleKey(currentUserRole);
+    const isSuperAdmin = normalizedCurrentUserRole === 'super admin';
+    const canOverrideApprovalWorkflow = isSuperAdmin
+        || ['mis', 'building admin'].includes(normalizedCurrentUserRole);
+    const canFilterApprovalView = ['mis', 'building admin'].includes(normalizedCurrentUserRole);
+    const [approvalView, setApprovalView] = useState('all');
+    const [isApprovalViewLoaded, setIsApprovalViewLoaded] = useState(false);
+    const [isSavingApprovalView, setIsSavingApprovalView] = useState(false);
+    const [approvalViewError, setApprovalViewError] = useState('');
 
     // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
@@ -52,23 +64,55 @@ const Approval = ({ currentUserRole = '' }) => {
     useEffect(() => {
         const unsubscribeAuth = auth.onAuthStateChanged(async (user) => {
             setCurrentUser(user);
-            if (user) {
-                try {
-                    const userRef = doc(db, 'users', user.uid);
-                    const userSnap = await getDoc(userRef);
-                    if (userSnap.exists()) {
-                        const userData = userSnap.data();
-                        const rawRole = userData.role || 'user';
-                        const normalizedRole = normalizeApprovalRoleKey(rawRole);
-                        setApproverRoleKey(isSuperAdmin ? 'super admin' : normalizedRole);
+            setIsApprovalViewLoaded(false);
+            setApprovalViewError('');
+            if (!user) {
+                setApproverRoleKey('');
+                setApprovalView('all');
+                setIsApprovalViewLoaded(true);
+                return;
+            }
+
+            try {
+                const userRef = doc(db, 'users', user.uid);
+                const userSnap = await getDoc(userRef);
+                if (userSnap.exists()) {
+                    const userData = userSnap.data();
+                    const rawRole = userData.role || 'user';
+                    const normalizedRole = normalizeApprovalRoleKey(rawRole);
+                    setApproverRoleKey(isSuperAdmin ? 'super admin' : normalizedRole);
+                    if (canFilterApprovalView) {
+                        setApprovalView(userData.approvalView === 'current' ? 'current' : 'all');
+                    } else {
+                        setApprovalView('all');
                     }
-                } catch (err) {
-                    console.error("Failed to fetch approver data", err);
                 }
+            } catch (err) {
+                console.error('Failed to fetch approver data and approval view:', err);
+                setApprovalViewError('Unable to load your saved approval view.');
+            } finally {
+                setIsApprovalViewLoaded(true);
             }
         });
         return () => unsubscribeAuth();
-    }, [currentUserRole, isSuperAdmin]);
+    }, [currentUserRole, isSuperAdmin, canFilterApprovalView]);
+
+    const handleApprovalViewChange = async (event) => {
+        const nextView = event.target.value;
+        if (!currentUser || !canFilterApprovalView || !['all', 'current'].includes(nextView)) return;
+
+        setIsSavingApprovalView(true);
+        setApprovalViewError('');
+        try {
+            await updateDoc(doc(db, 'users', currentUser.uid), { approvalView: nextView });
+            setApprovalView(nextView);
+        } catch (error) {
+            console.error('Failed to save approval view:', error);
+            setApprovalViewError('Unable to save your approval view. Please try again.');
+        } finally {
+            setIsSavingApprovalView(false);
+        }
+    };
 
     // --- GET CURRENT LOGGED-IN USER NAME ---
     const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};
@@ -99,21 +143,26 @@ const Approval = ({ currentUserRole = '' }) => {
         }
 
         const cleanName = formatName(requestor.name || res.fullName);
+        const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
+        const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
+        const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
+        const stepContext = {
+            hasEndorser: Boolean(res.endorserName),
+            isStaffRequestor,
+            isRoomCheckerRequestor,
+            hasSpecificRoom: Boolean(res.specificRoom?.trim())
+        };
 
         // --- DETERMINE USER NOTIFICATION STATUS ---
         const determineUserStatus = () => {
             if (!approverRoleKey) return null;
             
             const myRecord = res.approvals?.[approverRoleKey];
-            if (!isSuperAdmin && myRecord?.status === 'approved') return 'approved';
-            if (!isSuperAdmin && myRecord?.status === 'rejected') return 'rejected';
+            if (!canOverrideApprovalWorkflow && myRecord?.status === 'approved') return 'approved';
+            if (!canOverrideApprovalWorkflow && myRecord?.status === 'rejected') return 'rejected';
 
             if (['rejected', 'approved', 'to modify'].includes((res.status || '').toLowerCase().trim())) return null;
-            if (isSuperAdmin) return 'your-turn';
-
-            const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
-            const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
-            const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
+            if (canOverrideApprovalWorkflow) return 'your-turn';
 
             // Endorser specific check: matches the endorser name set up on the reservation, and must NOT be a staff requestor
             if (approverRoleKey === 'endorser') {
@@ -126,14 +175,22 @@ const Approval = ({ currentUserRole = '' }) => {
                 return 'your-turn';
             }
 
-            if (isApprovalStepReady(res.approvals, approverRoleKey, {
-                hasEndorser: Boolean(res.endorserName),
-                isStaffRequestor,
-                isRoomCheckerRequestor,
-                hasSpecificRoom: Boolean(res.specificRoom?.trim())
-            })) return 'your-turn';
+            if (isApprovalStepReady(res.approvals, approverRoleKey, stepContext)) return 'your-turn';
             return null;
         };
+
+        const isCurrentApproval = canOverrideApprovalWorkflow && (
+            normalizedCurrentUserRole === 'super admin'
+                ? getApprovalTrackerSteps({
+                    approvals: res.approvals,
+                    dateSubmitted: submitDate,
+                    ...stepContext,
+                    reservationStatus: res.status
+                }).some((step) => step.state === 'pending')
+                : !['approved', 'rejected'].includes(
+                    res.approvals?.[normalizedCurrentUserRole]?.status?.toLowerCase()
+                ) && isApprovalStepReady(res.approvals, normalizedCurrentUserRole, stepContext)
+        );
 
         return {
             id: res.id,
@@ -149,17 +206,19 @@ const Approval = ({ currentUserRole = '' }) => {
             time: `${res.startTime || ''} - ${res.endTime || ''}`,
             status: res.status || 'Pending',
             userActionStatus: determineUserStatus(),
+            isCurrentApproval,
             rawDate: res.createdAt ? new Date(res.createdAt) : new Date(0),
             fullData: res 
         };
     }).filter(req => req.userActionStatus === 'your-turn')
       .sort((a, b) => b.rawDate - a.rawDate); 
 
-    // --- COUNTS FOR SUMMARY CARDS ---
-    const pendingCount = approvalData.length;
-
     // --- SEARCH & FILTER LOGIC ---
-    const filteredRequests = approvalData.filter((request) =>
+    const requestsForView = canFilterApprovalView && approvalView === 'current'
+        ? approvalData.filter((request) => request.isCurrentApproval)
+        : approvalData;
+    const pendingCount = requestsForView.length;
+    const filteredRequests = requestsForView.filter((request) =>
         request.event.toLowerCase().includes(search.toLowerCase()) ||
         request.name.toLowerCase().includes(search.toLowerCase()) ||
         request.role.toLowerCase().includes(search.toLowerCase()) ||
@@ -191,7 +250,7 @@ const Approval = ({ currentUserRole = '' }) => {
                         <p>Review and manage facility reservation requests.</p>
                     </div>
 
-                    <div className="request-tools">
+                    <div className={`request-tools ${canFilterApprovalView ? 'has-approval-filter' : ''}`}>
                         <div className="search-field">
                             <span className="search-icon" aria-hidden="true">⌕</span>
                             <input
@@ -201,7 +260,22 @@ const Approval = ({ currentUserRole = '' }) => {
                                 onChange={(event) => setSearch(event.target.value)}
                             />
                         </div>
+                        {canFilterApprovalView && (
+                            <select
+                                className="approval-view-select"
+                                aria-label="Filter approval requests"
+                                value={approvalView}
+                                onChange={handleApprovalViewChange}
+                                disabled={!isApprovalViewLoaded || isSavingApprovalView}
+                            >
+                                <option value="all">All Approval</option>
+                                <option value="current">Current Approval</option>
+                            </select>
+                        )}
                     </div>
+                    {approvalViewError && (
+                        <p className="approval-view-error" role="alert">{approvalViewError}</p>
+                    )}
                 </div>
 
                 <div className="request-table">

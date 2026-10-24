@@ -302,6 +302,22 @@ $orange-main: #F59E0B;
           }
         }
       }
+
+    }
+
+    .requestor-type-field {
+      display: flex;
+      flex-direction: column;
+      gap: 0.4375rem;
+
+      &.field-missing > label {
+        color: $red-main;
+      }
+
+      &.field-missing .requestor-type-option input[type='checkbox'] {
+        border-color: $red-main;
+        background: #FEF2F2;
+      }
     }
 
     .helper-text { 

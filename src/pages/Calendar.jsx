@@ -708,6 +708,7 @@ const Calendar = ({ currentUserRole }) => {
                     <h3 className="details-card-header">👤 Requestor Information</h3>
                     <div className="details-grid">
                       <div><div className="details-label">Full Name</div><div className="details-value">{historySelectedRequest.requestor || 'N/A'}</div></div>
+                      <div><div className="details-label">Requestor Type</div><div className="details-value">{Array.isArray(historySelectedRequest.fullData.requestorTypes) && historySelectedRequest.fullData.requestorTypes.length > 0 ? historySelectedRequest.fullData.requestorTypes.join(', ') : 'N/A'}</div></div>
                       <div><div className="details-label">Contact Number</div><div className="details-value">{historySelectedRequest.fullData.contactNumber || 'N/A'}</div></div>
                       <div><div className="details-label">Email Address</div><div className="details-value">{historySelectedRequest.fullData.userEmail || historySelectedRequest.fullData.emailAddress || 'N/A'}</div></div>
                       <div><div className="details-label">Date Submitted</div><div className="details-value">{historySelectedRequest.fullData.createdAt || 'N/A'}</div></div>

@@ -199,6 +199,12 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
+  const requestorTypes = Array.isArray(currentData.requestorTypes)
+    ? currentData.requestorTypes
+    : [];
+  const requestorTypeDisplay = requestorTypes.length > 0
+    ? requestorTypes.join(', ')
+    : 'N/A';
   const contactNumber = currentData.contactNumber || 'N/A';
   const email = currentData.emailAddress || currentData.userEmail || 'N/A';
   
@@ -229,26 +235,29 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
     reservationStatus: currentData.status
   });
 
-  const nextSuperAdminStep = isSuperAdmin
+  const canOverrideApprovalWorkflow = isSuperAdmin
+    || ['super admin', 'mis', 'building admin'].includes(approver.roleKey);
+  const nextSuperAdminStep = canOverrideApprovalWorkflow
     ? trackerSteps.find((step) => (
       step.key !== 'requestor'
       && step.state !== 'approved'
       && step.state !== 'rejected'
     ))
     : null;
-  const approvalRoleKey = isSuperAdmin ? nextSuperAdminStep?.key : approver.roleKey;
-  const approvalRoleLabel = isSuperAdmin && nextSuperAdminStep
-    ? `${nextSuperAdminStep.label} (Super Admin)`
+  const approvalRoleKey = canOverrideApprovalWorkflow ? nextSuperAdminStep?.key : approver.roleKey;
+  const approvalRoleLabel = canOverrideApprovalWorkflow && nextSuperAdminStep
+    ? `${nextSuperAdminStep.label} (${approver.role})`
     : approver.role;
   const myStep = trackerSteps.find((step) => step.key === approver.roleKey);
   const canAct = (currentData.status || '').toLowerCase() === 'pending'
-    && (isSuperAdmin
+    && (canOverrideApprovalWorkflow
       ? Boolean(nextSuperAdminStep)
       : !currentData.approvals?.[approver.roleKey] && myStep?.state === 'your-turn');
 
-  const myApprovalStatus = isSuperAdmin
+  const myApprovalStatus = canOverrideApprovalWorkflow
     ? null
     : currentData.approvals?.[approver.roleKey]?.status;
+  const isFullyApproved = currentData.approvals?.['school admin']?.status?.toLowerCase() === 'approved';
 
   const baseHistory = [{
     role: 'Requestor',
@@ -494,6 +503,8 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
               <div>
                 <label>FULL NAME</label>
                 <div className="val font-bold">{requestorName}</div>
+                <label>REQUESTOR TYPE</label>
+                <div className="val">{requestorTypeDisplay}</div>
               </div>
               <div>
                 <label>CONTACT NUMBER</label>
@@ -576,7 +587,11 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
           </div>
 
           {/* Admin Approval Decision Card */}
-          <div className="card">
+          {canOverrideApprovalWorkflow && isFullyApproved ? (
+            <div className="card">
+              <strong>Reservation is Fully Approved</strong>
+            </div>
+          ) : <div className="card">
             <div className="card-header-small">
               <h3>🛡️ {approver.role} Approval</h3>
               <p>Your administrative decision</p>
@@ -650,12 +665,12 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
             
             {!canAct && !myApprovalStatus && !['rejected', 'approved', 'to modify'].includes(normalizedReservationStatus) && (
               <div className="hierarchy-disabled-hint">
-                {isSuperAdmin
+                {canOverrideApprovalWorkflow
                   ? 'The approval tracker is complete.'
                   : 'Buttons are disabled because it is not currently your turn in the approval hierarchy.'}
               </div>
             )}
-          </div>
+          </div>}
         </div>
       </div>
 

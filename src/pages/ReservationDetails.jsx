@@ -372,7 +372,7 @@ const ReservationDetails = ({ data }) => {
     // 5. Section: Requestor Information
     drawSectionHeader('3. Requestor Information');
     drawTwoColRow('Full Name', requestorName, 'Contact Number', contactNumber);
-    drawFullRow('Requestor Indication', requestorTypeDisplay);
+    drawFullRow('Requestor Type', requestorTypeDisplay);
     drawTwoColRow('Email Address', email, 'Date Submitted', dateSubmitted);
     y += 2;
 
@@ -492,7 +492,7 @@ const ReservationDetails = ({ data }) => {
               <div>
                 <label>FULL NAME</label>
                 <div className="val font-bold word-break">{requestorName}</div>
-                <label>INDICATION</label>
+                <label>REQUESTOR TYPE</label>
                 <div className="val word-break">{requestorTypeDisplay}</div>
               </div>
               <div>

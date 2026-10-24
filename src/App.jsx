@@ -258,7 +258,7 @@ export default function App() {
           // 4. Delay the Firebase logout slightly so React finishes unmounting 
           setTimeout(async () => {
             await signOut(auth);
-            isLoggingOut.current = false;
+            isLoggingOut.current = false; 
           }, 150); // Increased timeout to ensure full unmount
         }} 
         userRole={userRole} 
