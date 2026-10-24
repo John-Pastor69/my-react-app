@@ -37,7 +37,7 @@ const formatEventDateRange = (startDateStr, numDays) => {
   return `${startFormatted} - ${endFormatted}`;
 };
 
-const ReservationDetails = ({ data }) => {
+const ReservationDetails = ({ data, additionalActions = null }) => {
   const [currentData, setCurrentData] = useState(data);
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
@@ -619,6 +619,7 @@ const ReservationDetails = ({ data }) => {
               📄 Download PDF
             </button>
           )}
+          {additionalActions}
         </div>
       </div>
 

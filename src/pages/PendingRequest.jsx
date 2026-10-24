@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, onSnapshot, updateDoc, setDoc, arrayUnion, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
@@ -370,24 +370,6 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
         }, { merge: true });
         await batch.commit();
       }
-
-      // --- AUTO-SYNC TO HISTORY COLLECTION UPON SCHOOL ADMIN APPROVAL ---
-      if (isApprove && approvalRoleKey === 'school admin') {
-        try {
-          const updatedResData = {
-            ...currentData,
-            status: 'Approved',
-            approvals: archivedApprovals,
-            historyLogs: [...(currentData.historyLogs || []), newLog]
-          };
-          const { id, ...cleanHistoryData } = updatedResData;
-
-          await setDoc(doc(db, 'archive', currentData.id), cleanHistoryData, { merge: true });
-        } catch (historyErr) {
-          console.error('Failed to back up approved reservation to archive:', historyErr);
-        }
-      }
-      // -----------------------------------------------------------------
 
       // --- SEND EMAIL NOTIFICATION ---
       const emailMessage = isApprove 

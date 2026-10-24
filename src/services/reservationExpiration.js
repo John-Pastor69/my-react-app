@@ -18,6 +18,15 @@ const parseReservationDate = (value) => {
     : null;
 };
 
+const getReservationEndDate = (reservation, eventDate) => {
+  const explicitEndDate = parseReservationDate(reservation.endDate);
+  if (explicitEndDate) return explicitEndDate;
+
+  const endDate = new Date(eventDate);
+  endDate.setDate(endDate.getDate() + Math.max(1, Number(reservation.days) || 1) - 1);
+  return endDate;
+};
+
 const parseReservationTime = (value) => {
   if (!value || value === 'N/A') return null;
   const match = String(value).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
@@ -29,6 +38,51 @@ const parseReservationTime = (value) => {
   if (minutes > 59 || (meridiem && hours > 12) || (!meridiem && hours > 23)) return null;
   if (meridiem) hours = hours % 12 + (meridiem === 'PM' ? 12 : 0);
   return { hours, minutes };
+};
+
+export const isReservationEndReached = (reservation, now = new Date()) => {
+  const eventDate = parseReservationDate(reservation.eventDate || reservation.date);
+  if (!eventDate) return false;
+
+  const endDate = getReservationEndDate(reservation, eventDate);
+  const endTime = parseReservationTime(reservation.endTime);
+  const endDateTime = endTime
+    ? new Date(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate(),
+      endTime.hours,
+      endTime.minutes
+    )
+    : new Date(
+      endDate.getFullYear(),
+      endDate.getMonth(),
+      endDate.getDate(),
+      23,
+      59,
+      59
+    );
+
+  return now > endDateTime;
+};
+
+export const archiveExpiredApprovedReservations = async (reservations, now = new Date()) => {
+  const expiredReservations = reservations.filter((reservation) => (
+    (reservation.status || '').toLowerCase().trim() === 'approved'
+    && isReservationEndReached(reservation, now)
+  ));
+
+  for (let index = 0; index < expiredReservations.length; index += 200) {
+    const batch = writeBatch(db);
+    expiredReservations.slice(index, index + 200).forEach(({ id, ...reservation }) => {
+      batch.set(doc(db, 'archive', id), {
+        ...reservation,
+        archivedAt: now.toISOString()
+      }, { merge: true });
+      batch.delete(doc(db, 'reservations', id));
+    });
+    await batch.commit();
+  }
 };
 
 const isExpiredPendingReservation = (reservation, now) => {

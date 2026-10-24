@@ -5,6 +5,7 @@ import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
 import PendingRequest from './PendingRequest';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { archiveExpiredApprovedReservations, isReservationEndReached } from '../services/reservationExpiration';
 import '../styles/TopBar.scss'; 
 
 // Helper function to format timestamp into "X ago"
@@ -104,6 +105,7 @@ const TopBar = ({ toggleSidebar }) => {
   const hasUnread = notifications.some(notif => !readNotifs.includes(notif.id));
 
   const [currentUser, setCurrentUser] = useState(null);
+  const archivingReservationsRef = useRef(new Set());
 
   useEffect(() => {
     const intervalId = setInterval(() => setCurrentDateTime(new Date()), 60_000);
@@ -191,6 +193,33 @@ const TopBar = ({ toggleSidebar }) => {
       unsubUsers();
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const currentRole = normalizeApprovalRoleKey(userData.role);
+    const canArchiveAllReservations = ['mis', 'mis admin', 'building admin', 'super admin'].includes(currentRole);
+    const expiredApprovedReservations = reservationsData.filter((reservation) => (
+      (reservation.status || '').toLowerCase().trim() === 'approved'
+      && isReservationEndReached(reservation, currentDateTime)
+      && (
+        canArchiveAllReservations
+        || reservation.userId === currentUser.uid
+        || reservation.userEmail === currentUser.email
+      )
+      && !archivingReservationsRef.current.has(reservation.id)
+    ));
+    if (expiredApprovedReservations.length === 0) return;
+
+    expiredApprovedReservations.forEach(({ id }) => archivingReservationsRef.current.add(id));
+    archiveExpiredApprovedReservations(expiredApprovedReservations, currentDateTime)
+      .catch((error) => {
+        console.error('Failed to archive completed reservations:', error);
+      })
+      .finally(() => {
+        expiredApprovedReservations.forEach(({ id }) => archivingReservationsRef.current.delete(id));
+      });
+  }, [currentDateTime, currentUser, reservationsData, userData.role]);
 
   // Process active reservation and archived reservation notifications
   useEffect(() => {
