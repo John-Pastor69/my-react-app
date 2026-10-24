@@ -1,7 +1,8 @@
 import { useState, useEffect, Suspense, useRef } from 'react'; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
+// IMPORT onSnapshot for real-time concurrent session listening
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
-import { doc, updateDoc, getDoc, setDoc } from 'firebase/firestore';
+import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
 
 import SideBar from './pages/SideBar';
@@ -9,6 +10,7 @@ import TopBar from './pages/TopBar';
 import './App.css'; 
 
 import Login from './pages/Login';
+import TwoFactorGate from './pages/TwoFactorGate'; 
 
 import DashboardRouter from './pages/routers/DashboardRouter';
 import CalendarRouter from './pages/routers/CalendarRouter';
@@ -27,26 +29,45 @@ export default function App() {
   const initialRedirectDone = useRef(false);
   const isLoggingOut = useRef(false);
 
-  // --- AUTO-CLOSE SIDEBAR ON NAVIGATION ---
   useEffect(() => {
     setIsSidebarOpen(false);
   }, [location.pathname]);
 
-  // Auth state
   const [isAuthenticated, setIsAuthenticated] = useState(false); 
   const [userRole, setUserRole] = useState('requestor');
-  
-  // Loading state to pause the app until Firebase auth AND user role/layout data are fully ready
   const [isAuthLoading, setIsAuthLoading] = useState(true);
-  
-  // State to hold login errors passed back to the Login component
   const [loginError, setLoginError] = useState('');
 
-  // --- GLOBAL PRESENCE, HEARTBEAT & DB STATUS WRITER ---
+  // --- 2FA ENFORCEMENT STATES ---
+  const [twoFactorMode, setTwoFactorMode] = useState(null); // 'setup' | 'verify' | null
+  const [twoFactorSecret, setTwoFactorSecret] = useState(null);
+
+  const handleLogout = async () => {
+    isLoggingOut.current = true;
+
+    if (auth.currentUser) {
+      localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
+      localStorage.removeItem(`req2FA_${auth.currentUser.uid}`);
+      sessionStorage.removeItem(`2fa_verified_${auth.currentUser.uid}`);
+      sessionStorage.removeItem(`active_session_${auth.currentUser.uid}`); // Clear session memory
+    }
+    
+    navigate('/', { replace: true });
+
+    setIsAuthenticated(false); 
+    setTwoFactorMode(null);
+    setUserRole('requestor'); 
+    
+    setTimeout(async () => {
+      await signOut(auth);
+      isLoggingOut.current = false; 
+    }, 150); 
+  };
+
   useEffect(() => {
     let heartbeatInterval = null;
+    let sessionUnsubscribe = null; // Variable to hold the real-time session listener
 
-    // Catch any errors from the Microsoft SSO redirect before auth state changes
     getRedirectResult(auth).then((result) => {
       if (result) {
         console.log("Successfully logged in via redirect!", result.user);
@@ -56,15 +77,12 @@ export default function App() {
       setLoginError("Login failed during redirect: " + err.message);
     });
 
-    // 1. Let Firebase automatically detect the returned session
-    // 1. Let Firebase automatically detect the returned session
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
 
       if (isLoggingOut.current) return;
 
       if (user) {
         
-        // --- NEW: Check if user logged in via Email/Password (Super Admin) ---
         const isSuperAdminProvider = user.providerData.some(p => p.providerId === 'password');
 
         const isStiEmail = user.email && (
@@ -73,7 +91,6 @@ export default function App() {
           user.email.endsWith('@globalcity.sti.edu')
         );
 
-        // Bypass the STI email block if they are using the Super Admin login method
         if (!isStiEmail && !isSuperAdminProvider) {
           await signOut(auth);
           setLoginError("Access denied. Only STI institutional accounts are allowed.");
@@ -85,55 +102,73 @@ export default function App() {
         try {
           const userRef = doc(db, 'users', user.uid);
           
-          // 1. OPTIMIZATION: Check for cached role to instantly unblock the UI
+          // --- 1. GENERATE UNIQUE SESSION ID FOR THIS TAB ---
+          let localSessionId = sessionStorage.getItem(`active_session_${user.uid}`);
+          if (!localSessionId) {
+            localSessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
+            sessionStorage.setItem(`active_session_${user.uid}`, localSessionId);
+          }
+
           const cachedRole = localStorage.getItem(`userRole_${user.uid}`);
-          if (cachedRole) {
+          const requires2FACache = localStorage.getItem(`req2FA_${user.uid}`) === 'true';
+          const isVerifiedThisSession = sessionStorage.getItem(`2fa_verified_${user.uid}`) === 'true';
+
+          if (cachedRole && (!requires2FACache || isVerifiedThisSession)) {
             setUserRole(cachedRole);
             setIsAuthenticated(true);
             setIsAuthLoading(false); 
           }
 
-          // 2. Fetch fresh data from Firestore
           const userSnap = await getDoc(userRef);
           const nowIso = new Date().toISOString();
 
           let resolvedRole = 'requestor';
 
           if (userSnap.exists()) {
-            resolvedRole = userSnap.data().role || 'requestor';
+            const userData = userSnap.data();
+            resolvedRole = userData.role || 'requestor';
             
-            // OPTIMIZATION: Non-blocking write
+            // Treat 2FA as ON by default, unless they explicitly disabled it in their profile
+            const is2FAPolicyActive = userData.twoFactorEnabled !== false;
+            
             updateDoc(userRef, {
               status: 'Active',
-              lastActive: nowIso
+              lastActive: nowIso,
+              activeSessionId: localSessionId // --- 2. SAVE TAB ID TO DATABASE ---
             }).catch(err => console.error("Heartbeat update failed:", err));
+
+            // DEFAULT ON 2FA LOGIC
+            if (!isVerifiedThisSession && is2FAPolicyActive) {
+              if (userData.twoFactorSecret) {
+                setTwoFactorSecret(userData.twoFactorSecret);
+                setTwoFactorMode('verify');
+              } else {
+                setTwoFactorMode('setup');
+              }
+              localStorage.setItem(`req2FA_${user.uid}`, 'true'); 
+            } else if (!is2FAPolicyActive) {
+              setTwoFactorMode(null); // Bypass if disabled
+            }
             
           } else {
             const d = new Date();
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
             const liveDate = `${month}/${day}/${d.getFullYear()}`;
-            
             const rawName = user.displayName || "Super Admin";
             
-            // --- NEW: Force Super Admin role for Email/Password logins ---
             if (isSuperAdminProvider) {
               resolvedRole = 'super admin';
-            }
-            // 2. Force Endorser role for specific email domain
-            else if (user.email && user.email.endsWith('@globalcity.sti.edu')) {
+            } else if (user.email && user.email.endsWith('@globalcity.sti.edu')) {
               resolvedRole = 'endorser';
-            } 
-            // 3. Fallback to name-based logic for other domains (e.g. .edu.ph)
-            else if (/faculty/i.test(rawName)) {
+            } else if (/faculty/i.test(rawName)) {
               resolvedRole = 'endorser';
             } else if (/student/i.test(rawName)) {
               resolvedRole = 'requestor';
             } else {
-              resolvedRole = 'requestor'; // Fallback for unknown formats
+              resolvedRole = 'requestor'; 
             }
 
-            // OPTIMIZATION: Non-blocking write
             setDoc(userRef, {
               email: user.email,
               name: rawName,
@@ -143,40 +178,62 @@ export default function App() {
               officeLocation: '',
               phone: '',
               status: 'Active',
-              lastActive: nowIso
+              lastActive: nowIso,
+              twoFactorEnabled: true, // Set default ON for new users
+              activeSessionId: localSessionId // --- 2. SAVE TAB ID TO DATABASE ---
             }).catch(err => console.error("User creation failed:", err));
+
+            // Enforce setup for new users
+            if (!isVerifiedThisSession) {
+              setTwoFactorMode('setup');
+              localStorage.setItem(`req2FA_${user.uid}`, 'true');
+            }
           }
 
-          // 3. Update the state and the cache with the verified database role
           localStorage.setItem(`userRole_${user.uid}`, resolvedRole);
           setUserRole(resolvedRole);
-          setIsAuthenticated(true);
+
+          // --- 3. REAL-TIME SESSION LISTENER (KICKS OUT OLD TABS) ---
+          if (sessionUnsubscribe) sessionUnsubscribe(); // Clear old listener if it exists
           
-          // Only redirect if they are sitting on the login page ("/")
-          if (!initialRedirectDone.current && location.pathname === '/') {
-             if (resolvedRole.toLowerCase() === 'requestor') {
-                navigate('/reserve', { replace: true });
-             } else {
-                navigate('/dashboard', { replace: true });
-             }
-             initialRedirectDone.current = true;
+          sessionUnsubscribe = onSnapshot(userRef, (docSnap) => {
+            if (docSnap.exists()) {
+              const dbSessionId = docSnap.data().activeSessionId;
+              const currentLocalSession = sessionStorage.getItem(`active_session_${user.uid}`);
+              
+              // If the database has an ID, and it doesn't match this tab's ID, someone else logged in!
+              if (dbSessionId && currentLocalSession && dbSessionId !== currentLocalSession) {
+                console.warn("Account accessed from another location. Logging out.");
+                alert("Security Alert: Your account was accessed from another browser or device. You have been automatically logged out here.");
+                handleLogout(); // Force logout
+              }
+            }
+          });
+
+          // If no 2FA is needed, authenticate immediately
+          if (!localStorage.getItem(`req2FA_${user.uid}`)) {
+            setIsAuthenticated(true);
+            if (!initialRedirectDone.current && location.pathname === '/') {
+               navigate(resolvedRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
+               initialRedirectDone.current = true;
+            }
           }
 
         } catch (error) {
           console.error("Error loading user session:", error);
           setLoginError("Failed to initialize user session.");
-          setIsAuthenticated(false); // Force re-login if DB fails
+          setIsAuthenticated(false); 
         } finally {
           setIsAuthLoading(false);
         }
       } else {
-        // No user is logged in
         setIsAuthenticated(false);
+        setTwoFactorMode(null);
         setIsAuthLoading(false);
+        if (sessionUnsubscribe) sessionUnsubscribe(); // Stop listening if logged out
       }
     });
 
-    // 2. Handle standard tab closures and iOS Safari tab closures
     const handleTabClose = () => {
       if (auth.currentUser) {
         updateDoc(doc(db, 'users', auth.currentUser.uid), {
@@ -186,7 +243,6 @@ export default function App() {
       }
     };
 
-    // 3. Handle mobile backgrounding (minimizing app, switching tabs, locking phone)
     const handleVisibilityChange = () => {
       if (auth.currentUser) {
         if (document.visibilityState === 'hidden') {
@@ -204,19 +260,19 @@ export default function App() {
     };
 
     window.addEventListener('beforeunload', handleTabClose);
-    window.addEventListener('pagehide', handleTabClose); // Critical for iOS Safari
-    document.addEventListener('visibilitychange', handleVisibilityChange); // Critical for mobile phones
+    window.addEventListener('pagehide', handleTabClose); 
+    document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
       unsubscribe();
       if (heartbeatInterval) clearInterval(heartbeatInterval);
+      if (sessionUnsubscribe) sessionUnsubscribe(); // Clean up listener when unmounting
       window.removeEventListener('beforeunload', handleTabClose);
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [navigate]); 
 
-  // --- LOADING SCREEN ---
   if (isAuthLoading) {
     return (
       <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#F8FAFC', color: '#64748B', fontFamily: 'system-ui, sans-serif' }}>
@@ -229,8 +285,30 @@ export default function App() {
     );
   }
 
-  // --- LOGIN ROUTING ---
-  // If not logged in, only show the Login page
+  // --- SHOW 2FA GATE ---
+  if (twoFactorMode) {
+    return (
+      <TwoFactorGate 
+        mode={twoFactorMode}
+        existingSecret={twoFactorSecret}
+        uid={auth.currentUser?.uid}
+        userEmail={auth.currentUser?.email}
+        onSuccess={() => {
+          sessionStorage.setItem(`2fa_verified_${auth.currentUser.uid}`, 'true'); 
+          
+          setTwoFactorMode(null);
+          setIsAuthenticated(true);
+          localStorage.removeItem(`req2FA_${auth.currentUser.uid}`); 
+          if (!initialRedirectDone.current && location.pathname === '/') {
+            navigate(userRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
+            initialRedirectDone.current = true;
+          }
+        }}
+        onCancel={handleLogout}
+      />
+    );
+  }
+
   if (!isAuthenticated) {
     return <Login error={loginError} setError={setLoginError} />;
   }
@@ -240,90 +318,24 @@ export default function App() {
       <SideBar 
         isOpen={isSidebarOpen} 
         setIsOpen={setIsSidebarOpen} 
-        onLogout={async () => {
-          isLoggingOut.current = true;
-
-          // 1. Clear local storage cache
-          if (auth.currentUser) {
-            localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
-          }
-          
-          // 2. Clear URL FIRST so child components unmount immediately
-          navigate('/', { replace: true });
-
-          // 3. Destroy authenticated state to kill child component listeners
-          setIsAuthenticated(false); 
-          setUserRole('requestor'); 
-          
-          // 4. Delay the Firebase logout slightly so React finishes unmounting 
-          setTimeout(async () => {
-            await signOut(auth);
-            isLoggingOut.current = false; 
-          }, 150); // Increased timeout to ensure full unmount
-        }} 
+        onLogout={handleLogout} 
         userRole={userRole} 
       />
       <div className="main-content">
         <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
         <div className="page-content">
           <Suspense fallback={<div className="loading-text">Loading page...</div>}>
-
             <Routes> 
-            
-              {/* 1. Dynamic Login & Catch-All Redirect */}
-              <Route 
-                path="*" 
-                element={
-                  userRole.toLowerCase() === 'requestor' 
-                    ? <Navigate to="/reserve" replace /> 
-                    : <Navigate to="/dashboard" replace />
-                } 
-              />
-
-              {/* 2. Protected Dashboard Routes */}
-              <Route 
-                path="/dashboard/*" 
-                element={
-                  userRole.toLowerCase() === 'requestor'
-                    ? <Navigate to="/reserve" replace />
-                    : <DashboardRouter currentUserRole={userRole.toLowerCase()} />
-                }
-              />
-
-              <Route 
-                path="/reserve/*" 
-                element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-
-              <Route 
-                path="/schedule/*" 
-                element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-
-              <Route 
-                path="/approval/*" 
-                element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-              <Route 
-                path="/equipment/*" 
-                element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-              <Route 
-                path="/user/*" 
-                element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-              <Route 
-                path="/facility/*" 
-                element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-              <Route 
-                path="/calendar/*" 
-                element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />}
-              />
-              <Route 
-                path="/account/*" 
-                element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />}
-              />
+              <Route path="*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <Navigate to="/dashboard" replace />} />
+              <Route path="/dashboard/*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <DashboardRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/reserve/*" element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/schedule/*" element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/approval/*" element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/equipment/*" element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/user/*" element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/facility/*" element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/calendar/*" element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />} />
+              <Route path="/account/*" element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />} />
             </Routes>
           </Suspense>
         </div>

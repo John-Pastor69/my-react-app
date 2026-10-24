@@ -3,6 +3,8 @@ import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { deleteUser, reauthenticateWithPopup, reauthenticateWithRedirect } from 'firebase/auth';
 import { useSearchParams } from 'react-router-dom';
 import { auth, db, microsoftProvider } from '../Firebase'; 
+import * as OTPAuth from 'otpauth'; 
+import QRCode from 'qrcode'; 
 import '../styles/Profile.scss';
 
 const MAX_GIF_SIZE = 10 * 1024 * 1024;
@@ -14,23 +16,30 @@ const Profile = ({ currentUserRole }) => {
   const canViewOtherProfiles = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedUserRole);
   const viewedProfileId = canViewOtherProfiles ? requestedProfileId : '';
   const isViewingOtherProfile = Boolean(viewedProfileId);
-  // --- STATE MANAGEMENT ---
+  
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [profileLoadError, setProfileLoadError] = useState('');
 
-  // --- IMAGE STATE ---
   const [avatarFile, setAvatarFile] = useState(null);
   const [bannerFile, setBannerFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [bannerPreview, setBannerPreview] = useState(null);
 
-  // --- DELETE ACCOUNT STATE ---
-  const [showDeleteModal, setShowDeleteModal] = useState(false);
+  // --- GITHUB-STYLE DELETE ACCOUNT STATES ---
+  const [deleteStep, setDeleteStep] = useState(0); // 0: closed, 1: warning, 2: confirmation
   const [deleteVerification, setDeleteVerification] = useState('');
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // --- 2FA STATES ---
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [show2FAModal, setShow2FAModal] = useState(false);
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
+  const [pendingSecret, setPendingSecret] = useState('');
+  const [verificationCode, setVerificationCode] = useState('');
+  const [twoFactorError, setTwoFactorError] = useState('');
 
   const [expandedImage, setExpandedImage] = useState(null);
 
@@ -49,22 +58,20 @@ const Profile = ({ currentUserRole }) => {
   });
   const isSuperAdminProfile = formData.role.toLowerCase().trim().replace(/_/g, ' ') === 'super admin';
             
-  // --- FETCH PROFILE DATA ON LOAD ---
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
       if (user) {
         setProfileLoadError('');
 
-        // --- AUTO-RESUME DELETION AFTER VERCEL REDIRECT ---
         if (!viewedProfileId && localStorage.getItem('pendingAccountDeletion') === 'true') {
-          localStorage.removeItem('pendingAccountDeletion'); // Clear the flag
+          localStorage.removeItem('pendingAccountDeletion'); 
           try {
             const userDocRef = doc(db, 'users', user.uid);
             await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
             await deleteDoc(userDocRef);
             await deleteUser(user);
-            window.location.href = '/'; // Send back to login
-            return; // Stop the rest of the profile from loading
+            window.location.href = '/'; 
+            return; 
           } catch (e) {
             console.error("Failed to finish deletion after redirect:", e);
           }
@@ -118,6 +125,10 @@ const Profile = ({ currentUserRole }) => {
               avatarUrl: data.avatarUrl || '',
               bannerUrl: data.bannerUrl || ''
             }));
+
+            // Set 2FA status from DB (Treat as enabled unless explicitly false)
+            setIs2FAEnabled(data.twoFactorEnabled !== false);
+            
           } else {
             setProfileLoadError('This user profile could not be found.');
           }
@@ -131,7 +142,6 @@ const Profile = ({ currentUserRole }) => {
     return () => unsubscribe(); 
   }, [viewedProfileId]);
 
-  // --- HANDLERS ---
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     const sanitizedValue = name === 'phone' ? value.replace(/[^0-9]/g, '').slice(0, 11) : value;
@@ -245,6 +255,86 @@ const Profile = ({ currentUserRole }) => {
     }
   };
 
+  // --- 2FA OPT-OUT / ENABLE HANDLERS ---
+  const handleInitiate2FA = async () => {
+    if (is2FAEnabled) {
+      if (window.confirm('Are you sure you want to disable Two-Factor Authentication? It is recommended to keep this enabled.')) {
+        try {
+          const userDocRef = doc(db, 'users', auth.currentUser.uid);
+          await updateDoc(userDocRef, {
+            twoFactorEnabled: false,
+            twoFactorSecret: null
+          });
+          setIs2FAEnabled(false);
+          alert('2FA has been disabled.');
+        } catch (err) {
+          console.error('Failed to disable 2FA', err);
+          alert('Failed to disable 2FA.');
+        }
+      }
+    } else {
+      const secret = new OTPAuth.Secret({ size: 20 }).base32;
+      setPendingSecret(secret);
+
+      const totp = new OTPAuth.TOTP({
+        issuer: 'FacilityRes',
+        label: formData.email,
+        algorithm: 'SHA1',
+        digits: 6,
+        period: 30,
+        secret: secret
+      });
+
+      const uri = totp.toString();
+      
+      try {
+        const qrUrl = await QRCode.toDataURL(uri);
+        setQrCodeDataUrl(qrUrl);
+        setShow2FAModal(true);
+      } catch (err) {
+        console.error('QR Code generation failed', err);
+        alert('Failed to generate QR Code.');
+      }
+    }
+  };
+
+  const handleVerifySetup2FA = async () => {
+    setTwoFactorError('');
+    const totp = new OTPAuth.TOTP({
+      issuer: 'FacilityRes',
+      algorithm: 'SHA1',
+      digits: 6,
+      period: 30,
+      secret: pendingSecret
+    });
+
+    const delta = totp.validate({ token: verificationCode, window: 1 });
+
+    if (delta !== null) {
+      try {
+        const userDocRef = doc(db, 'users', auth.currentUser.uid);
+        await updateDoc(userDocRef, {
+          twoFactorEnabled: true,
+          twoFactorSecret: pendingSecret
+        });
+        setIs2FAEnabled(true);
+        setShow2FAModal(false);
+        setVerificationCode('');
+        alert('Two-Factor Authentication is now enabled!');
+      } catch (err) {
+        setTwoFactorError('Failed to save settings to database.');
+      }
+    } else {
+      setTwoFactorError('Invalid code. Please try again.');
+    }
+  };
+
+  // --- GITHUB-STYLE DELETE HANDLERS ---
+  const closeDeleteModal = () => {
+    setDeleteStep(0);
+    setDeleteVerification('');
+  };
+
   const handleDeleteAccount = async () => {
     if (deleteVerification !== 'delete my account') return;
     setIsDeleting(true);
@@ -252,25 +342,22 @@ const Profile = ({ currentUserRole }) => {
     try {
       const user = auth.currentUser;
       if (user) {
-        // 1. Re-authenticate based on environment
         try {
           if (window.location.hostname === 'localhost') {
             await reauthenticateWithPopup(user, microsoftProvider);
           } else {
-            // Drop a flag so the app remembers to delete the account when Microsoft sends them back
             localStorage.setItem('pendingAccountDeletion', 'true');
             await reauthenticateWithRedirect(user, microsoftProvider);
-            return; // Stop execution here, the browser is redirecting away
+            return; 
           }
         } catch (reauthError) {
           console.error("Re-authentication failed:", reauthError);
           alert("We could not verify your identity. Account deletion cancelled.");
           setIsDeleting(false);
-          setShowDeleteModal(false);
+          closeDeleteModal();
           return; 
         }
 
-        // 2. If on localhost (popup), it finishes the deletion immediately here
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
         
@@ -283,7 +370,7 @@ const Profile = ({ currentUserRole }) => {
       alert("An error occurred while deleting your account.");
     } finally {
       setIsDeleting(false);
-      setShowDeleteModal(false);
+      closeDeleteModal();
     }
   };
 
@@ -434,29 +521,147 @@ const Profile = ({ currentUserRole }) => {
 
         {!isViewingOtherProfile && (
           <div className="profile-sidebar">
+            
+            {/* OPT-IN/OUT SECURITY ZONE */}
+            <div className="side-panel card-style security-zone">
+              <div className="section-title">
+                <div className="icon-wrap bg-indigo-soft"><i className="ph-fill ph-shield-check"></i></div>
+                <h3>Security</h3>
+              </div>
+              <p className="security-desc">
+                Protect your account by requiring a code from an authenticator app when you log in.
+              </p>
+              <div className="two-factor-controls">
+                <div className="two-factor-status">
+                  <strong className="two-factor-label">Two-Factor Auth</strong>
+                  <span className={`two-factor-indicator ${is2FAEnabled ? 'enabled' : 'disabled'}`}>
+                    {is2FAEnabled ? '● Enabled' : '○ Disabled'}
+                  </span>
+                </div>
+                <button 
+                  className={`btn-two-factor ${is2FAEnabled ? 'active' : ''}`}
+                  onClick={handleInitiate2FA}
+                >
+                  {is2FAEnabled ? 'Disable' : 'Enable 2FA'}
+                </button>
+              </div>
+            </div>
+
+            {/* GITHUB STYLE DANGER ZONE */}
             <div className="side-panel card-style danger-zone">
               <div className="section-title">
                 <div className="icon-wrap danger-icon-wrap"><i className="ph-fill ph-warning"></i></div>
-                <h3>Danger Zone</h3>
+                <h3 className="danger-title">Danger Zone</h3>
               </div>
-              <p>This action cannot be undone.</p>
-              <button className="btn-deactivate" onClick={() => setShowDeleteModal(true)}><i className="ph ph-prohibit"></i> Delete Account</button>
+              
+              <div className="danger-zone-box">
+                <div className="danger-item">
+                  <div className="danger-text">
+                    <strong>Delete this account</strong>
+                    <p>Once you delete an account, there is no going back. Please be certain.</p>
+                  </div>
+                  <button className="btn-outline-danger" onClick={() => setDeleteStep(1)}>
+                    Delete Account
+                  </button>
+                </div>
+              </div>
+            </div>
+
+          </div>
+        )}
+
+        {/* 2FA SETUP MODAL */}
+        {show2FAModal && (
+          <div className="modal-overlay">
+            <div className="modal-content text-center two-factor-setup-modal">
+              <h3>Setup Authenticator</h3>
+              <p className="setup-desc">
+                Scan this QR code, or manually enter the setup key into your authenticator app.
+              </p>
+              
+              {qrCodeDataUrl && (
+                <div className="qr-code-wrapper">
+                  <img src={qrCodeDataUrl} alt="2FA QR Code" />
+                </div>
+              )}
+
+              {/* Manual Setup Key Display */}
+              <div className="manual-key-wrapper">
+                <span className="manual-key-label">Setup Key</span>
+                <div className="manual-key-action">
+                  <code>{pendingSecret}</code>
+                  <button 
+                    onClick={() => navigator.clipboard.writeText(pendingSecret)}
+                    title="Copy to clipboard"
+                  >
+                    Copy
+                  </button>
+                </div>
+              </div>
+
+              <input 
+                type="text" 
+                className="two-factor-input"
+                maxLength={6}
+                placeholder="000000" 
+                value={verificationCode} 
+                onChange={(e) => setVerificationCode(e.target.value.replace(/\D/g, ''))}
+              />
+
+              {twoFactorError && <div className="two-factor-error">{twoFactorError}</div>}
+
+              <div className="modal-actions">
+                <button className="btn-cancel" onClick={() => { setShow2FAModal(false); setVerificationCode(''); setTwoFactorError(''); }}>Cancel</button>
+                <button className="btn-verify" disabled={verificationCode.length !== 6} onClick={handleVerifySetup2FA}>
+                  Verify & Enable
+                </button>
+              </div>
             </div>
           </div>
         )}
 
-        {showDeleteModal && (
+        {/* GITHUB STYLE DELETE MODALS */}
+        {deleteStep > 0 && (
           <div className="modal-overlay">
-            <div className="modal-content">
-              <h3>Are you sure you want to delete this?</h3>
-              <p>To verify, type <em>delete my account</em></p>
-              <input type="text" placeholder="delete my account" value={deleteVerification} onChange={(e) => setDeleteVerification(e.target.value)} />
-              <div className="modal-actions">
-                <button className="btn-cancel" onClick={() => { setShowDeleteModal(false); setDeleteVerification(''); }}>Cancel</button>
-                <button className="btn-confirm-delete" disabled={deleteVerification !== 'delete my account' || isDeleting} onClick={handleDeleteAccount}>
-                  {isDeleting ? "Deleting..." : "Delete Account"}
+            <div className="modal-content github-delete-modal">
+              <div className="modal-header">
+                <h3>Delete Account</h3>
+                <button className="close-btn" onClick={closeDeleteModal}>
+                  <i className="ph ph-x"></i>
                 </button>
               </div>
+
+              {deleteStep === 1 && (
+                <div className="delete-step-1">
+                  <ul className="consequence-list">
+                    <li>This will permanently delete your account and profile information.</li>
+                  </ul>
+                  <button className="btn-danger-full" onClick={() => setDeleteStep(2)}>
+                    I have read and understand these effects
+                  </button>
+                </div>
+              )}
+
+              {deleteStep === 2 && (
+                <div className="delete-step-2">
+                  <p className="verify-instructions">
+                    To confirm, type "<strong>delete my account</strong>" in the box below
+                  </p>
+                  <input 
+                    type="text" 
+                    value={deleteVerification} 
+                    onChange={(e) => setDeleteVerification(e.target.value)} 
+                    autoFocus
+                  />
+                  <button 
+                    className="btn-danger-full" 
+                    disabled={deleteVerification !== 'delete my account' || isDeleting} 
+                    onClick={handleDeleteAccount}
+                  >
+                    {isDeleting ? "Deleting..." : "Delete Account"}
+                  </button>
+                </div>
+              )}
             </div>
           </div>
         )}
