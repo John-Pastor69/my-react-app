@@ -128,9 +128,9 @@ export const getOverlappingFacilityReservations = (reservations, request, facili
 };
 
 const getFacilityCapacityLimits = (facility) => ({
-  max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
-    ? parseCapacity(facility.maxCapacity)
-    : parseCapacity(facility.capacity)
+  max: Object.prototype.hasOwnProperty.call(facility, 'capacity')
+    ? parseCapacity(facility.capacity)
+    : parseCapacity(facility.maxCapacity)
 });
 
 const parseCapacity = (value) => {

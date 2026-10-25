@@ -67,9 +67,9 @@ const getReservationDateMinimum = (role, skipLeadTime = false) => {
 
 const getFacilityCapacityLimits = (facility) => ({
   min: parseOptionalCapacity(facility.minCapacity),
-  max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
-    ? parseOptionalCapacity(facility.maxCapacity)
-    : parseOptionalCapacity(facility.capacity)
+  max: Object.prototype.hasOwnProperty.call(facility, 'capacity')
+    ? parseOptionalCapacity(facility.capacity)
+    : parseOptionalCapacity(facility.maxCapacity)
 });
 
 const getFacilityCapacityLabel = (facility) => {
