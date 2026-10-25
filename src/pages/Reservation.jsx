@@ -67,9 +67,9 @@ const getReservationDateMinimum = (role, skipLeadTime = false) => {
 
 const getFacilityCapacityLimits = (facility) => ({
   min: parseOptionalCapacity(facility.minCapacity),
-  max: Object.prototype.hasOwnProperty.call(facility, 'capacity')
-    ? parseOptionalCapacity(facility.capacity)
-    : parseOptionalCapacity(facility.maxCapacity)
+  max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
+    ? parseOptionalCapacity(facility.maxCapacity)
+    : parseOptionalCapacity(facility.capacity)
 });
 
 const getFacilityCapacityLabel = (facility) => {
@@ -464,17 +464,8 @@ const Reservation = () => {
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : item.status;
     return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
-  const selectedFacility = inventoryFacilities.find((facility) => formData.facilities.includes(facility.id));
-  const selectedFacilityCapacity = selectedFacility
-    ? getFacilityCapacityLimits(selectedFacility)
-    : { min: null, max: null };
   const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
   const expectedParticipantCount = Number(formData.expectedParticipants);
-  const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
-    !Number.isInteger(expectedParticipantCount)
-    || expectedParticipantCount <= 0
-    || (selectedFacilityCapacity.max !== null && expectedParticipantCount > selectedFacilityCapacity.max)
-  ));
 
   const conflictRequest = {
     eventDate,
@@ -507,6 +498,29 @@ const Reservation = () => {
 
     return Math.max(0, maxCapacity - occupiedCapacity);
   };
+  const selectedFacilityCapacities = inventoryFacilities
+    .filter((facility) => formData.facilities.includes(facility.id))
+    .map((facility) => ({
+      facility,
+      limits: getFacilityCapacityLimits(facility),
+      available: getAvailableFacilityCapacity(facility)
+    }));
+  const selectedFacilityMinimum = selectedFacilityCapacities.reduce(
+    (minimum, { limits }) => limits.min === null ? minimum : Math.max(minimum, limits.min),
+    1
+  );
+  const selectedFacilityMaximum = selectedFacilityCapacities.reduce(
+    (maximum, { available }) => available === null ? maximum : Math.min(maximum, available),
+    Number.POSITIVE_INFINITY
+  );
+  const availableFacilityMaximum = Number.isFinite(selectedFacilityMaximum)
+    ? selectedFacilityMaximum
+    : null;
+  const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
+    !Number.isInteger(expectedParticipantCount)
+    || expectedParticipantCount < selectedFacilityMinimum
+    || (availableFacilityMaximum !== null && expectedParticipantCount > availableFacilityMaximum)
+  ));
   const requestStartDate = parseDateOrdinal(eventDate);
   const requestEndDate = parseDateOrdinal(endDateInput);
   const invalidDateRange = requestStartDate !== null
@@ -919,14 +933,17 @@ const Reservation = () => {
     if (
       !Number.isInteger(expectedParticipantCount)
       || expectedParticipantCount <= 0
-      || (selectedFacilityCapacity.max !== null && expectedParticipantCount > selectedFacilityCapacity.max)
+      || expectedParticipantCount < selectedFacilityMinimum
+      || (availableFacilityMaximum !== null && expectedParticipantCount > availableFacilityMaximum)
     ) {
       setMissingFields({ expectedParticipants: true });
       setCustomAlert({
         title: 'Participant Limit',
-        message: expectedParticipantCount <= 0 || !Number.isInteger(expectedParticipantCount)
+        message: !Number.isInteger(expectedParticipantCount) || expectedParticipantCount <= 0
           ? 'Enter a positive whole number of participants.'
-          : `The selected facility can accommodate up to ${selectedFacilityCapacity.max} participants.`,
+          : expectedParticipantCount < selectedFacilityMinimum
+            ? `The selected facility requires at least ${selectedFacilityMinimum} participants.`
+            : `The selected facility has capacity for up to ${selectedFacilityMaximum} more participants during this time.`,
         isSuccess: false
       });
       fieldRefs.current.expectedParticipants?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1480,9 +1497,9 @@ const Reservation = () => {
               <i className="ph ph-users"></i>
               <input 
               type="number"
-              min="1"
+              min={selectedFacilityMinimum}
               step="1"
-              max={selectedFacilityCapacity.max ?? undefined}
+              max={availableFacilityMaximum ?? undefined}
               value={formData.expectedParticipants}
               onChange={(e) => {
                 const value = e.target.value;

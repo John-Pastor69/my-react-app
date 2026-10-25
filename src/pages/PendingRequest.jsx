@@ -182,9 +182,9 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
     const facility = facilitiesMap[id];
     if (!facility) return null;
     const minCapacity = Number(facility.minCapacity) || null;
-    const maxCapacity = Object.prototype.hasOwnProperty.call(facility, 'capacity')
-      ? Number(facility.capacity) || null
-      : Number(facility.maxCapacity) || null;
+    const maxCapacity = Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
+      ? Number(facility.maxCapacity) || null
+      : Number(facility.capacity) || null;
     if (minCapacity && maxCapacity) return `${minCapacity}–${maxCapacity}`;
     if (minCapacity) return `${minCapacity}+`;
     if (maxCapacity) return `Up to ${maxCapacity}`;

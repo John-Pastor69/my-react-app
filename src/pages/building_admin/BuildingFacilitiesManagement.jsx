@@ -18,13 +18,10 @@ const getCurrentDateTime = () => {
 const STATUS_CYCLE = ['Available', 'Maintenance', 'Unavailable'];
 
 const getCapacityLabel = (facility) => {
-  if (Object.prototype.hasOwnProperty.call(facility, 'capacity')) {
-    const capacity = Number(facility.capacity) || null;
-    return capacity ? `Up to ${capacity}` : 'Not set';
-  }
-
   const minCapacity = Number(facility.minCapacity) || null;
-  const maxCapacity = Number(facility.maxCapacity) || null;
+  const maxCapacity = Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
+    ? Number(facility.maxCapacity) || null
+    : Number(facility.capacity) || null;
 
   if (minCapacity && maxCapacity) return `${minCapacity}–${maxCapacity}`;
   if (minCapacity) return `${minCapacity}+`;
@@ -46,7 +43,8 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
     name: '',
     code: '',
     location: '',
-    capacity: '',
+    minCapacity: '',
+    maxCapacity: '',
     status: 'Available'
   });
   
@@ -77,7 +75,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
 
   // --- ACTION HANDLERS ---
   const handleAddClick = () => {
-    setNewItem({ name: '', code: '', location: '', capacity: '', status: 'Available' });
+    setNewItem({ name: '', code: '', location: '', minCapacity: '', maxCapacity: '', status: 'Available' });
     setIsAddingNew(true);
   };
 
@@ -113,9 +111,10 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   const handleEditClick = (item) => {
     setEditingItem({
       ...item,
-      capacity: Object.prototype.hasOwnProperty.call(item, 'capacity')
-        ? (item.capacity == null ? '' : String(item.capacity))
-        : (item.maxCapacity == null ? '' : String(item.maxCapacity))
+      minCapacity: item.minCapacity == null ? '' : String(item.minCapacity),
+      maxCapacity: Object.prototype.hasOwnProperty.call(item, 'maxCapacity')
+        ? (item.maxCapacity == null ? '' : String(item.maxCapacity))
+        : (item.capacity == null ? '' : String(item.capacity))
     });
   };
 
@@ -136,9 +135,9 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         name: editingItem.name,
         code: finalCode,
         location: editingItem.location?.trim() || '',
-        capacity: editingItem.capacity ? Number(editingItem.capacity) : null,
-        minCapacity: deleteField(),
-        maxCapacity: deleteField(),
+        minCapacity: editingItem.minCapacity ? Number(editingItem.minCapacity) : null,
+        maxCapacity: editingItem.maxCapacity ? Number(editingItem.maxCapacity) : null,
+        capacity: deleteField(),
         maxCapRef: deleteField(),
         status: editingItem.status,
         statusClass: statusClass,
@@ -168,7 +167,8 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         code: finalCode,
         name: newItem.name.trim() || 'Untitled Facility',
         location: newItem.location.trim(),
-        capacity: newItem.capacity ? Number(newItem.capacity) : null,
+        minCapacity: newItem.minCapacity ? Number(newItem.minCapacity) : null,
+        maxCapacity: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
         status: status,
         statusClass,
         lastUpdated: getCurrentDateTime()
@@ -417,13 +417,26 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
               </div>
 
               <div className="form-group">
-                <label>Capacity (Optional)</label>
+                <label>Minimum Capacity (Optional)</label>
                 <input
                   type="number"
                   min="1"
                   step="1"
-                  value={editingItem.capacity}
-                  onChange={(e) => setEditingItem({ ...editingItem, capacity: e.target.value })}
+                  max={editingItem.maxCapacity || undefined}
+                  value={editingItem.minCapacity}
+                  onChange={(e) => setEditingItem({ ...editingItem, minCapacity: e.target.value })}
+                  placeholder="e.g. 50"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Maximum Capacity (Optional)</label>
+                <input
+                  type="number"
+                  min={editingItem.minCapacity || '1'}
+                  step="1"
+                  value={editingItem.maxCapacity}
+                  onChange={(e) => setEditingItem({ ...editingItem, maxCapacity: e.target.value })}
                   placeholder="e.g. 100"
                 />
               </div>
@@ -487,13 +500,26 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
               </div>
 
               <div className="form-group">
-                <label>Capacity (Optional)</label>
+                <label>Minimum Capacity (Optional)</label>
                 <input
                   type="number"
                   min="1"
                   step="1"
-                  value={newItem.capacity}
-                  onChange={(e) => setNewItem({ ...newItem, capacity: e.target.value })}
+                  max={newItem.maxCapacity || undefined}
+                  value={newItem.minCapacity}
+                  onChange={(e) => setNewItem({ ...newItem, minCapacity: e.target.value })}
+                  placeholder="e.g. 50"
+                />
+              </div>
+
+              <div className="form-group">
+                <label>Maximum Capacity (Optional)</label>
+                <input
+                  type="number"
+                  min={newItem.minCapacity || '1'}
+                  step="1"
+                  value={newItem.maxCapacity}
+                  onChange={(e) => setNewItem({ ...newItem, maxCapacity: e.target.value })}
                   placeholder="e.g. 100"
                 />
               </div>

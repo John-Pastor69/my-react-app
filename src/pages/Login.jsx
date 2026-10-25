@@ -71,7 +71,7 @@ export default function Login({ error, setError }) {
 
       <div className="brand-header">
         <div className="sti-logo-container">
-          <h1 className="brand-title">STI Reservation System</h1>
+          <h1 className="brand-title">STI Global City Reservation System</h1>
         </div>
       </div>
 
