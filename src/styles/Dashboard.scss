@@ -306,13 +306,21 @@ main,
 
   &.admin-dashboard .dashboard-operations {
     grid-template-areas:
-      "user-search"
+      "dashboard-filters"
+      "dashboard-kpis"
       "approval"
       "upcoming"
-      "reservation-search"
-      "resource-alerts";
+      "resource-alerts"
+      "reservation-search";
 
-    .user-search-panel { grid-area: user-search; }
+    .dashboard-filters {
+      grid-area: dashboard-filters;
+      margin-bottom: 0;
+    }
+    .dashboard-kpis {
+      grid-area: dashboard-kpis;
+      margin-bottom: 0;
+    }
     .approval-panel { grid-area: approval; }
     .upcoming-panel { grid-area: upcoming; }
     .reservation-search-panel { grid-area: reservation-search; }
@@ -403,6 +411,32 @@ main,
 
   .reservation-search-reset {
     margin-top: 0.5rem;
+  }
+
+  .reservation-search-user-results {
+    margin-top: 0.75rem;
+    padding-bottom: 0.75rem;
+    border-bottom: 1px solid $border;
+  }
+
+  .reservation-search-subheading {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-top: 0.75rem;
+
+    h3 {
+      margin: 0;
+      color: $ink;
+      font-size: var(--font-body);
+      font-weight: 700;
+    }
+
+    > span {
+      color: $muted;
+      font-size: var(--font-body);
+    }
   }
 
   .reservation-search-results {
@@ -1356,13 +1390,20 @@ main,
 
   .mis-dashboard-content.admin-dashboard .dashboard-operations {
     grid-template-areas:
-      "user-search user-search"
+      "dashboard-filters dashboard-filters"
+      "dashboard-kpis dashboard-kpis"
       "approval upcoming"
-      "reservation-search reservation-search"
-      "resource-alerts resource-alerts";
+      "resource-alerts resource-alerts"
+      "reservation-search reservation-search";
 
-    .user-search-panel {
-      grid-area: user-search;
+    .dashboard-filters {
+      grid-area: dashboard-filters;
+      margin-bottom: 0;
+    }
+
+    .dashboard-kpis {
+      grid-area: dashboard-kpis;
+      margin-bottom: 0;
     }
 
     .approval-panel {

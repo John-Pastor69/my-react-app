@@ -83,6 +83,7 @@ export const archiveExpiredApprovedReservations = async (reservations, now = new
     });
     await batch.commit();
   }
+
 };
 
 const isExpiredPendingReservation = (reservation, now) => {

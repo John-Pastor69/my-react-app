@@ -66,7 +66,7 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
       {/* Brand Header */}        
       <div className="sidebar-header">
         <div className="brand-icon">F</div>
-        <h2 className="brand-name">STI Global City Reservation System</h2>
+        <h2 className="brand-name">STI Global</h2>
       </div>
 
       {/* Main Navigation */}

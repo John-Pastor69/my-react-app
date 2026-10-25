@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch, deleteField } from 'firebase/firestore';
 import { db, auth } from '../../Firebase';
+import { syncFacilityRemainingCapacities } from '../../services/facilityCapacity';
 import '../../styles/buildingadmin/BuildingFacilitiesManagement.scss';
 
 // Helper function to get real-time date and time
@@ -61,6 +62,10 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {
     if (!currentUser) return; // Added safeguard
+
+    syncFacilityRemainingCapacities().catch((error) => {
+      console.error('Failed to initialize facility remaining capacities:', error);
+    });
 
     const unsubFacilities = onSnapshot(collection(db, 'facilities'), (snapshot) => {
       const list = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
@@ -145,7 +150,12 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
       };
 
       await updateDoc(doc(db, 'facilities', editingItem.id), updateData);
-      setEditingItem(null); 
+      setEditingItem(null);
+      try {
+        await syncFacilityRemainingCapacities();
+      } catch (error) {
+        console.error('Facility updated, but remaining capacity failed to refresh:', error);
+      }
     } catch (error) {
       console.error('Failed to update facility:', error);
     }
@@ -169,11 +179,17 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         location: newItem.location.trim(),
         minCapacity: newItem.minCapacity ? Number(newItem.minCapacity) : null,
         maxCapacity: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
+        remainingCap: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
         status: status,
         statusClass,
         lastUpdated: getCurrentDateTime()
       });
       setIsAddingNew(false);
+      try {
+        await syncFacilityRemainingCapacities();
+      } catch (error) {
+        console.error('Facility added, but remaining capacity failed to refresh:', error);
+      }
     } catch (error) {
       console.error('Failed to add facility to Firestore:', error);
     }

@@ -16,6 +16,9 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
+import {
+  isReservationIncludedInFacilityCapacity
+} from '../services/facilityCapacity';
 import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import {
   findFacilityConflict,
@@ -476,34 +479,41 @@ const Reservation = () => {
     expectedParticipants: formData.expectedParticipants,
     excludeReservationId: editReservationId
   };
-  const getAvailableFacilityCapacity = (facility) => {
+  const getFacilityRemainingCapacity = (facility) => {
     const maxCapacity = getFacilityCapacityLimits(facility).max;
     if (maxCapacity === null) return null;
 
-    const overlappingReservations = getOverlappingFacilityReservations(
-      reservationsData,
-      conflictRequest,
-      facility.id
-    );
-    const hasUnknownCapacity = overlappingReservations.some((reservation) => {
+    const storedRemainingCapacity = facility.remainingCap == null
+      || String(facility.remainingCap).trim() === ''
+      ? null
+      : Number(facility.remainingCap);
+    const reservedForCurrentEdit = editingReservation
+      && isReservationIncludedInFacilityCapacity(editingReservation)
+      && (editingReservation.facilities || []).includes(facility.id)
+      ? Number(editingReservation.expectedParticipants) || 0
+      : 0;
+    if (Number.isInteger(storedRemainingCapacity) && storedRemainingCapacity >= 0) {
+      return Math.min(maxCapacity, storedRemainingCapacity + reservedForCurrentEdit);
+    }
+
+    const reservedCapacity = reservationsData.reduce((total, reservation) => {
+      if (
+        reservation.id === editingReservation?.id
+        || !isReservationIncludedInFacilityCapacity(reservation)
+        || !(reservation.facilities || []).includes(facility.id)
+      ) return total;
       const participants = Number(reservation.expectedParticipants);
-      return !Number.isInteger(participants) || participants <= 0;
-    });
-    if (hasUnknownCapacity) return 0;
+      return total + (Number.isInteger(participants) && participants > 0 ? participants : 0);
+    }, 0);
 
-    const occupiedCapacity = overlappingReservations.reduce(
-      (total, reservation) => total + Number(reservation.expectedParticipants),
-      0
-    );
-
-    return Math.max(0, maxCapacity - occupiedCapacity);
+    return Math.max(0, maxCapacity - reservedCapacity + reservedForCurrentEdit);
   };
   const selectedFacilityCapacities = inventoryFacilities
     .filter((facility) => formData.facilities.includes(facility.id))
     .map((facility) => ({
       facility,
       limits: getFacilityCapacityLimits(facility),
-      available: getAvailableFacilityCapacity(facility)
+      available: getFacilityRemainingCapacity(facility)
     }));
   const selectedFacilityMinimum = selectedFacilityCapacities.reduce(
     (minimum, { limits }) => limits.min === null ? minimum : Math.max(minimum, limits.min),
@@ -777,7 +787,7 @@ const Reservation = () => {
       const cellDate = new Date(year, month, day);
       const isPast = cellDate < minDate;
       return (
-        <div 
+        <div
           key={day} 
           className={`calendar-day ${isPast ? 'disabled' : ''}`} 
           onClick={() => !isPast && selectDate(day)}
@@ -1339,10 +1349,9 @@ const Reservation = () => {
             ) : (
               inventoryFacilities.map((item) => {
                 const isSelected = formData.facilities.includes(item.id);
-                const isLocked = item.status === 'Unavailable';
                 const maxCapacity = getFacilityCapacityLimits(item).max;
-
-                const displayCapacityLeft = getAvailableFacilityCapacity(item);
+                const displayCapacityLeft = getFacilityRemainingCapacity(item);
+                const isLocked = item.status === 'Unavailable' || displayCapacityLeft === 0;
 
                 return (
                   <label
@@ -1455,10 +1464,137 @@ const Reservation = () => {
                 type="text"
                 value={formData.otherEquipment}
                 onChange={(e) => handleInputChange('otherEquipment', e.target.value)}
-                placeholder="e.g. TV Remote, Speaker"
+                placeholder="e.g. Speaker - 20 units"
               />
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
+          </div>
+
+        </div>
+
+        <div className="form-card">
+          <div className="section-header">Utility</div>
+          <div className="checkbox-grid facility-list utility-list">
+            {inventoryUtilities.length === 0 ? (
+              <div className="empty-list">No utilities currently listed.</div>
+            ) : (
+              inventoryUtilities.map((item) => {
+                const isSelected = (selectedUtilities || []).includes(item.id);
+                const isUnavailable = (item.status || '').toLowerCase() === 'unavailable';
+                const status = isUnavailable ? 'Unavailable' : 'Available';
+
+                return (
+                  <label
+                    key={item.id}
+                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isUnavailable ? 'is-locked' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      className="facility-checkbox"
+                      checked={isSelected}
+                      onChange={() => {
+                        setSelectedUtilities(prev =>
+                          (prev || []).includes(item.id)
+                            ? prev.filter(id => id !== item.id)
+                            : [...(prev || []), item.id]
+                        );
+                      }}
+                      disabled={isUnavailable}
+                    />
+                    <div className="facility-icon">
+                      <i className="ph ph-lightning"></i>
+                    </div>
+                    <div>
+                      <strong>{item.name || 'Untitled Utility'}</strong>
+                      <span className="facility-meta">{item.sku || 'Utility'}</span>
+                      <span className="facility-availability">
+                        <span className={`facility-status ${status.toLowerCase()}`}>
+                          ● {status}
+                        </span>
+                      </span>
+                    </div>
+                  </label>
+                );
+              })
+            )}
+          </div>
+
+          <div className="input-group room-field utility-other-field">
+            <label>Other Utility</label>
+            <div className="input-with-icon left-icon">
+              <i className="ph ph-lightning"></i>
+              <input
+                type="text"
+                value={formData.otherUtility}
+                onChange={(e) => handleInputChange('otherUtility', e.target.value)}
+                placeholder="e.g. Blackboard - 5 units"
+              />
+            </div>
+            <span className="helper-text">Leave blank if not applicable</span>
+          </div>
+        </div>
+      </div>
+
+      <div className="form-card">
+        <div className="section-header">Air Conditioning</div>
+        <div className="aircon-controls">
+
+          <div className="aircon-inputs-row">
+            <div className={`toggle-box ${aircon ? 'is-enabled' : 'is-disabled'}`} onClick={() => setAircon(!aircon)}>
+              <div className="toggle-switch">
+                <div className="toggle-knob"></div>
+              </div>
+              <div>
+                <strong>Aircon {aircon ? 'Enabled' : 'Disabled'}</strong>
+                <span>Click to toggle</span>
+              </div>
+            </div>
+
+            <div className="time-inputs">
+              <div
+                className={`input-group ${missingFields.airconOnTime ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.airconOnTime = el}
+              >
+                <label>Aircon ON Time {aircon && <span className="req">*</span>}</label>
+                <div className="input-with-icon left-icon">
+                  <i className="ph ph-clock"></i>
+                  <input
+                    type="text"
+                    value={formData.airconOnTime}
+                    onChange={(e) => handleTimeInput(e, null, 'airconOnTime', true)}
+                    onBlur={(e) => handleTimeBlur(e, null, 'airconOnTime')}
+                    placeholder="08:00 AM"
+                    disabled={!aircon}
+                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOnTime ? 'input-error' : ''}`.trim()}
+                  />
+                </div>
+              </div>
+              <i className="ph ph-arrow-right arrow"></i>
+
+              <div
+                className={`input-group ${missingFields.airconOffTime ? 'field-missing' : ''}`}
+                ref={el => fieldRefs.current.airconOffTime = el}
+              >
+                <label>Aircon OFF Time {aircon && <span className="req">*</span>}</label>
+                <div className="input-with-icon left-icon">
+                  <i className="ph ph-clock"></i>
+                  <input
+                    type="text"
+                    value={formData.airconOffTime}
+                    onChange={(e) => handleTimeInput(e, null, 'airconOffTime', true)}
+                    onBlur={(e) => handleTimeBlur(e, null, 'airconOffTime')}
+                    placeholder="05:00 PM"
+                    disabled={!aircon}
+                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOffTime ? 'input-error' : ''}`.trim()}
+                  />
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div className="info-box blue aircon-note">
+            <i className="ph ph-info"></i>
+            <div>Aircon will be scheduled based on approved timing. Ensure times are within facility operating hours (6:00 AM - 9:00 PM).</div>
           </div>
 
         </div>
@@ -1753,136 +1889,6 @@ const Reservation = () => {
           <div>
             <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s) {eventDate && days > 1 ? `(Ends: ${endDateInput || calculateEndDate(eventDate, days)})` : ''}</strong>
           </div>
-        </div>
-      </div>
-
-      {/* Utility Requests */}
-      <div className="form-card">
-        <div className="section-header">
-          Utility
-        </div>
-        <div className="checkbox-grid facility-list utility-list">
-          {inventoryUtilities.length === 0 ? (
-            <div className="empty-list">No utilities currently listed.</div>
-          ) : (
-            inventoryUtilities.map((item) => {
-              const isSelected = (selectedUtilities || []).includes(item.id);
-              const isUnavailable = (item.status || '').toLowerCase() === 'unavailable';
-              const status = isUnavailable ? 'Unavailable' : 'Available';
-
-              return (
-                <label
-                  key={item.id}
-                  className={`facility-option ${isSelected ? 'is-selected' : ''} ${isUnavailable ? 'is-locked' : ''}`}
-                >
-                  <input
-                    type="checkbox"
-                    className="facility-checkbox"
-                    checked={isSelected}
-                    onChange={() => {
-                      setSelectedUtilities(prev =>
-                        (prev || []).includes(item.id)
-                          ? prev.filter(id => id !== item.id)
-                          : [...(prev || []), item.id]
-                      );
-                    }}
-                    disabled={isUnavailable}
-                  />
-                  <div className="facility-icon">
-                    <i className="ph ph-lightning"></i>
-                  </div>
-                  <div>
-                    <strong>{item.name || 'Untitled Utility'}</strong>
-                    <span className="facility-meta">{item.sku || 'Utility'}</span>
-                    <span className="facility-availability">
-                      <span className={`facility-status ${status.toLowerCase()}`}>
-                        ● {status}
-                      </span>
-                    </span>
-                  </div>
-                </label>
-              );
-            })
-          )}
-        </div>
-
-        <div className="input-group room-field utility-other-field">
-          <label>Other Utility</label>
-          <div className="input-with-icon left-icon">
-            <i className="ph ph-lightning"></i>
-            <input
-              type="text"
-              value={formData.otherUtility}
-              onChange={(e) => handleInputChange('otherUtility', e.target.value)}
-              placeholder="Enter another utility"
-            />
-          </div>
-          <span className="helper-text">Leave blank if not applicable</span>
-        </div>
-
-        <hr className="section-divider" />
-        <div className="section-header utility-aircon-heading">Air Conditioning</div>
-        <div className="aircon-controls">
-          
-          <div className="aircon-inputs-row">
-            <div className={`toggle-box ${aircon ? 'is-enabled' : 'is-disabled'}`} onClick={() => setAircon(!aircon)}>
-              <div className="toggle-switch">
-                <div className="toggle-knob"></div>
-              </div>
-              <div>
-                <strong>Aircon {aircon ? 'Enabled' : 'Disabled'}</strong>
-                <span>Click to toggle</span>
-              </div>
-            </div>
-
-            <div className="time-inputs">
-              <div 
-                className={`input-group ${missingFields.airconOnTime ? 'field-missing' : ''}`}
-                ref={el => fieldRefs.current.airconOnTime = el}
-              >
-                <label>Aircon ON Time {aircon && <span className="req">*</span>}</label>
-                <div className="input-with-icon left-icon">
-                  <i className="ph ph-clock"></i>
-                  <input 
-                    type="text" 
-                    value={formData.airconOnTime} 
-                    onChange={(e) => handleTimeInput(e, null, 'airconOnTime', true)}
-                    onBlur={(e) => handleTimeBlur(e, null, 'airconOnTime')}
-                    placeholder="08:00 AM" 
-                    disabled={!aircon} 
-                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOnTime ? 'input-error' : ''}`.trim()} 
-                  />
-                </div>
-              </div>
-              
-              <i className="ph ph-arrow-right arrow"></i>
-              
-              <div 
-                className={`input-group ${missingFields.airconOffTime ? 'field-missing' : ''}`}
-                ref={el => fieldRefs.current.airconOffTime = el}
-              >
-                <label>Aircon OFF Time {aircon && <span className="req">*</span>}</label>
-                <div className="input-with-icon left-icon">
-                  <i className="ph ph-clock"></i>
-                  <input 
-                    type="text" 
-                    value={formData.airconOffTime} 
-                    onChange={(e) => handleTimeInput(e, null, 'airconOffTime', true)}
-                    onBlur={(e) => handleTimeBlur(e, null, 'airconOffTime')}
-                    placeholder="05:00 PM" 
-                    disabled={!aircon} 
-                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOffTime ? 'input-error' : ''}`.trim()} 
-                  />
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <div className="info-box blue aircon-note">
-            <i className="ph ph-info"></i>
-            <div>Aircon will be scheduled based on approved timing. Ensure times are within facility operating hours (6:00 AM - 9:00 PM).</div>
-          </div>
-
         </div>
       </div>
 

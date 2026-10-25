@@ -79,6 +79,122 @@ const normalizeName = (value) => {
   return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
 };
 
+const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard }) => (
+  <section className="dashboard-filters" aria-label="Dashboard filters">
+    <div className="filter-heading">
+      <div>
+        <h2>Filter by Date</h2>
+        <p>Filter reservation by event date, start time, and status.</p>
+      </div>
+      <button
+        className="filter-reset"
+        type="button"
+        onClick={() => setFilters({
+          startDate: '',
+          endDate: '',
+          startTime: '',
+          endTime: '',
+          status: 'all'
+        })}
+      >
+        Reset filters
+      </button>
+    </div>
+    <div className="filter-fields">
+      <label>
+        <span>Date from</span>
+        <input
+          type="date"
+          value={filters.startDate}
+          max={filters.endDate || undefined}
+          onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+        />
+      </label>
+      <label>
+        <span>Date to</span>
+        <input
+          type="date"
+          value={filters.endDate}
+          min={filters.startDate || undefined}
+          onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+        />
+      </label>
+      <label>
+        <span>Start time from</span>
+        <input
+          type="time"
+          value={filters.startTime}
+          onChange={(event) => setFilters((current) => ({
+            ...current,
+            startTime: event.target.value
+          }))}
+        />
+      </label>
+      <label>
+        <span>Start time to</span>
+        <input
+          type="time"
+          value={filters.endTime}
+          onChange={(event) => setFilters((current) => ({
+            ...current,
+            endTime: event.target.value
+          }))}
+        />
+      </label>
+      <label>
+        <span>Reservation status</span>
+        <select
+          value={filters.status}
+          onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
+        >
+          <option value="all">All statuses</option>
+          <option value="approved">Approved</option>
+          <option value="pending">Pending</option>
+          {isAdminDashboard && (
+            <>
+              <option value="rejected">Rejected</option>
+              <option value="cancelled">Cancelled</option>
+            </>
+          )}
+        </select>
+      </label>
+    </div>
+    <div className="date-presets" aria-label="Quick date ranges">
+      <span>Quick range</span>
+      <button type="button" onClick={() => setDatePreset(7)}>Last 7 days</button>
+      <button type="button" onClick={() => setDatePreset(30)}>Last 30 days</button>
+      <button type="button" onClick={() => setDatePreset(90)}>Last 90 days</button>
+    </div>
+  </section>
+);
+
+const DashboardKpis = ({ metrics, pendingApprovals, isAdminDashboard }) => (
+  <section className="dashboard-kpis" aria-label="Key analytics">
+    <article className="kpi-card kpi-primary">
+      <span className="kpi-label">Reservations in range</span>
+      <strong>{metrics.total}</strong>
+      <span className="kpi-footnote">Across the selected filters</span>
+    </article>
+    <article className="kpi-card">
+      <span className="kpi-label">Approved reservation</span>
+      <strong>{metrics.approved}</strong>
+      <span className="kpi-footnote">{metrics.reservedUnits} equipment units requested</span>
+    </article>
+    <article className="kpi-card">
+      <span className="kpi-label">Awaiting review</span>
+      <strong>{metrics.pending}</strong>
+      <span className="kpi-footnote">{pendingApprovals} assigned to your approval role</span>
+    </article>
+    {isAdminDashboard && (
+      <article className="kpi-card">
+        <span className="kpi-label">Available equipment</span>
+        <strong>{metrics.availableUnits}</strong>
+        <span className="kpi-footnote">Units available in current inventory</span>
+      </article>
+    )}
+  </section>
+);
+
 const Dashboard = ({ currentUserRole }) => {
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
@@ -86,7 +202,6 @@ const Dashboard = ({ currentUserRole }) => {
   const [facilitiesData, setFacilitiesData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
-  const [userSearchQuery, setUserSearchQuery] = useState('');
   const [upcomingDays, setUpcomingDays] = useState('7');
   const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
   const [selectedReservation, setSelectedReservation] = useState(null);
@@ -225,7 +340,7 @@ const Dashboard = ({ currentUserRole }) => {
   const pendingApprovals = pendingApprovalReservations.length;
   const canReviewApprovals = isSuperAdmin || APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
   const matchingUsers = useMemo(() => {
-    const query = userSearchQuery.trim().toLowerCase();
+    const query = reservationSearchFilters.query.trim().toLowerCase();
     if (!query) return [];
 
     const normalizedPhoneQuery = query.replace(/\D/g, '');
@@ -240,7 +355,7 @@ const Dashboard = ({ currentUserRole }) => {
           || (normalizedPhoneQuery && phone.replace(/\D/g, '').includes(normalizedPhoneQuery));
       })
       .slice(0, 8);
-  }, [usersData, userSearchQuery]);
+  }, [usersData, reservationSearchFilters.query]);
 
   const todayKey = toDateInputValue(new Date());
   const today = parseDate(todayKey);
@@ -666,56 +781,20 @@ const Dashboard = ({ currentUserRole }) => {
       </header>
 
       <section className="dashboard-operations" aria-label="Dashboard operations and search">
-        {isAdminDashboard && (
-          <article className="dashboard-panel user-search-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>User search</h2>
-                <p>Search users by name, email, or phone number.</p>
-              </div>
-              {userSearchQuery.trim() && (
-                <span className="panel-total">{matchingUsers.length} results</span>
-              )}
-            </div>
-            <label className="user-search-field">
-              <span>Find a user</span>
-              <input
-                type="search"
-                placeholder="Name, email, or phone number..."
-                value={userSearchQuery}
-                onChange={(event) => setUserSearchQuery(event.target.value)}
-              />
-            </label>
-            {userSearchQuery.trim() && (
-              matchingUsers.length ? (
-                <div className="user-search-results">
-                  {matchingUsers.map((user) => (
-                    <Link
-                      className="user-search-result"
-                      key={user.id}
-                      to={`/account?userId=${encodeURIComponent(user.id)}`}
-                    >
-                      <span className="user-search-avatar">
-                        {user.avatarUrl
-                          ? <img src={user.avatarUrl} alt="" />
-                          : (user.name || user.email || '?').charAt(0).toUpperCase()}
-                      </span>
-                      <span className="user-search-result-copy">
-                        <strong>{user.name || 'Unnamed user'}</strong>
-                        <span>{user.email || 'No email listed'}</span>
-                      </span>
-                      <span className="user-search-result-meta">
-                        <span>{user.phone || 'No phone listed'}</span>
-                        <span>{(user.role || 'requestor').replace(/_/g, ' ')}</span>
-                      </span>
-                    </Link>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">No users match that name, email, or phone number.</p>
-              )
-            )}
-          </article>
+        {isAdminDashboard && hasAnalyticsDashboard && (
+          <DashboardFilters
+            filters={filters}
+            setFilters={setFilters}
+            setDatePreset={setDatePreset}
+            isAdminDashboard={isAdminDashboard}
+          />
+        )}
+        {isAdminDashboard && hasAnalyticsDashboard && (
+          <DashboardKpis
+            metrics={metrics}
+            pendingApprovals={pendingApprovals}
+            isAdminDashboard={isAdminDashboard}
+          />
         )}
 
         <article className="dashboard-panel operations-panel approval-panel">
@@ -852,17 +931,23 @@ const Dashboard = ({ currentUserRole }) => {
           <section className="dashboard-panel reservation-search-panel" aria-label="Reservation search">
             <div className="panel-heading">
               <div>
-                <h2>Reservation search</h2>
+                <h2>Search</h2>
                 <p>Search active and archived records by reference, event, people, date, time, facility, or equipment.</p>
               </div>
-              <span className="panel-total">{filteredSearchReservations.length} results</span>
+              <span className="panel-total">
+                {isAdminDashboard
+                  ? `${matchingUsers.length} users · ${filteredSearchReservations.length} reservations`
+                  : `${filteredSearchReservations.length} results`}
+              </span>
             </div>
             <div className="reservation-search-fields">
               <label className="reservation-search-query">
-                <span>Search all reservation details</span>
+                <span>{isAdminDashboard ? 'Search users and reservations' : 'Search all reservation details'}</span>
                 <input
                   type="search"
-                  placeholder="Reference, name, facility, equipment, etc..."
+                  placeholder={isAdminDashboard
+                    ? 'Name, email, phone, reference, facility, equipment...'
+                    : 'Reference, name, facility, equipment, etc...'}
                   value={reservationSearchFilters.query}
                   onChange={(event) => setReservationSearchFilters((current) => ({
                     ...current,
@@ -953,6 +1038,45 @@ const Dashboard = ({ currentUserRole }) => {
             >
               Clear search and filters
             </button>
+            {isAdminDashboard && reservationSearchFilters.query.trim() && (
+              <section className="reservation-search-user-results" aria-label="Matching users">
+                <div className="reservation-search-subheading">
+                  <h3>Users</h3>
+                  <span>{matchingUsers.length} matches</span>
+                </div>
+                {matchingUsers.length ? (
+                  <div className="user-search-results">
+                    {matchingUsers.map((user) => (
+                      <Link
+                        className="user-search-result"
+                        key={user.id}
+                        to={`/account?userId=${encodeURIComponent(user.id)}`}
+                      >
+                        <span className="user-search-avatar">
+                          {user.avatarUrl
+                            ? <img src={user.avatarUrl} alt="" />
+                            : (user.name || user.email || '?').charAt(0).toUpperCase()}
+                        </span>
+                        <span className="user-search-result-copy">
+                          <strong>{user.name || 'Unnamed user'}</strong>
+                          <span>{user.email || 'No email listed'}</span>
+                        </span>
+                        <span className="user-search-result-meta">
+                          <span>{user.phone || 'No phone listed'}</span>
+                          <span>{(user.role || 'requestor').replace(/_/g, ' ')}</span>
+                        </span>
+                      </Link>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No users match that name, email, or phone number.</p>
+                )}
+              </section>
+            )}
+            <div className="reservation-search-subheading">
+              <h3>Reservations</h3>
+              <span>{filteredSearchReservations.length} matches</span>
+            </div>
             {filteredSearchReservations.length ? (
               <div className="reservation-search-results">
                 {filteredSearchReservations.map((reservation) => {
@@ -1006,117 +1130,21 @@ const Dashboard = ({ currentUserRole }) => {
 
       {hasAnalyticsDashboard ? (
         <>
-          <section className="dashboard-filters" aria-label="Dashboard filters">
-            <div className="filter-heading">
-              <div>
-                <h2>Filter by Date</h2>
-                <p>Filter reservation by event date, start time, and status.</p>
-              </div>
-              <button
-                className="filter-reset"
-                type="button"
-                onClick={() => setFilters({
-                  startDate: '',
-                  endDate: '',
-                  startTime: '',
-                  endTime: '',
-                  status: 'all'
-                })}
-              >
-                Reset filters
-              </button>
-            </div>
-            <div className="filter-fields">
-              <label>
-                <span>Date from</span>
-                <input
-                  type="date"
-                  value={filters.startDate}
-                  max={filters.endDate || undefined}
-                  onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Date to</span>
-                <input
-                  type="date"
-                  value={filters.endDate}
-                  min={filters.startDate || undefined}
-                  onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
-                />
-              </label>
-              <label>
-                <span>Start time from</span>
-                <input
-                  type="time"
-                  value={filters.startTime}
-                  onChange={(event) => setFilters((current) => ({
-                    ...current,
-                    startTime: event.target.value
-                  }))}
-                />
-              </label>
-              <label>
-                <span>Start time to</span>
-                <input
-                  type="time"
-                  value={filters.endTime}
-                  onChange={(event) => setFilters((current) => ({
-                    ...current,
-                    endTime: event.target.value
-                  }))}
-                />
-              </label>
-              <label>
-                <span>Reservation status</span>
-                <select
-                  value={filters.status}
-                  onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}
-                >
-                  <option value="all">All statuses</option>
-                  <option value="approved">Approved</option>
-                  <option value="pending">Pending</option>
-                  {isAdminDashboard && (
-                    <>
-                      <option value="rejected">Rejected</option>
-                      <option value="cancelled">Cancelled</option>
-                    </>
-                  )}
-                </select>
-              </label>
-            </div>
-            <div className="date-presets" aria-label="Quick date ranges">
-              <span>Quick range</span>
-              <button type="button" onClick={() => setDatePreset(7)}>Last 7 days</button>
-              <button type="button" onClick={() => setDatePreset(30)}>Last 30 days</button>
-              <button type="button" onClick={() => setDatePreset(90)}>Last 90 days</button>
-            </div>
-          </section>
-
-          <section className="dashboard-kpis" aria-label="Key analytics">
-            <article className="kpi-card kpi-primary">
-              <span className="kpi-label">Reservations in range</span>
-              <strong>{metrics.total}</strong>
-              <span className="kpi-footnote">Across the selected filters</span>
-            </article>
-            <article className="kpi-card">
-              <span className="kpi-label">Approved bookings</span>
-              <strong>{metrics.approved}</strong>
-              <span className="kpi-footnote">{metrics.reservedUnits} equipment units requested</span>
-            </article>
-            <article className="kpi-card">
-              <span className="kpi-label">Awaiting review</span>
-              <strong>{metrics.pending}</strong>
-              <span className="kpi-footnote">{pendingApprovals} assigned to your approval role</span>
-            </article>
-            {isAdminDashboard && (
-              <article className="kpi-card">
-                <span className="kpi-label">Available equipment</span>
-                <strong>{metrics.availableUnits}</strong>
-                <span className="kpi-footnote">Units available in current inventory</span>
-              </article>
-            )}
-          </section>
+          {!isAdminDashboard && (
+            <DashboardFilters
+              filters={filters}
+              setFilters={setFilters}
+              setDatePreset={setDatePreset}
+              isAdminDashboard={isAdminDashboard}
+            />
+          )}
+          {!isAdminDashboard && (
+            <DashboardKpis
+              metrics={metrics}
+              pendingApprovals={pendingApprovals}
+              isAdminDashboard={isAdminDashboard}
+            />
+          )}
 
           <section className="dashboard-charts">
             <article className="dashboard-panel reservations-trend-panel">

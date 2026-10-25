@@ -164,7 +164,7 @@ const Schedule = ({ currentUserRole = '' }) => {
           ...(Array.isArray(reservationData.historyLogs) ? reservationData.historyLogs : []),
           cancellationLog
         ]
-      }, { merge: true });
+      }, { merge: true       });
       await deleteDoc(reservationRef);
       setDeleteModalData(null);
       setCancellationRemark('');

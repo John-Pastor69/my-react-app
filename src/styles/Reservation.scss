@@ -9,7 +9,7 @@ $green-main: #10B981;
 $red-main: #EF4444;
 $orange-main: #F59E0B;
 
-.reservation-container {
+  .reservation-container {
   width: 100%;
   min-height: 100vh;
   background: $bg-main;
@@ -536,6 +536,13 @@ $orange-main: #F59E0B;
       max-width: none; 
       margin: 0; 
       min-width: 0; 
+      display: flex;
+      flex-direction: column;
+    }
+
+    .form-card > .input-group.room-field,
+    .form-card > .input-group.utility-other-field {
+      margin-top: auto;
     }
   }
 
@@ -547,7 +554,7 @@ $orange-main: #F59E0B;
     margin-bottom: 1rem;
 
     &.facility-list { 
-      max-height: 26rem; 
+      max-height: 18rem; 
       overflow-y: auto; 
       padding-right: 0.25rem; 
       gap: 0.625rem;
@@ -660,7 +667,7 @@ $orange-main: #F59E0B;
     display: flex; 
     flex-direction: column; 
     gap: 0.625rem;
-    max-height: 26rem;
+    max-height: 18rem;
     overflow-y: auto;
     overflow-x: auto;
     padding-right: 0.25rem;
@@ -1233,7 +1240,7 @@ $orange-main: #F59E0B;
   .reservation-container {
 
     .split-cards { 
-      grid-template-columns: repeat(2,minmax(0,1fr)); 
+      grid-template-columns: repeat(3,minmax(0,1fr));
     }
 
     .equipment-list .equip-item { 
