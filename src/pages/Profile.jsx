@@ -126,8 +126,8 @@ const Profile = ({ currentUserRole }) => {
               bannerUrl: data.bannerUrl || ''
             }));
 
-            // Set 2FA status from DB (Treat as enabled unless explicitly false)
-            setIs2FAEnabled(data.twoFactorEnabled !== false);
+            // OPT-IN STATUS: Only true if explicitly true in DB
+            setIs2FAEnabled(data.twoFactorEnabled === true);
             
           } else {
             setProfileLoadError('This user profile could not be found.');
@@ -633,8 +633,14 @@ const Profile = ({ currentUserRole }) => {
 
               {deleteStep === 1 && (
                 <div className="delete-step-1">
+                  <div className="warning-banner">
+                    <i className="ph-fill ph-warning-circle"></i>
+                    <span>Unexpected bad things will happen if you don't read this!</span>
+                  </div>
                   <ul className="consequence-list">
                     <li>This will permanently delete your account and profile information.</li>
+                    <li>You will lose access to all pending and approved reservations.</li>
+                    <li>There is no way to recover this data once deleted.</li>
                   </ul>
                   <button className="btn-danger-full" onClick={() => setDeleteStep(2)}>
                     I have read and understand these effects

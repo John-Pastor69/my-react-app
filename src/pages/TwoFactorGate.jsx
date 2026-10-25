@@ -87,7 +87,7 @@ export default function TwoFactorGate({ mode, existingSecret, uid, userEmail, on
         {mode === 'setup' ? (
           <>
             <p className="description">
-              Scan this QR code with Google Authenticator, or enter the setup key manually.
+              Scan this QR code with Microsoft Authenticator, or enter the setup key manually.
             </p>
             {qrUrl && (
               <div className="qr-code-wrapper">

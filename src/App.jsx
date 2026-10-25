@@ -1,6 +1,5 @@
 import { useState, useEffect, Suspense, useRef } from 'react'; 
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-// IMPORT onSnapshot for real-time concurrent session listening
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
@@ -49,7 +48,7 @@ export default function App() {
       localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
       localStorage.removeItem(`req2FA_${auth.currentUser.uid}`);
       sessionStorage.removeItem(`2fa_verified_${auth.currentUser.uid}`);
-      sessionStorage.removeItem(`active_session_${auth.currentUser.uid}`); // Clear session memory
+      sessionStorage.removeItem(`active_session_${auth.currentUser.uid}`); 
     }
     
     navigate('/', { replace: true });
@@ -66,7 +65,7 @@ export default function App() {
 
   useEffect(() => {
     let heartbeatInterval = null;
-    let sessionUnsubscribe = null; // Variable to hold the real-time session listener
+    let sessionUnsubscribe = null; 
 
     getRedirectResult(auth).then((result) => {
       if (result) {
@@ -102,7 +101,6 @@ export default function App() {
         try {
           const userRef = doc(db, 'users', user.uid);
           
-          // --- 1. GENERATE UNIQUE SESSION ID FOR THIS TAB ---
           let localSessionId = sessionStorage.getItem(`active_session_${user.uid}`);
           if (!localSessionId) {
             localSessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
@@ -128,26 +126,29 @@ export default function App() {
             const userData = userSnap.data();
             resolvedRole = userData.role || 'requestor';
             
-            // Treat 2FA as ON by default, unless they explicitly disabled it in their profile
-            const is2FAPolicyActive = userData.twoFactorEnabled !== false;
+            // OPT-IN POLICY: Only true if explicitly enabled
+            const is2FAPolicyActive = userData.twoFactorEnabled === true;
             
             updateDoc(userRef, {
               status: 'Active',
               lastActive: nowIso,
-              activeSessionId: localSessionId // --- 2. SAVE TAB ID TO DATABASE ---
+              activeSessionId: localSessionId 
             }).catch(err => console.error("Heartbeat update failed:", err));
 
-            // DEFAULT ON 2FA LOGIC
+            // OPT-IN 2FA LOGIC
             if (!isVerifiedThisSession && is2FAPolicyActive) {
               if (userData.twoFactorSecret) {
                 setTwoFactorSecret(userData.twoFactorSecret);
                 setTwoFactorMode('verify');
+                localStorage.setItem(`req2FA_${user.uid}`, 'true'); 
               } else {
+                // Failsafe: Should not happen if they actually set it up, but just in case
                 setTwoFactorMode('setup');
+                localStorage.setItem(`req2FA_${user.uid}`, 'true'); 
               }
-              localStorage.setItem(`req2FA_${user.uid}`, 'true'); 
             } else if (!is2FAPolicyActive) {
-              setTwoFactorMode(null); // Bypass if disabled
+              setTwoFactorMode(null); 
+              localStorage.removeItem(`req2FA_${user.uid}`);
             }
             
           } else {
@@ -179,38 +180,33 @@ export default function App() {
               phone: '',
               status: 'Active',
               lastActive: nowIso,
-              twoFactorEnabled: true, // Set default ON for new users
-              activeSessionId: localSessionId // --- 2. SAVE TAB ID TO DATABASE ---
+              twoFactorEnabled: false, // Default OFF for new users
+              activeSessionId: localSessionId 
             }).catch(err => console.error("User creation failed:", err));
 
-            // Enforce setup for new users
-            if (!isVerifiedThisSession) {
-              setTwoFactorMode('setup');
-              localStorage.setItem(`req2FA_${user.uid}`, 'true');
-            }
+            // Since it's off by default, we don't enforce setup anymore
+            setTwoFactorMode(null);
+            localStorage.removeItem(`req2FA_${user.uid}`);
           }
 
           localStorage.setItem(`userRole_${user.uid}`, resolvedRole);
           setUserRole(resolvedRole);
 
-          // --- 3. REAL-TIME SESSION LISTENER (KICKS OUT OLD TABS) ---
-          if (sessionUnsubscribe) sessionUnsubscribe(); // Clear old listener if it exists
+          if (sessionUnsubscribe) sessionUnsubscribe(); 
           
           sessionUnsubscribe = onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
               const dbSessionId = docSnap.data().activeSessionId;
               const currentLocalSession = sessionStorage.getItem(`active_session_${user.uid}`);
               
-              // If the database has an ID, and it doesn't match this tab's ID, someone else logged in!
               if (dbSessionId && currentLocalSession && dbSessionId !== currentLocalSession) {
                 console.warn("Account accessed from another location. Logging out.");
                 alert("Security Alert: Your account was accessed from another browser or device. You have been automatically logged out here.");
-                handleLogout(); // Force logout
+                handleLogout(); 
               }
             }
           });
 
-          // If no 2FA is needed, authenticate immediately
           if (!localStorage.getItem(`req2FA_${user.uid}`)) {
             setIsAuthenticated(true);
             if (!initialRedirectDone.current && location.pathname === '/') {
@@ -230,7 +226,7 @@ export default function App() {
         setIsAuthenticated(false);
         setTwoFactorMode(null);
         setIsAuthLoading(false);
-        if (sessionUnsubscribe) sessionUnsubscribe(); // Stop listening if logged out
+        if (sessionUnsubscribe) sessionUnsubscribe(); 
       }
     });
 
@@ -266,7 +262,7 @@ export default function App() {
     return () => {
       unsubscribe();
       if (heartbeatInterval) clearInterval(heartbeatInterval);
-      if (sessionUnsubscribe) sessionUnsubscribe(); // Clean up listener when unmounting
+      if (sessionUnsubscribe) sessionUnsubscribe(); 
       window.removeEventListener('beforeunload', handleTabClose);
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
@@ -324,7 +320,7 @@ export default function App() {
       <div className="main-content">
         <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
         <div className="page-content">
-          <Suspense fallback={<div className="loading-text">Loading page...</div>}>
+          <Suspense fallback={<div className="loading-text">Loading..</div>}>
             <Routes> 
               <Route path="*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <Navigate to="/dashboard" replace />} />
               <Route path="/dashboard/*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <DashboardRouter currentUserRole={userRole.toLowerCase()} />} />
