@@ -332,12 +332,12 @@ const Reservation = () => {
             : [],
           contactNumber: normalizeContactNumber(reservation.contactNumber),
           emailAddress: reservation.emailAddress || '',
-          eventName: sanitizeEventName(reservation.eventName),
+          eventName: sanitizeEventName(reservation.eventName).slice(0, 40),
           expectedParticipants: String(reservation.expectedParticipants || ''),
           eventType: Array.isArray(reservation.eventType)
             ? reservation.eventType.slice(0, 1)
             : reservation.eventType ? [reservation.eventType] : [],
-          purpose: reservation.purpose || '',
+          purpose: (reservation.purpose || '').slice(0, 600),
           facilities: reservation.facilities || [],
           specificRoom: reservation.specificRoom || '',
           otherEquipment: reservation.otherEquipment || '',
@@ -390,7 +390,8 @@ const Reservation = () => {
             requestorTypes: Array.isArray(parsed.formData.requestorTypes)
               ? parsed.formData.requestorTypes.slice(0, 1)
               : [],
-            eventName: sanitizeEventName(parsed.formData.eventName),
+            eventName: sanitizeEventName(parsed.formData.eventName).slice(0, 40),
+            purpose: (parsed.formData.purpose || '').slice(0, 600),
             endorserName: sanitizeAlphabeticName(parsed.formData.endorserName || ''),
             eventType: Array.isArray(parsed.formData.eventType)
               ? parsed.formData.eventType.slice(0, 1)
@@ -600,7 +601,8 @@ const Reservation = () => {
 
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
-    const inputValue = field === 'eventName' ? sanitizeEventName(value)
+    const inputValue = field === 'eventName' ? sanitizeEventName(value).slice(0, 40)
+      : field === 'purpose' ? value.slice(0, 600)
       : field === 'endorserName' ? sanitizeAlphabeticName(value) : value;
 
     setFormData(prev => {
@@ -1708,7 +1710,7 @@ const Reservation = () => {
               onChange={(e) => handleInputChange('eventName', e.target.value)} 
               pattern="[A-Za-z0-9 ]*"
               title="Use letters, numbers, and spaces only."
-              maxLength={75}
+              maxLength={40}
               placeholder="e.g. Annual General Assembly" 
               className={missingFields.eventName ? 'input-error' : ''}
             />
@@ -1969,6 +1971,7 @@ const Reservation = () => {
             <textarea 
               value={formData.purpose} 
               onChange={(e) => handleInputChange('purpose', e.target.value)} 
+              maxLength={600}
               placeholder="Others/Briefly describe the purpose and objectives of your event..."
               className={missingFields.purpose ? 'input-error' : ''}
             ></textarea>
