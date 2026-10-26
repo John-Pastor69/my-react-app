@@ -1,4 +1,4 @@
-import { useState, useEffect, Suspense, useRef } from 'react'; 
+import { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
@@ -26,6 +26,10 @@ export default function App() {
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const navigate = useNavigate(); 
   const location = useLocation(); 
+  const navigation = useRef({ navigate, pathname: location.pathname });
+  useEffect(() => {
+    navigation.current = { navigate, pathname: location.pathname };
+  }, [navigate, location.pathname]);
   const initialRedirectDone = useRef(false);
   const isLoggingOut = useRef(false);
   const sessionUid = useRef(null);
@@ -45,12 +49,12 @@ export default function App() {
   const [twoFactorMode, setTwoFactorMode] = useState(null); // 'setup' | 'verify' | null
   const [twoFactorSecret, setTwoFactorSecret] = useState(null);
 
-  const handleLogout = async () => {
+  const handleLogout = useCallback(async () => {
     isLoggingOut.current = true;
     localStorage.setItem(LOGOUT_EVENT_KEY, crypto.randomUUID());
     clearAccountStorage();
     
-    navigate('/', { replace: true });
+    navigation.current.navigate('/', { replace: true });
 
     setIsAuthenticated(false); 
     setTwoFactorMode(null);
@@ -65,7 +69,7 @@ export default function App() {
       isLoggingOut.current = false; 
       await clearBrowserCaches();
     }
-  };
+  }, []);
 
   useEffect(() => {
     let heartbeatInterval = null;
@@ -267,8 +271,8 @@ export default function App() {
 
           if (!needsTwoFactor) {
             setIsAuthenticated(true);
-            if (!initialRedirectDone.current && location.pathname === '/') {
-               navigate(resolvedRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
+            if (!initialRedirectDone.current && navigation.current.pathname === '/') {
+               navigation.current.navigate(resolvedRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
                initialRedirectDone.current = true;
             }
           }
@@ -351,7 +355,8 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  }, [navigate]); 
+  // Route changes must not tear down the tab lock or restart authentication.
+  }, [handleLogout]);
 
   if (tabBlocked) {
     return (
