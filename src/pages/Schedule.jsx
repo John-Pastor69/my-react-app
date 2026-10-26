@@ -97,6 +97,12 @@ const Schedule = ({ currentUserRole = '' }) => {
         return 'pending'; 
       };
 
+      const dailySchedule = Array.isArray(res.schedule) ? res.schedule : [];
+      const hasVaryingTimes = dailySchedule.some((entry) => (
+        entry.startTime !== dailySchedule[0]?.startTime
+        || entry.endTime !== dailySchedule[0]?.endTime
+      ));
+
       return {
         id: res.id,
         refNo: String(res.refNo || ''),
@@ -108,7 +114,11 @@ const Schedule = ({ currentUserRole = '' }) => {
         avatarUrl: requestor.avatarUrl || null,
         initial: cleanName.charAt(0).toUpperCase(),
         date: res.eventDate || 'No Date',
-        time: `${res.startTime || ''} - ${res.endTime || ''}`,
+        time: hasVaryingTimes
+          ? 'Varies by day'
+          : dailySchedule.length > 0
+            ? `${dailySchedule[0].startTime || ''} - ${dailySchedule[0].endTime || ''}`
+            : `${res.startTime || ''} - ${res.endTime || ''}`,
         scheduleStatus: getScheduleStatus(),
         iconClass: iconClass,
         icon: 'ph-calendar-check',

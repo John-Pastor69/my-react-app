@@ -174,7 +174,15 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
   const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
-  const eventTime = `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+  const eventTime = Array.isArray(currentData.schedule) && currentData.schedule.length > 0
+    ? currentData.schedule.map((entry) => {
+      const parsedDate = new Date(`${entry.date}T00:00:00`);
+      const dateLabel = Number.isNaN(parsedDate.getTime())
+        ? entry.date
+        : parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      return `${dateLabel}: ${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
+    }).join(' | ')
+    : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
   

@@ -207,6 +207,12 @@ const Approval = ({ currentUserRole = '' }) => {
             hasSpecificRoom: Boolean(res.specificRoom?.trim())
         };
 
+        const dailySchedule = Array.isArray(res.schedule) ? res.schedule : [];
+        const hasVaryingTimes = dailySchedule.some((entry) => (
+            entry.startTime !== dailySchedule[0]?.startTime
+            || entry.endTime !== dailySchedule[0]?.endTime
+        ));
+
         // --- DETERMINE USER NOTIFICATION STATUS ---
         const determineUserStatus = () => {
             if (!approverRoleKey) return null;
@@ -257,7 +263,11 @@ const Approval = ({ currentUserRole = '' }) => {
             avatarUrl: requestor.avatarUrl || null,
             initial: cleanName.charAt(0).toUpperCase(),
             date: res.eventDate || 'No Date',
-            time: `${res.startTime || ''} - ${res.endTime || ''}`,
+            time: hasVaryingTimes
+                ? 'Varies by day'
+                : dailySchedule.length > 0
+                    ? `${dailySchedule[0].startTime || ''} - ${dailySchedule[0].endTime || ''}`
+                    : `${res.startTime || ''} - ${res.endTime || ''}`,
             status: res.status || 'Pending',
             userActionStatus: determineUserStatus(),
             isCurrentApproval,

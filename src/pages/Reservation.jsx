@@ -16,15 +16,12 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
-import {
-  isReservationIncludedInFacilityCapacity
-} from '../services/facilityCapacity';
 import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
 import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import {
   findFacilityConflict,
-  getOverlappingFacilityReservations,
+  getActiveFacilityReservations,
   parseDateOrdinal
 } from '../services/reservationConflicts';
 import ReservationDetails from './ReservationDetails';
@@ -180,6 +177,28 @@ const calculateEndDate = (startDateStr, numDays) => {
   return dates[dates.length - 1] || startDateStr;
 };
 
+const getScheduleDates = (startDate, endDate) => {
+  const startOrdinal = parseDateOrdinal(startDate);
+  const endOrdinal = parseDateOrdinal(endDate);
+  if (startOrdinal === null || endOrdinal === null || endOrdinal < startOrdinal) return [];
+
+  return Array.from({ length: endOrdinal - startOrdinal + 1 }, (_, index) => (
+    new Date((startOrdinal + index) * 86400000).toISOString().slice(0, 10)
+  ));
+};
+
+const formatScheduleDate = (date) => {
+  const dateOrdinal = parseDateOrdinal(date);
+  if (dateOrdinal === null) return date;
+  return new Date(dateOrdinal * 86400000).toLocaleDateString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    timeZone: 'UTC'
+  });
+};
+
 const Reservation = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -198,6 +217,9 @@ const Reservation = () => {
   const [eventDate, setEventDate] = useState('');
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
+  const [dailyScheduleOverrides, setDailyScheduleOverrides] = useState({});
+  const [removedScheduleDates, setRemovedScheduleDates] = useState([]);
+  const [isDailyScheduleExpanded, setIsDailyScheduleExpanded] = useState(false);
   const [durationHours, setDurationHours] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resubmissionRemark, setResubmissionRemark] = useState('');
@@ -324,6 +346,16 @@ const Reservation = () => {
         const startDate = reservation.eventDate || reservation.date || '';
         const endDate = reservation.endDate
           || calculateEndDate(startDate, reservation.days || 1);
+        const normalizedSchedule = Array.isArray(reservation.schedule)
+          ? reservation.schedule.flatMap((entry) => {
+            const dateOrdinal = parseDateOrdinal(entry.date);
+            return dateOrdinal === null ? [] : [{
+              date: new Date(dateOrdinal * 86400000).toISOString().slice(0, 10),
+              startTime: formatTimeForPicker(entry.startTime || ''),
+              endTime: formatTimeForPicker(entry.endTime || '')
+            }];
+          })
+          : null;
         setEditingReservation(reservation);
         setFormData({
           fullName: reservation.fullName || '',
@@ -353,6 +385,17 @@ const Reservation = () => {
         setStartTime(formatTimeForPicker(reservation.startTime || ''));
         setEndTime(formatTimeForPicker(reservation.endTime || ''));
         setDays(Number(reservation.days) || 1);
+        setDailyScheduleOverrides(normalizedSchedule
+          ? Object.fromEntries(normalizedSchedule.map(({ date, startTime: dayStartTime, endTime: dayEndTime }) => [
+            date,
+            { startTime: dayStartTime, endTime: dayEndTime }
+          ]))
+          : {});
+        setRemovedScheduleDates(normalizedSchedule
+          ? getScheduleDates(startDate, endDate).filter(
+            (date) => !normalizedSchedule.some((entry) => entry.date === date)
+          )
+          : []);
         setAircon(Boolean(reservation.aircon));
         setSelectedEquip(reservation.selectedEquip || {});
         setSelectedUtilities(Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : []);
@@ -404,6 +447,18 @@ const Reservation = () => {
         if (parsed.eventDate) setEventDate(parsed.eventDate);
         if (parsed.startTime) setStartTime(formatTimeForPicker(parsed.startTime));
         if (parsed.endTime) setEndTime(formatTimeForPicker(parsed.endTime));
+        if (parsed.dailyScheduleOverrides && typeof parsed.dailyScheduleOverrides === 'object') {
+          setDailyScheduleOverrides(parsed.dailyScheduleOverrides);
+        } else if (Array.isArray(parsed.dailySchedule)) {
+          setDailyScheduleOverrides(Object.fromEntries(parsed.dailySchedule.map((entry) => [
+            entry.date,
+            {
+              startTime: formatTimeForPicker(entry.startTime || ''),
+              endTime: formatTimeForPicker(entry.endTime || '')
+            }
+          ])));
+        }
+        if (Array.isArray(parsed.removedScheduleDates)) setRemovedScheduleDates(parsed.removedScheduleDates);
         if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
         if (Array.isArray(parsed.selectedUtilities)) setSelectedUtilities(parsed.selectedUtilities);
       } catch (e) {
@@ -415,7 +470,7 @@ const Reservation = () => {
   // Reset Draft toggle when form changes
   useEffect(() => {
     if (isDraftSaved) setIsDraftSaved(false);
-  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, selectedEquip]);
+  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, removedScheduleDates, selectedEquip]);
 
   // Automatically calculate `days` from `eventDate` and `endDateInput`
   useEffect(() => {
@@ -495,12 +550,24 @@ const Reservation = () => {
   });
   const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
   const expectedParticipantCount = Number(formData.expectedParticipants);
+  const dailySchedule = getScheduleDates(eventDate, endDateInput)
+    .filter((date) => !removedScheduleDates.includes(date))
+    .map((date) => ({
+      date,
+      startTime: dailyScheduleOverrides[date]?.startTime ?? startTime,
+      endTime: dailyScheduleOverrides[date]?.endTime ?? endTime
+    }));
 
   const conflictRequest = {
     eventDate,
     endDate: endDateInput,
     startTime,
     endTime,
+    schedule: dailySchedule.map(({ date, startTime: dayStartTime, endTime: dayEndTime }) => ({
+      date,
+      startTime: dayStartTime,
+      endTime: dayEndTime
+    })),
     facilities: formData.facilities,
     expectedParticipants: formData.expectedParticipants,
     excludeReservationId: editReservationId
@@ -509,30 +576,22 @@ const Reservation = () => {
     const maxCapacity = getFacilityCapacityLimits(facility).max;
     if (maxCapacity === null) return null;
 
-    const storedRemainingCapacity = facility.remainingCap == null
-      || String(facility.remainingCap).trim() === ''
-      ? null
-      : Number(facility.remainingCap);
-    const reservedForCurrentEdit = editingReservation
-      && isReservationIncludedInFacilityCapacity(editingReservation)
-      && (editingReservation.facilities || []).includes(facility.id)
-      ? Number(editingReservation.expectedParticipants) || 0
-      : 0;
-    if (Number.isInteger(storedRemainingCapacity) && storedRemainingCapacity >= 0) {
-      return Math.min(maxCapacity, storedRemainingCapacity + reservedForCurrentEdit);
-    }
-
-    const reservedCapacity = reservationsData.reduce((total, reservation) => {
-      if (
-        reservation.id === editingReservation?.id
-        || !isReservationIncludedInFacilityCapacity(reservation)
-        || !(reservation.facilities || []).includes(facility.id)
-      ) return total;
+    const activeReservations = getActiveFacilityReservations(
+      reservationsData,
+      conflictRequest,
+      facility.id
+    );
+    const hasUnknownCapacity = activeReservations.some((reservation) => {
       const participants = Number(reservation.expectedParticipants);
-      return total + (Number.isInteger(participants) && participants > 0 ? participants : 0);
-    }, 0);
+      return !Number.isInteger(participants) || participants <= 0;
+    });
+    if (hasUnknownCapacity) return 0;
 
-    return Math.max(0, maxCapacity - reservedCapacity + reservedForCurrentEdit);
+    const occupiedCapacity = activeReservations.reduce(
+      (total, reservation) => total + Number(reservation.expectedParticipants),
+      0
+    );
+    return Math.max(0, maxCapacity - occupiedCapacity);
   };
   const selectedFacilityCapacities = inventoryFacilities
     .filter((facility) => formData.facilities.includes(facility.id))
@@ -562,14 +621,23 @@ const Reservation = () => {
   const invalidDateRange = requestStartDate !== null
     && requestEndDate !== null
     && requestEndDate < requestStartDate;
+  const isDailyScheduleValid = dailySchedule.length > 0 && dailySchedule.every((entry) => {
+    const start = parseTimeToMinutes(entry.startTime);
+    const end = parseTimeToMinutes(entry.endTime);
+    return start !== null && end !== null && start !== end;
+  });
+  const totalScheduledHours = Math.round(dailySchedule.reduce((total, entry) => {
+    const start = parseTimeToMinutes(entry.startTime);
+    const end = parseTimeToMinutes(entry.endTime);
+    if (start === null || end === null || start === end) return total;
+    return total + ((end <= start ? end + 1440 : end) - start) / 60;
+  }, 0) * 10) / 10;
   const liveConflict = reservationsLoaded
     && !dateError
     && !daysDateError
     && !invalidDateRange
     ? findFacilityConflict(reservationsData, conflictRequest, inventoryFacilities)
     : null;
-  const liveConflictEndDate = liveConflict?.endDate
-    || calculateEndDate(liveConflict?.eventDate, liveConflict?.days || 1);
   const selectedSchedule = reservationsData.find(
     (reservation) => reservation.id === selectedScheduleId
   );
@@ -700,6 +768,7 @@ const Reservation = () => {
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
     setEventDate(val);
+    setRemovedScheduleDates([]);
     
     if (val.length > 0) {
       const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val)
@@ -732,6 +801,7 @@ const Reservation = () => {
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
     setEndDateInput(val);
+    setRemovedScheduleDates([]);
     
     if (val.length > 0) {
       const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val)
@@ -807,6 +877,7 @@ const Reservation = () => {
     const month = String(calendarView.getMonth() + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
     setEventDate(`${month}/${formattedDay}/${calendarView.getFullYear()}`);
+    setRemovedScheduleDates([]);
     setDateError('');
     clearMissingField('eventDate');
     setShowCalendar(false); 
@@ -848,6 +919,7 @@ const Reservation = () => {
     const month = String(daysCalendarView.getMonth() + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
     setEndDateInput(`${month}/${formattedDay}/${daysCalendarView.getFullYear()}`);
+    setRemovedScheduleDates([]);
     setDaysDateError('');
     clearMissingField('endDateInput');
     setShowDaysCalendar(false);
@@ -899,6 +971,8 @@ const Reservation = () => {
       setEventDate('');
       setStartTime('');
       setEndTime('');
+      setDailyScheduleOverrides({});
+      setRemovedScheduleDates([]);
     }
     setAircon(false);
     setSelectedEquip({});
@@ -910,7 +984,19 @@ const Reservation = () => {
   };
 
   const handleSaveDraft = () => {
-    const draftData = { formData, days, endDateInput, aircon, eventDate, startTime, endTime, selectedEquip, selectedUtilities };
+    const draftData = {
+      formData,
+      days,
+      endDateInput,
+      aircon,
+      eventDate,
+      startTime,
+      endTime,
+      dailyScheduleOverrides,
+      removedScheduleDates,
+      selectedEquip,
+      selectedUtilities
+    };
     localStorage.setItem('reservationDraft', JSON.stringify(draftData));
     setIsDraftSaved(true);
   };
@@ -950,6 +1036,7 @@ const Reservation = () => {
       { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
       { key: 'startTime', missing: !startTime.trim() },
       { key: 'endTime', missing: !endTime.trim() },
+      { key: 'schedule', missing: !isDailyScheduleValid },
       { key: 'purpose', missing: !formData.purpose.trim() },
       ...(aircon ? [
         { key: 'airconOnTime', missing: !formData.airconOnTime.trim() },
@@ -969,6 +1056,7 @@ const Reservation = () => {
 
     if (firstMissingKey) {
       setMissingFields(newMissing);
+      if (firstMissingKey === 'schedule') setIsDailyScheduleExpanded(true);
       const targetEl = fieldRefs.current[firstMissingKey];
       if (targetEl) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -995,7 +1083,7 @@ const Reservation = () => {
           ? 'Enter a positive whole number of participants.'
           : expectedParticipantCount < selectedFacilityMinimum
             ? `The selected facility requires at least ${selectedFacilityMinimum} participants.`
-            : `The selected facility has capacity for up to ${selectedFacilityMaximum} more participants during this time.`,
+            : `The selected facility has capacity for up to ${selectedFacilityMaximum} more participants across active reservations.`,
         isSuccess: false
       });
       fieldRefs.current.expectedParticipants?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1023,8 +1111,6 @@ const Reservation = () => {
     }
 
     if (liveConflict) {
-      const conflictEndDate = liveConflict.endDate
-        || calculateEndDate(liveConflict.eventDate, liveConflict.days || 1);
       setConflictEvent({
         eventName: liveConflict.eventName || 'Untitled Event',
         facilityName: liveConflict.conflictFacilityName,
@@ -1032,10 +1118,10 @@ const Reservation = () => {
         occupiedCapacity: liveConflict.occupiedCapacity,
         requestedCapacity: liveConflict.requestedCapacity,
         maxCapacity: liveConflict.maxCapacity,
-        date: conflictEndDate !== liveConflict.eventDate
-          ? `${liveConflict.eventDate} - ${conflictEndDate}`
+        date: liveConflict.conflictDate
+          ? formatScheduleDate(liveConflict.conflictDate)
           : liveConflict.eventDate || 'N/A',
-        time: `${liveConflict.startTime || 'N/A'} - ${liveConflict.endTime || 'N/A'}`
+        time: `${liveConflict.conflictStartTime || liveConflict.startTime || 'N/A'} - ${liveConflict.conflictEndTime || liveConflict.endTime || 'N/A'}`
       });
       setShowOverlapWarning(true);
       return;
@@ -1058,8 +1144,6 @@ const Reservation = () => {
         );
 
         if (conflictingReservation) {
-          const conflictEndDate = conflictingReservation.endDate
-            || calculateEndDate(conflictingReservation.eventDate, conflictingReservation.days || 1);
           setConflictEvent({
             eventName: conflictingReservation.eventName || 'Untitled Event',
             facilityName: conflictingReservation.conflictFacilityName,
@@ -1067,10 +1151,10 @@ const Reservation = () => {
             occupiedCapacity: conflictingReservation.occupiedCapacity,
             requestedCapacity: conflictingReservation.requestedCapacity,
             maxCapacity: conflictingReservation.maxCapacity,
-            date: conflictEndDate !== conflictingReservation.eventDate
-              ? `${conflictingReservation.eventDate} - ${conflictEndDate}`
+            date: conflictingReservation.conflictDate
+              ? formatScheduleDate(conflictingReservation.conflictDate)
               : conflictingReservation.eventDate || 'N/A',
-            time: `${conflictingReservation.startTime || 'N/A'} - ${conflictingReservation.endTime || 'N/A'}`
+            time: `${conflictingReservation.conflictStartTime || conflictingReservation.startTime || 'N/A'} - ${conflictingReservation.conflictEndTime || conflictingReservation.endTime || 'N/A'}`
           });
           setShowOverlapWarning(true);
           setIsSubmitting(false);
@@ -1096,6 +1180,11 @@ const Reservation = () => {
         endDate: calculatedEndDate,
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(endTime),
+        schedule: dailySchedule.map((entry) => ({
+          date: entry.date,
+          startTime: formatTimeForStorage(entry.startTime),
+          endTime: formatTimeForStorage(entry.endTime)
+        })),
         durationHours,
         days,
         aircon,
@@ -1902,7 +1991,7 @@ const Reservation = () => {
               className={`input-group ${missingFields.startTime ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.startTime = el}
             >
-              <label>Start Time <span className="req">*</span></label>
+              <label>Default Start Time <span className="req">*</span></label>
               <input
                 type="time"
                 value={startTime}
@@ -1917,7 +2006,7 @@ const Reservation = () => {
               className={`input-group ${missingFields.endTime ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.endTime = el}
             >
-              <label>End Time <span className="req">*</span></label>
+              <label>Default End Time <span className="req">*</span></label>
               <input
                 type="time"
                 value={endTime}
@@ -1930,6 +2019,103 @@ const Reservation = () => {
             </div>
           </div>
 
+          <div
+            className={`input-group full-width schedule-override-group ${missingFields.schedule ? 'field-missing' : ''}`}
+            ref={el => fieldRefs.current.schedule = el}
+          >
+            <button
+              type="button"
+              className="schedule-override-toggle"
+              onClick={() => setIsDailyScheduleExpanded((expanded) => !expanded)}
+              aria-expanded={isDailyScheduleExpanded}
+              aria-controls="daily-schedule-options"
+            >
+              <span>
+                <strong>Daily Schedule <span className="req">*</span></strong>
+                <small className="schedule-override-count">
+                  {dailySchedule.length} {dailySchedule.length === 1 ? 'date' : 'dates'}
+                </small>
+              </span>
+              <span className="schedule-override-action">
+                {isDailyScheduleExpanded ? 'Hide dates and times' : 'Show dates and times'}
+                <i className={`schedule-override-chevron ${isDailyScheduleExpanded ? 'is-expanded' : ''}`} aria-hidden="true"></i>
+              </span>
+            </button>
+            {isDailyScheduleExpanded && (
+              <div id="daily-schedule-options" className="schedule-override-content">
+                <span className="helper-text">
+                  Default times are applied to each date. Adjust an individual day or remove it if it is not needed.
+                </span>
+                {dailySchedule.length === 0 ? (
+                  <span className={missingFields.schedule ? 'field-error' : 'helper-text'}>
+                    {missingFields.schedule
+                      ? 'Add at least one date with a valid start and end time.'
+                      : 'Select a valid start and end date to generate the daily schedule.'}
+                  </span>
+                ) : (
+                  <div className="schedule-override-list">
+                    {dailySchedule.map((entry) => (
+                      <div className="schedule-override-row" key={entry.date}>
+                        <strong>{formatScheduleDate(entry.date)}</strong>
+                        <label>
+                          <span>Start</span>
+                          <input
+                            type="time"
+                            value={entry.startTime}
+                            aria-label={`Start time for ${formatScheduleDate(entry.date)}`}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setDailyScheduleOverrides((overrides) => ({
+                                ...overrides,
+                                [entry.date]: {
+                                  startTime: value,
+                                  endTime: overrides[entry.date]?.endTime ?? entry.endTime
+                                }
+                              }));
+                              clearMissingField('schedule');
+                            }}
+                          />
+                        </label>
+                        <label>
+                          <span>End</span>
+                          <input
+                            type="time"
+                            value={entry.endTime}
+                            aria-label={`End time for ${formatScheduleDate(entry.date)}`}
+                            onChange={(event) => {
+                              const value = event.target.value;
+                              setDailyScheduleOverrides((overrides) => ({
+                                ...overrides,
+                                [entry.date]: {
+                                  startTime: overrides[entry.date]?.startTime ?? entry.startTime,
+                                  endTime: value
+                                }
+                              }));
+                              clearMissingField('schedule');
+                            }}
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          className="schedule-day-remove"
+                          onClick={() => {
+                            setRemovedScheduleDates((dates) => [...new Set([...dates, entry.date])]);
+                          }}
+                          aria-label={`Remove ${formatScheduleDate(entry.date)} from schedule`}
+                        >
+                          Remove
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {missingFields.schedule && dailySchedule.length > 0 && !isDailyScheduleValid && (
+                  <span className="field-error">Each scheduled date needs a valid start and end time.</span>
+                )}
+              </div>
+            )}
+          </div>
+
           {liveConflict && (
             <div className="schedule-conflict-notice full-width" role="alert" aria-live="assertive">
               <strong>
@@ -1938,17 +2124,20 @@ const Reservation = () => {
                   : 'Schedule conflict — this reservation cannot be submitted.'}
               </strong>
               <span><strong>Conflicting facility:</strong> {liveConflict.conflictFacilityName}.</span>
-              <span>
-                {liveConflict.eventName || 'Another reservation'} is scheduled from{' '}
-                {liveConflict.eventDate || 'an overlapping date'}
-                {liveConflictEndDate && liveConflictEndDate !== liveConflict.eventDate
-                  ? ` to ${liveConflictEndDate}` : ''} at{' '}
-                {liveConflict.startTime}–{liveConflict.endTime}.
-              </span>
+              {liveConflict.conflictType === 'schedule' && (
+                <span>
+                  {liveConflict.eventName || 'Another reservation'} is scheduled on{' '}
+                  {liveConflict.conflictDate
+                    ? formatScheduleDate(liveConflict.conflictDate)
+                    : liveConflict.eventDate || 'an overlapping date'} at{' '}
+                  {liveConflict.conflictStartTime || liveConflict.startTime}–
+                  {liveConflict.conflictEndTime || liveConflict.endTime}.
+                </span>
+              )}
               {liveConflict.conflictType === 'capacity' && (
                 <span>
                   {liveConflict.occupiedCapacity} of {liveConflict.maxCapacity} participants are already
-                  {' '}reserved during this time. Adding {liveConflict.requestedCapacity} would exceed
+                  {' '}reserved across active reservations. Adding {liveConflict.requestedCapacity} would exceed
                   {' '}the facility maximum by{' '}
                   {liveConflict.occupiedCapacity + liveConflict.requestedCapacity - liveConflict.maxCapacity}.
                 </span>
@@ -1981,7 +2170,10 @@ const Reservation = () => {
         <div className="info-box green duration-box">
           <i className="ph ph-info"></i>
           <div>
-            <strong>Total Duration: {durationHours > 0 ? durationHours : 0} hours / day — Across {days} day(s) {eventDate && days > 1 ? `(Ends: ${endDateInput || calculateEndDate(eventDate, days)})` : ''}</strong>
+            <strong>
+              Total Duration: {totalScheduledHours} hours across {dailySchedule.length} scheduled day(s)
+              {eventDate && days > 1 ? ` (Date range ends: ${endDateInput || calculateEndDate(eventDate, days)})` : ''}
+            </strong>
           </div>
         </div>
       </div>
@@ -2076,8 +2268,8 @@ const Reservation = () => {
             <p className="modal-message">
               {conflictEvent?.conflictType === 'capacity'
                 ? <>
-                    <strong>{conflictEvent.facilityName}</strong> has a capacity conflict with{' '}
-                    <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time}).
+                    <strong>{conflictEvent.facilityName}</strong> does not have enough total capacity available
+                    for this reservation.
                   </>
                 : <>
                     The conflict is with <strong>{conflictEvent?.facilityName || 'the selected facility'}</strong>,
@@ -2087,7 +2279,7 @@ const Reservation = () => {
                     )}.
                   </>}
               {conflictEvent?.conflictType === 'capacity' && (
-                <>. {conflictEvent.occupiedCapacity} of {conflictEvent.maxCapacity} participants are already reserved, and adding {conflictEvent.requestedCapacity} would exceed the maximum.</>
+                <> {conflictEvent.occupiedCapacity} of {conflictEvent.maxCapacity} participants are already reserved across active reservations, and adding {conflictEvent.requestedCapacity} would exceed the maximum.</>
               )}
               {' '}Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
             </p>

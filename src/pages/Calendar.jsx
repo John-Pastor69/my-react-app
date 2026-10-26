@@ -39,6 +39,13 @@ const getDatesInRange = (startDateStr, numDays) => {
   return dates;
 };
 
+const formatScheduleDateForCalendar = (dateValue) => {
+  const dateString = String(dateValue || '');
+  const isoMatch = dateString.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (isoMatch) return `${isoMatch[2]}/${isoMatch[3]}/${isoMatch[1]}`;
+  return dateString;
+};
+
 // --- EVENT DATE RANGE FORMATTER HELPER ---
 const formatEventDateRange = (startDateStr, endDateStr, numDays) => {
   if (!startDateStr) return 'N/A';
@@ -187,17 +194,29 @@ const Calendar = ({ currentUserRole }) => {
       }
       const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
 
-      const datesRange = getDatesInRange(data.eventDate || data.date, data.days || 1);
+      const datesRange = Array.isArray(data.schedule)
+        ? data.schedule.map((entry) => ({
+          date: formatScheduleDateForCalendar(entry.date),
+          startTime: entry.startTime || '',
+          endTime: entry.endTime || ''
+        }))
+        : getDatesInRange(data.eventDate || data.date, data.days || 1).map((date) => ({
+          date,
+          startTime: data.startTime || '',
+          endTime: data.endTime || ''
+        }));
 
-      return datesRange.map((dateStr, index) => {
+      return datesRange.map((scheduleEntry, index) => {
         return {
           id: `${data.id}-${index}`,
           originalId: data.id,
           title: data.eventName || data.title || "Untitled Event",
-          date: dateStr,
+          date: scheduleEntry.date,
           status: uiStatusColor, 
-          time: (data.startTime && data.endTime) ? `${data.startTime} - ${data.endTime}` : "N/A",
-          startTimeOnly: data.startTime || "",
+          time: (scheduleEntry.startTime && scheduleEntry.endTime)
+            ? `${scheduleEntry.startTime} - ${scheduleEntry.endTime}`
+            : "N/A",
+          startTimeOnly: scheduleEntry.startTime,
           facility: facilityDisplay,
           equipment: equipmentRequested,
           requestor: formatName(data.fullName),

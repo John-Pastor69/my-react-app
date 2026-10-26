@@ -164,6 +164,140 @@ $orange-main: #F59E0B;
     }
   }
 
+  .schedule-override-group {
+    .schedule-override-toggle {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      width: 100%;
+      padding: 0.75rem 0.875rem;
+      border: 1px solid $border-color;
+      border-radius: 7px;
+      background: #FFFFFF;
+      color: $text-dark;
+      text-align: left;
+      font: inherit;
+      cursor: pointer;
+      transition: border-color 0.15s ease, background-color 0.15s ease;
+
+      > span {
+        display: flex;
+        align-items: center;
+        gap: 0.625rem;
+      }
+
+      .schedule-override-count {
+        padding: 0.15rem 0.5rem;
+        border-radius: 999px;
+        background: #EFF6FF;
+        color: $blue-main;
+        font-size: var(--font-small);
+        font-weight: 600;
+      }
+
+      .schedule-override-action {
+        color: $blue-main;
+        font-size: var(--font-small);
+        font-weight: 600;
+      }
+
+      .schedule-override-chevron {
+        display: inline-block;
+        width: 0.5rem;
+        height: 0.5rem;
+        margin: 0 0 0.2rem 0.5rem;
+        border-right: 2px solid currentColor;
+        border-bottom: 2px solid currentColor;
+        transform: rotate(45deg);
+        transition: transform 0.15s ease;
+
+        &.is-expanded {
+          margin-bottom: -0.05rem;
+          transform: rotate(225deg);
+        }
+      }
+
+      &:hover,
+      &:focus-visible {
+        border-color: $blue-main;
+        background: #F8FAFC;
+      }
+
+      &:focus-visible {
+        outline: 2px solid rgba($blue-main, 0.25);
+        outline-offset: 2px;
+      }
+
+      &:active {
+        background: #EFF6FF;
+      }
+
+      @media (max-width: 480px) {
+        align-items: flex-start;
+        gap: 0.5rem;
+
+        > span:first-child {
+          align-items: flex-start;
+          flex-direction: column;
+          gap: 0.35rem;
+        }
+      }
+    }
+
+    .schedule-override-content {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+    }
+
+    .schedule-override-list {
+      display: flex;
+      flex-direction: column;
+      gap: 0.625rem;
+    }
+
+    .schedule-override-row {
+      display: grid;
+      grid-template-columns: minmax(10rem, 1fr) minmax(7rem, 0.7fr) minmax(7rem, 0.7fr) auto;
+      align-items: end;
+      gap: 0.75rem;
+      padding: 0.75rem;
+      border: 1px solid $border-color;
+      border-radius: 7px;
+      background: #F8FAFC;
+
+      > strong {
+        align-self: center;
+      }
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.3rem;
+
+        span {
+          color: $text-muted;
+          font-size: var(--font-small);
+        }
+      }
+    }
+
+    .schedule-day-remove {
+      min-height: 2.5rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid #fecaca;
+      border-radius: 7px;
+      background: #fff;
+      color: #b91c1c;
+      font: inherit;
+      cursor: pointer;
+
+      &:hover {
+        background: #fef2f2;
+      }
+    }
+  }
+
   .input-group {
     min-width: 0; 
     display: flex; 
@@ -1344,6 +1478,18 @@ $orange-main: #F59E0B;
 
     .event-type-grid { 
       grid-template-columns: 1fr 1fr; 
+    }
+
+    .schedule-override-group .schedule-override-row {
+      grid-template-columns: 1fr 1fr;
+
+      > strong {
+        grid-column: 1 / -1;
+      }
+
+      .schedule-day-remove {
+        grid-column: 1 / -1;
+      }
     }
 
     .form-actions .right-actions { 

@@ -35,6 +35,93 @@ $danger-red: #ef4444;
     overflow-wrap: anywhere;
   }
 
+  .daily-time-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    width: 100%;
+    min-width: 0;
+
+    .daily-time-entry {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 0.75rem;
+      min-width: 0;
+      padding: 0.5rem 0.65rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 0.4rem;
+      background: #f8fafc;
+      line-height: 1.35;
+    }
+
+    .daily-time-date-group {
+      display: flex;
+      align-items: center;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 0.25rem 0.45rem;
+      min-width: 0;
+    }
+
+    .daily-time-date {
+      color: $text-dark;
+      font-size: var(--font-body);
+      font-weight: 500;
+      overflow-wrap: anywhere;
+    }
+
+    .daily-time-more {
+      padding: 0.1rem 0.4rem;
+      border: 0;
+      border-radius: 999px;
+      background: #e8f0ff;
+      color: $primary-blue;
+      font: inherit;
+      font-size: var(--font-small);
+      font-weight: 700;
+      cursor: pointer;
+
+      &:hover {
+        background: #dbeafe;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $primary-blue;
+        outline-offset: 2px;
+      }
+    }
+
+    .daily-time-range {
+      color: $text-dark;
+      font-size: var(--font-body);
+      font-weight: 600;
+      text-align: right;
+      white-space: nowrap;
+    }
+
+    &.summary {
+      gap: 0.35rem;
+
+      .daily-time-entry {
+        align-items: flex-start;
+        flex-direction: column;
+        gap: 0.1rem;
+        padding: 0.45rem 0.55rem;
+      }
+
+      .daily-time-date-group {
+        align-items: flex-start;
+        justify-content: flex-start;
+      }
+
+      .daily-time-range {
+        text-align: left;
+      }
+    }
+  }
+
   .equipment-requested-field {
     grid-column: 1 / -1;
   }
@@ -208,6 +295,11 @@ $danger-red: #ef4444;
           font-weight: 600;
         }
       }
+    }
+
+    .time-detail-field {
+      grid-column: 1 / -1;
+      min-width: 0;
     }
 
     .full-width-field {

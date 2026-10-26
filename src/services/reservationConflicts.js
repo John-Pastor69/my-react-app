@@ -1,4 +1,4 @@
-import { isReservationActive } from './reservationStatus';
+import { isReservationActive } from './reservationStatus.js';
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
@@ -55,7 +55,9 @@ export const parseDateOrdinal = (value) => {
   return Math.floor(parsed.getTime() / 86400000);
 };
 
-const getReservationDateRange = (reservation) => {
+const ordinalToISODate = (ordinal) => new Date(ordinal * 86400000).toISOString().slice(0, 10);
+
+const getDateRange = (reservation) => {
   const start = parseDateOrdinal(reservation.eventDate || reservation.date);
   if (start === null) return null;
 
@@ -65,67 +67,114 @@ const getReservationDateRange = (reservation) => {
   return end < start ? null : { start, end };
 };
 
-const timeRangesOverlapAcrossDates = (firstRange, firstStart, firstEnd, secondRange, secondStart, secondEnd) => {
-  const firstEndMinute = firstEnd <= firstStart ? firstEnd + 1440 : firstEnd;
-  const secondEndMinute = secondEnd <= secondStart ? secondEnd + 1440 : secondEnd;
+const createScheduleEntry = (date, startTime, endTime) => {
+  const dateOrdinal = parseDateOrdinal(date);
+  const startMinute = parseTimeToMinutes(startTime);
+  const endMinute = parseTimeToMinutes(endTime);
+  if (
+    dateOrdinal === null
+    || startMinute === null
+    || endMinute === null
+    || startMinute === endMinute
+  ) return null;
 
-  for (let dayOffset = -1; dayOffset <= 1; dayOffset += 1) {
-    const firstDayStart = Math.max(firstRange.start, secondRange.start - dayOffset);
-    const firstDayEnd = Math.min(firstRange.end, secondRange.end - dayOffset);
-    if (firstDayStart > firstDayEnd) continue;
-
-    const shiftedSecondStart = secondStart + dayOffset * 1440;
-    const shiftedSecondEnd = secondEndMinute + dayOffset * 1440;
-    if (firstStart < shiftedSecondEnd && firstEndMinute > shiftedSecondStart) return true;
-  }
-  return false;
+  return {
+    date: ordinalToISODate(dateOrdinal),
+    dateOrdinal,
+    startTime,
+    endTime,
+    startMinute,
+    endMinute: endMinute <= startMinute ? endMinute + 1440 : endMinute
+  };
 };
 
-export const getOverlappingFacilityReservations = (reservations, request, facilityId) => {
-  const requestStart = parseDateOrdinal(request.eventDate);
-  const requestEnd = parseDateOrdinal(request.endDate);
-  const requestStartTime = parseTimeToMinutes(request.startTime);
-  const requestEndTime = parseTimeToMinutes(request.endTime);
-  if (
-    requestStart === null
-    || requestEnd === null
-    || requestEnd < requestStart
-    || requestStartTime === null
-    || requestEndTime === null
-    || requestEndTime === requestStartTime
-    || !facilityId
-  ) return [];
+const getReservationSchedule = (reservation) => {
+  if (Array.isArray(reservation.schedule)) {
+    return reservation.schedule
+      .map((entry) => createScheduleEntry(entry.date, entry.startTime, entry.endTime))
+      .filter(Boolean);
+  }
 
-  return reservations.filter((reservation) => {
-    if (reservation.id === request.excludeReservationId) return false;
-    if (!isReservationActive(reservation)) return false;
+  const range = getDateRange(reservation);
+  if (!range) return [];
+  const entries = [];
+  for (let dateOrdinal = range.start; dateOrdinal <= range.end; dateOrdinal += 1) {
+    const entry = createScheduleEntry(
+      ordinalToISODate(dateOrdinal),
+      reservation.startTime,
+      reservation.endTime
+    );
+    if (entry) entries.push(entry);
+  }
+  return entries;
+};
 
-    const hasRejectedApproval = Object.values(reservation.approvals || {}).some((approval) => {
-      const approvalStatus = typeof approval === 'string' ? approval : approval?.status;
-      return (approvalStatus || '').toLowerCase() === 'rejected';
-    });
-    if (hasRejectedApproval) return false;
+const getRequestSchedule = (request) => {
+  if (Array.isArray(request.schedule)) {
+    return request.schedule
+      .map((entry) => createScheduleEntry(entry.date, entry.startTime, entry.endTime))
+      .filter(Boolean);
+  }
+  return getReservationSchedule(request);
+};
 
-    const existingRange = getReservationDateRange(reservation);
-    if (!existingRange) return false;
-    const existingStartTime = parseTimeToMinutes(reservation.startTime);
-    const existingEndTime = parseTimeToMinutes(reservation.endTime);
+const getScheduleOverlap = (firstEntry, secondEntry) => {
+  const firstStart = firstEntry.dateOrdinal * 1440 + firstEntry.startMinute;
+  const firstEnd = firstEntry.dateOrdinal * 1440 + firstEntry.endMinute;
+  const secondStart = secondEntry.dateOrdinal * 1440 + secondEntry.startMinute;
+  const secondEnd = secondEntry.dateOrdinal * 1440 + secondEntry.endMinute;
+  return firstStart < secondEnd && firstEnd > secondStart;
+};
+
+const hasRejectedApproval = (reservation) => Object.values(reservation.approvals || {}).some((approval) => {
+  const approvalStatus = typeof approval === 'string' ? approval : approval?.status;
+  return (approvalStatus || '').toLowerCase() === 'rejected';
+});
+
+const getOverlappingReservationDetails = (reservations, request, facilityId) => {
+  if (!facilityId || !Array.isArray(request.facilities) || !request.facilities.includes(facilityId)) {
+    return [];
+  }
+  const requestSchedule = getRequestSchedule(request);
+  if (requestSchedule.length === 0) return [];
+
+  const overlaps = [];
+  reservations.forEach((reservation) => {
     if (
-      existingStartTime === null
-      || existingEndTime === null
-      || existingEndTime === existingStartTime
-    ) return false;
+      reservation.id === request.excludeReservationId
+      || !isReservationActive(reservation)
+      || hasRejectedApproval(reservation)
+      || !(reservation.facilities || []).includes(facilityId)
+    ) return;
 
-    return (reservation.facilities || []).includes(facilityId)
-      && timeRangesOverlapAcrossDates(
-        { start: requestStart, end: requestEnd },
-        requestStartTime,
-        requestEndTime,
-        existingRange,
-        existingStartTime,
-        existingEndTime
-      );
+    const reservationSchedule = getReservationSchedule(reservation);
+    for (const requestEntry of requestSchedule) {
+      const reservationEntry = reservationSchedule.find((entry) => (
+        getScheduleOverlap(requestEntry, entry)
+      ));
+      if (reservationEntry) {
+        overlaps.push({ reservation, requestEntry, reservationEntry });
+      }
+    }
   });
+  return overlaps;
+};
+
+export const getOverlappingFacilityReservations = (reservations, request, facilityId) => (
+  [...new Set(
+    getOverlappingReservationDetails(reservations, request, facilityId)
+      .map(({ reservation }) => reservation)
+  )]
+);
+
+export const getActiveFacilityReservations = (reservations, request, facilityId) => {
+  if (!facilityId) return [];
+  return reservations.filter((reservation) => (
+    reservation.id !== request.excludeReservationId
+    && isReservationActive(reservation)
+    && !hasRejectedApproval(reservation)
+    && (reservation.facilities || []).includes(facilityId)
+  ));
 };
 
 const getFacilityCapacityLimits = (facility) => ({
@@ -140,50 +189,62 @@ const parseCapacity = (value) => {
   return Number.isInteger(capacity) && capacity > 0 ? capacity : null;
 };
 
-export const findFacilityConflict = (reservations, request, facilities) => {
-  for (const facilityId of request.facilities) {
-    const overlappingReservations = getOverlappingFacilityReservations(
-      reservations,
-      request,
-      facilityId
-    );
-    if (overlappingReservations.length === 0) continue;
+const createConflictResult = (overlap, conflictDetails) => ({
+  ...overlap.reservation,
+  ...conflictDetails,
+  conflictDate: overlap.requestEntry.date,
+  conflictStartTime: overlap.reservationEntry.startTime,
+  conflictEndTime: overlap.reservationEntry.endTime
+});
 
+export const findFacilityConflict = (reservations, request, facilities) => {
+  for (const facilityId of request.facilities || []) {
     const facility = facilities.find((item) => item.id === facilityId);
     const maxCapacity = facility ? getFacilityCapacityLimits(facility).max : null;
     const conflictDetails = {
       conflictFacilityName: facility?.name || facilityId,
       conflictType: 'schedule'
     };
-    if (maxCapacity === null) return { ...overlappingReservations[0], ...conflictDetails };
 
-    const hasUnknownCapacity = overlappingReservations.some((reservation) => {
-      const participants = Number(reservation.expectedParticipants);
-      return !Number.isInteger(participants) || participants <= 0;
-    });
-    if (hasUnknownCapacity) {
-      return {
-        ...overlappingReservations[0],
-        ...conflictDetails,
-        conflictType: 'unknown-capacity'
-      };
+    if (maxCapacity !== null) {
+      const activeReservations = getActiveFacilityReservations(reservations, request, facilityId);
+      const hasUnknownCapacity = activeReservations.some((reservation) => {
+        const participants = Number(reservation.expectedParticipants);
+        return !Number.isInteger(participants) || participants <= 0;
+      });
+      if (hasUnknownCapacity) {
+        return {
+          ...activeReservations[0],
+          ...conflictDetails,
+          conflictType: 'unknown-capacity'
+        };
+      }
+
+      const occupiedCapacity = activeReservations.reduce(
+        (total, reservation) => total + Number(reservation.expectedParticipants),
+        0
+      );
+      const requestedCapacity = Number(request.expectedParticipants);
+      if (occupiedCapacity + requestedCapacity > maxCapacity) {
+        return {
+          ...activeReservations[0],
+          ...conflictDetails,
+          conflictType: 'capacity',
+          occupiedCapacity,
+          requestedCapacity,
+          maxCapacity
+        };
+      }
+      continue;
     }
 
-    const occupiedCapacity = overlappingReservations.reduce(
-      (total, reservation) => total + Number(reservation.expectedParticipants),
-      0
+    const overlappingDetails = getOverlappingReservationDetails(
+      reservations,
+      request,
+      facilityId
     );
-    const requestedCapacity = Number(request.expectedParticipants);
-    if (occupiedCapacity + requestedCapacity > maxCapacity) {
-      return {
-        ...overlappingReservations[0],
-        ...conflictDetails,
-        conflictType: 'capacity',
-        occupiedCapacity,
-        requestedCapacity,
-        maxCapacity
-      };
-    }
+    if (overlappingDetails.length === 0) continue;
+    return createConflictResult(overlappingDetails[0], conflictDetails);
   }
   return null;
 };

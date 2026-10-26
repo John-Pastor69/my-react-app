@@ -49,6 +49,7 @@ const ReservationDetails = ({
   const [equipmentMap, setEquipmentMap] = useState({});
   const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
+  const [expandedTimeGroups, setExpandedTimeGroups] = useState({});
 
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState('');
@@ -155,7 +156,77 @@ const ReservationDetails = ({
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
   const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
-  const eventTime = `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+  const scheduledYears = new Set((Array.isArray(currentData.schedule) ? currentData.schedule : []).map((entry) => (
+    String(entry.date || '').match(/^\d{4}-/)?.[0]
+      || String(entry.date || '').match(/\/(\d{4})$/)?.[1]
+      || ''
+  )).filter(Boolean));
+  const includeYearInScheduleDates = scheduledYears.size > 1;
+  const dailyTimeEntries = Array.isArray(currentData.schedule)
+    ? currentData.schedule.reduce((groups, entry) => {
+      const parsedDate = new Date(`${entry.date}T00:00:00`);
+      const dateLabel = Number.isNaN(parsedDate.getTime())
+        ? entry.date
+        : parsedDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          ...(includeYearInScheduleDates ? { year: 'numeric' } : {})
+        });
+      const pdfDateLabel = Number.isNaN(parsedDate.getTime())
+        ? entry.date
+        : parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
+      const existingGroup = groups.find((group) => group.time === time);
+      if (existingGroup) {
+        existingGroup.dates.push(dateLabel);
+        existingGroup.pdfDates.push(pdfDateLabel);
+      } else {
+        groups.push({ dates: [dateLabel], pdfDates: [pdfDateLabel], time });
+      }
+      return groups;
+    }, [])
+    : [];
+  const eventTime = dailyTimeEntries.length > 0
+    ? dailyTimeEntries.map(({ pdfDates, time }) => `${time} [${pdfDates.join(', ')}]`).join('\n')
+    : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+  const renderDailyTimeDisplay = (variant) => {
+    if (dailyTimeEntries.length === 0) return eventTime;
+
+    return (
+      <div className={`daily-time-list ${variant}`}>
+        {dailyTimeEntries.map(({ dates, time }) => {
+          const groupKey = `${variant}-${time}`;
+          const isExpanded = Boolean(expandedTimeGroups[groupKey]);
+          const visibleDates = isExpanded ? dates : dates.slice(0, 2);
+          const hiddenDateCount = dates.length - visibleDates.length;
+
+          return (
+            <div className="daily-time-entry" key={time}>
+              <span className="daily-time-range">{time}</span>
+              <div className="daily-time-date-group">
+                <span className="daily-time-date">[{visibleDates.join(', ')}]</span>
+                {(dates.length > 2) && (
+                  <button
+                    type="button"
+                    className="daily-time-more"
+                    aria-expanded={isExpanded}
+                    onClick={() => setExpandedTimeGroups((groups) => ({
+                      ...groups,
+                      [groupKey]: !isExpanded
+                    }))}
+                  >
+                    {isExpanded ? 'View less' : `+${hiddenDateCount} more`}
+                  </button>
+                )}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    );
+  };
+  const eventTimeDisplay = renderDailyTimeDisplay('details');
+  const summaryTimeDisplay = renderDailyTimeDisplay('summary');
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
   
@@ -481,9 +552,9 @@ const ReservationDetails = ({
                 <label>EVENT DATE</label>
                 <div className="val">{eventDate}</div>
               </div>
-              <div>
+              <div className="time-detail-field">
                 <label>TIME</label>
-                <div className="val">{eventTime}</div>
+                <div className="val">{eventTimeDisplay}</div>
               </div>
               <div>
                 <label>EXPECTED ATTENDEES</label>
@@ -602,7 +673,7 @@ const ReservationDetails = ({
               </div>
               <div className="summary-item">
                 <span className="label">Duration</span>
-                <span className="val">{eventTime}</span>
+                <span className="val">{summaryTimeDisplay}</span>
               </div>
               <div className="summary-item">
                 <span className="label">Attendees</span>
