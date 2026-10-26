@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs } from 'firebase/firestore';
+import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
+import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import '../styles/PendingRequest.scss';
 
@@ -37,7 +39,8 @@ const formatEventDateRange = (startDateStr, numDays) => {
   return `${startFormatted} - ${endFormatted}`;
 };
 
-const PendingRequest = ({ data, isSuperAdmin = false }) => {
+const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
+  const navigate = useNavigate();
   // Live sync state for this specific reservation document
   const [currentData, setCurrentData] = useState(data);
   const [facilitiesMap, setFacilitiesMap] = useState({});
@@ -270,7 +273,26 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
   const myApprovalStatus = canOverrideApprovalWorkflow
     ? null
     : currentData.approvals?.[approver.roleKey]?.status;
+  const normalizedReservationStatus = (currentData.status || '').toLowerCase().trim();
   const isFullyApproved = currentData.approvals?.['school admin']?.status?.toLowerCase() === 'approved';
+  const isReservationOwner = currentUser && (
+    currentData.userId === currentUser.uid
+    || currentData.userEmail === currentUser.email
+  );
+  const canEditReturnedReservation = isReservationOwner
+    && normalizedReservationStatus === 'to modify';
+  const modificationRemark = typeof currentData.modificationRemark === 'string'
+    ? currentData.modificationRemark.trim()
+    : '';
+
+  const handleEditReservation = () => {
+    if (!canEditReturnedReservation || !currentData.id) return;
+    if (onEditReservation) {
+      onEditReservation(currentData.id);
+      return;
+    }
+    navigate(`/reserve?edit=${encodeURIComponent(currentData.id)}`);
+  };
 
   const baseHistory = [{
     role: 'Requestor',
@@ -318,7 +340,9 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
       const newLog = {
         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
         role: approvalRoleLabel,
+        approvalRoleKey: approver.roleKey,
         badge: isApprove ? 'Approved' : isReject ? 'Rejected' : 'To Modify',
+        timestamp: now.toISOString(),
         date: dateTimeString,
         approverName: approver.name,
         text: remark || 'Approved reservation request without remarks.',
@@ -342,6 +366,8 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
         updatePayload.status = 'To Modify';
         updatePayload.modificationRemark = remark;
         updatePayload.modificationRequestedBy = approver.name;
+        updatePayload.modificationRequestedByRoleKey = approver.roleKey;
+        updatePayload.modificationRequestLogId = newLog.id;
         updatePayload.modificationRequestedAt = dateTimeString;
       } else {
         updatePayload[`approvals.${approvalRoleKey}.status`] = isApprove ? 'approved' : 'rejected';
@@ -357,18 +383,13 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
       if (isApprove || isToModify) {
         await updateDoc(doc(db, 'reservations', currentData.id), updatePayload);
       } else {
-        const batch = writeBatch(db);
-        batch.update(doc(db, 'reservations', currentData.id), updatePayload);
-        const cleanHistoryData = { ...currentData };
-        delete cleanHistoryData.id;
-        batch.set(doc(db, 'archive', currentData.id), {
-          ...cleanHistoryData,
+        await archiveReservation(currentData.id, {
+          ...currentData,
           approvals: archivedApprovals,
           historyLogs: [...(currentData.historyLogs || []), newLog],
           status: 'Rejected',
-          rejectionRemark: remarks.trim()
-        }, { merge: true });
-        await batch.commit();
+          rejectionRemark: remark.trim()
+        });
       }
 
       // --- SEND EMAIL NOTIFICATION ---
@@ -399,7 +420,6 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
     }
   };
 
-  const normalizedReservationStatus = (currentData.status || '').toLowerCase().trim();
   const bannerStatusClass = normalizedReservationStatus === 'approved'
     ? 'approved'
     : normalizedReservationStatus === 'rejected' ? 'rejected' : 'pending';
@@ -586,7 +606,25 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
           </div>
 
           {/* Admin Approval Decision Card */}
-          {canOverrideApprovalWorkflow && isFullyApproved ? (
+          {canEditReturnedReservation ? (
+            <div className="card returned-modification-card">
+              <div className="card-header-small">
+                <h3>Reservation Returned for Modification</h3>
+                <p>Your reservation needs changes before it can continue through approval.</p>
+              </div>
+              <div className="returned-modification-remark">
+                <strong>Requested changes</strong>
+                <p>{modificationRemark || 'No additional remarks were provided.'}</p>
+              </div>
+              <button
+                type="button"
+                className="btn-modify"
+                onClick={handleEditReservation}
+              >
+                <i className="ph ph-pencil-simple"></i> Edit Reservation
+              </button>
+            </div>
+          ) : canOverrideApprovalWorkflow && isFullyApproved ? (
             <div className="card">
               <strong>Reservation is Fully Approved</strong>
             </div>
@@ -620,11 +658,12 @@ const PendingRequest = ({ data, isSuperAdmin = false }) => {
                 name="approvalRemarks"
                 value={remarks}
                 onChange={(e) => {
-                  setRemarks(e.target.value);
+                  setRemarks(e.target.value.slice(0, 1000));
                   if (e.target.value.trim()) setActionRemarkError('');
                 }}
                 placeholder={canAct ? "Add your administrative remarks or conditions here..." : "You can only add remarks when it is your turn to approve."}
                 rows={3}
+                maxLength={1000}
                 disabled={!canAct || isProcessing || !!myApprovalStatus}
               />
               {actionRemarkError && <p className="action-remark-error" role="alert">{actionRemarkError}</p>}

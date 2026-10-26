@@ -1,11 +1,8 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../Firebase';
+import { isReservationActive } from './reservationStatus';
 
-const EXCLUDED_RESERVATION_STATUSES = new Set(['rejected', 'cancelled', 'expired', 'archived']);
-
-export const isReservationIncludedInFacilityCapacity = (reservation) => (
-  !EXCLUDED_RESERVATION_STATUSES.has((reservation.status || '').toLowerCase().trim())
-);
+export const isReservationIncludedInFacilityCapacity = isReservationActive;
 
 const parseCapacity = (value) => {
   if (value == null || String(value).trim() === '') return null;

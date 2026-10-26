@@ -141,6 +141,32 @@ $blue: #3b82f6;
         font-size: 0.8rem;
         line-height: 1.4;
       }
+
+      .approval-status-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 0.8rem;
+        margin-top: 0.4rem;
+
+        span {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.333rem;
+          color: $text-muted;
+          font-size: 0.8rem;
+          line-height: 1.4;
+        }
+
+        .status-legend-dot {
+          width: 0.533rem;
+          height: 0.533rem;
+          border-radius: 50%;
+
+          &.pending { background: #f59e0b; }
+          &.approved { background: #10b981; }
+        }
+      }
     }
 
     .request-tools {
@@ -256,7 +282,7 @@ $blue: #3b82f6;
     .table-head,
     .request-row {
       display: grid;
-      grid-template-columns: 2.5fr 1.5fr 1.2fr 1fr;
+      grid-template-columns: minmax(14rem, 2.5fr) minmax(10rem, 1.5fr) minmax(12rem, 1.2fr) minmax(12rem, 1.4fr);
       column-gap: 1.067rem;
     }
 
@@ -375,6 +401,7 @@ $blue: #3b82f6;
     display: flex;
     align-items: center;
     justify-content: flex-start;
+    flex-wrap: wrap;
     gap: 0.533rem;
 
     .details-btn {
@@ -398,6 +425,31 @@ $blue: #3b82f6;
       &:hover {
         background: #dbeafe;
         border-color: #93c5fd;
+      }
+    }
+
+    .approval-cancel-btn {
+      width: 2.4rem;
+      min-height: 2.4rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border: 0.067rem solid #fecaca;
+      border-radius: 0.4rem;
+      background: #fef2f2;
+      color: #ef4444;
+      font-size: 1rem;
+      cursor: pointer;
+      transition: background 0.2s, color 0.2s;
+
+      &:hover {
+        background: #fee2e2;
+        border-color: #f87171;
+      }
+
+      &:focus-visible {
+        outline: 0.133rem solid rgba(220, 38, 38, 0.25);
+        outline-offset: 0.133rem;
       }
     }
   }
@@ -496,6 +548,7 @@ $blue: #3b82f6;
           background: #e2e8f0;
           transform: scale(1.05);
         }
+
       }
 
       .modal-content {
@@ -507,6 +560,110 @@ $blue: #3b82f6;
         overflow-x: hidden;
         position: relative;
         box-shadow: 0 1.333rem 1.667rem -0.333rem rgba(0, 0, 0, 0.1);
+      }
+    }
+  }
+
+  .approval-cancel-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 10001;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.067rem;
+    background: rgba(15, 23, 42, 0.7);
+  }
+
+  .approval-cancel-modal {
+    width: min(28rem, 100%);
+    padding: 1.467rem;
+    border-radius: 0.8rem;
+    background: $white;
+    box-shadow: 0 1.2rem 3rem rgba(15, 23, 42, 0.2);
+
+    h3 {
+      margin: 0 0 0.667rem;
+      color: #ef4444;
+      font-size: 1.133rem;
+    }
+
+    > p {
+      margin: 0 0 1.333rem;
+      color: $text-muted;
+      font-size: 0.867rem;
+      line-height: 1.55;
+    }
+  }
+
+  .approval-cancellation-remark {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    margin-bottom: 0.8rem;
+    color: $text-dark;
+    font-size: 0.867rem;
+    font-weight: 600;
+
+    > span strong {
+      color: #ef4444;
+    }
+
+    textarea {
+      width: 100%;
+      min-height: 6.4rem;
+      padding: 0.6rem 0.733rem;
+      border: 0.067rem solid $border;
+      border-radius: 0.467rem;
+      color: $text-dark;
+      font: inherit;
+      font-weight: 400;
+      line-height: 1.5;
+      resize: vertical;
+
+      &:focus {
+        border-color: $blue;
+        outline: 0.133rem solid rgba(59, 130, 246, 0.12);
+      }
+
+      &:disabled {
+        background: #f1f5f9;
+        cursor: wait;
+      }
+    }
+  }
+
+  .approval-cancellation-error {
+    margin: 0 0 0.8rem;
+    color: #dc2626;
+    font-size: 0.867rem;
+  }
+
+  .approval-cancel-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.667rem;
+
+    button {
+      min-width: 4.8rem;
+      padding: 0.6rem 1.067rem;
+      border: 0;
+      border-radius: 0.467rem;
+      background: #e2e8f0;
+      color: #0f172a;
+      font: inherit;
+      font-size: 0.867rem;
+      font-weight: 600;
+      cursor: pointer;
+
+      &:last-child {
+        background: #ef4444;
+        color: $white;
+      }
+
+      &:disabled {
+        opacity: 0.7;
+        cursor: not-allowed;
       }
     }
   }

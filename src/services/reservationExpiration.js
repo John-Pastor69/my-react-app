@@ -1,6 +1,7 @@
-import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
+import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../Firebase';
 import { sendReservationEmail } from './emailService';
+import { archiveReservations } from './archiveReservation';
 
 const parseReservationDate = (value) => {
   if (!value) return null;
@@ -72,18 +73,10 @@ export const archiveExpiredApprovedReservations = async (reservations, now = new
     && isReservationEndReached(reservation, now)
   ));
 
-  for (let index = 0; index < expiredReservations.length; index += 200) {
-    const batch = writeBatch(db);
-    expiredReservations.slice(index, index + 200).forEach(({ id, ...reservation }) => {
-      batch.set(doc(db, 'archive', id), {
-        ...reservation,
-        archivedAt: now.toISOString()
-      }, { merge: true });
-      batch.delete(doc(db, 'reservations', id));
-    });
-    await batch.commit();
-  }
-
+  await archiveReservations(expiredReservations.map(({ id, ...reservation }) => ({
+    id,
+    data: { ...reservation, archivedAt: now.toISOString() }
+  })));
 };
 
 const isExpiredPendingReservation = (reservation, now) => {
@@ -127,20 +120,20 @@ export const archiveExpiredPendingReservations = async (user) => {
       data: reservationDoc.data()
     }));
 
-  for (let index = 0; index < expiredReservations.length; index += 200) {
-    const batch = writeBatch(db);
-    expiredReservations.slice(index, index + 200).forEach(({ id, data }) => {
-      const expiredAt = now.toISOString();
-      const expirationLog = {
-        id: `expired-${id}`,
-        role: 'System',
-        badge: 'Expired',
-        date: expiredAt,
-        approverName: 'System',
-        text: 'Pending reservation expired after its scheduled start date and time.',
-        state: 'expired'
-      };
-      batch.set(doc(db, 'archive', id), {
+  await archiveReservations(expiredReservations.map(({ id, data }) => {
+    const expiredAt = now.toISOString();
+    const expirationLog = {
+      id: `expired-${id}`,
+      role: 'System',
+      badge: 'Expired',
+      date: expiredAt,
+      approverName: 'System',
+      text: 'Pending reservation expired after its scheduled start date and time.',
+      state: 'expired'
+    };
+    return {
+      id,
+      data: {
         ...data,
         status: 'Expired',
         expiredAt,
@@ -148,11 +141,9 @@ export const archiveExpiredPendingReservations = async (user) => {
           ...(Array.isArray(data.historyLogs) ? data.historyLogs : []),
           expirationLog
         ]
-      }, { merge: true });
-      batch.delete(doc(db, 'reservations', id));
-    });
-    await batch.commit();
-  }
+      }
+    };
+  }));
 
   await Promise.all(expiredReservations.map(({ data }) => sendReservationEmail(
     data.userEmail,

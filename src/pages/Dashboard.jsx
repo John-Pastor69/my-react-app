@@ -3,6 +3,7 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { auth, db } from '../Firebase';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { isReservationActive } from '../services/reservationStatus';
 import "../styles/Dashboard.scss";
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
@@ -529,8 +530,7 @@ const Dashboard = ({ currentUserRole }) => {
 
   const equipmentInventory = useMemo(() => equipmentData.map((equipment) => {
     const reserved = reservationsData.reduce((total, reservation) => {
-      const status = (reservation.status || '').toLowerCase();
-      if (status === 'rejected' || status === 'cancelled') return total;
+      if (!isReservationActive(reservation)) return total;
       return total + (Number(reservation.selectedEquip?.[equipment.id]) || 0);
     }, 0);
     const total = Number(equipment.totalCount) || 0;

@@ -1,3 +1,5 @@
+import { isReservationActive } from './reservationStatus';
+
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
   const match = String(timeStr).trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)?$/i);
@@ -96,8 +98,7 @@ export const getOverlappingFacilityReservations = (reservations, request, facili
 
   return reservations.filter((reservation) => {
     if (reservation.id === request.excludeReservationId) return false;
-    const status = (reservation.status || '').toLowerCase().trim();
-    if (['rejected', 'cancelled', 'expired', 'archived'].includes(status)) return false;
+    if (!isReservationActive(reservation)) return false;
 
     const hasRejectedApproval = Object.values(reservation.approvals || {}).some((approval) => {
       const approvalStatus = typeof approval === 'string' ? approval : approval?.status;

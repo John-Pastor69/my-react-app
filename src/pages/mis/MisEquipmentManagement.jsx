@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
 import { db, auth } from '../../Firebase';
 import "../../styles/mis/MisEquipmentManagement.scss";
+import { isReservationActive } from '../../services/reservationStatus';
 
 // Helper function to get real-time date and time
 const getCurrentDateTime = () => {
@@ -83,11 +84,8 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   const mappedEquipmentData = equipmentData.map(item => {
     let reservedCount = 0;
     reservationsData.forEach(res => {
-      const statusLower = (res.status || '').toLowerCase().trim();
-      if (statusLower !== 'rejected' && statusLower !== 'cancelled') {
-        if (res.selectedEquip && res.selectedEquip[item.id]) {
-          reservedCount += Number(res.selectedEquip[item.id]);
-        }
+      if (isReservationActive(res) && res.selectedEquip && res.selectedEquip[item.id]) {
+        reservedCount += Number(res.selectedEquip[item.id]);
       }
     });
 

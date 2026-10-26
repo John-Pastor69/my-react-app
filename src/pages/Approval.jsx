@@ -3,6 +3,7 @@ import { collection, onSnapshot, doc, getDoc, updateDoc } from 'firebase/firesto
 import { db, auth } from '../Firebase';
 import "../styles/Approval.scss";
 import PendingRequest from './PendingRequest';
+import { archiveReservation } from '../services/archiveReservation';
 import {
     getApprovalTrackerSteps,
     isApprovalStepReady,
@@ -28,6 +29,8 @@ const Approval = ({ currentUserRole = '' }) => {
     const canOverrideApprovalWorkflow = isSuperAdmin
         || ['mis', 'building admin'].includes(normalizedCurrentUserRole);
     const canFilterApprovalView = ['mis', 'building admin'].includes(normalizedCurrentUserRole);
+    const canCancelReservations = ['mis', 'mis admin', 'building admin', 'super admin']
+        .includes(normalizedCurrentUserRole);
     const [approvalView, setApprovalView] = useState('all');
     const [isApprovalViewLoaded, setIsApprovalViewLoaded] = useState(false);
     const [isSavingApprovalView, setIsSavingApprovalView] = useState(false);
@@ -36,6 +39,10 @@ const Approval = ({ currentUserRole = '' }) => {
     // --- STATE MANAGEMENT ---
     const [search, setSearch] = useState('');
     const [selectedRequest, setSelectedRequest] = useState(null);
+    const [reservationToCancel, setReservationToCancel] = useState(null);
+    const [cancellationRemark, setCancellationRemark] = useState('');
+    const [cancellationError, setCancellationError] = useState('');
+    const [isCancelling, setIsCancelling] = useState(false);
     const [reservationsData, setReservationsData] = useState([]);
     const [usersData, setUsersData] = useState([]);
     const [approverRoleKey, setApproverRoleKey] = useState('');
@@ -117,6 +124,53 @@ const Approval = ({ currentUserRole = '' }) => {
     // --- GET CURRENT LOGGED-IN USER NAME ---
     const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};
     const currentUserName = formatName(currentUserDoc.name || '');
+
+    const confirmCancellation = async () => {
+        if (!reservationToCancel || !currentUser || !canCancelReservations) return;
+        const remark = cancellationRemark.trim();
+        if (!remark) {
+            setCancellationError('A cancellation remark is required.');
+            return;
+        }
+
+        setIsCancelling(true);
+        setCancellationError('');
+        try {
+            const cancelledAt = new Date().toISOString();
+            const cancellationLog = {
+                id: `cancelled-${Date.now()}`,
+                role: currentUserRole,
+                badge: 'Cancelled',
+                date: cancelledAt,
+                approverName: currentUserDoc.name
+                    ? currentUserName
+                    : currentUser.email || 'Administrator',
+                text: remark,
+                state: 'cancelled'
+            };
+            await archiveReservation(reservationToCancel.id, {
+                ...reservationToCancel.fullData,
+                status: 'Cancelled',
+                cancellationRemark: remark,
+                cancelledAt,
+                cancelledBy: currentUser.uid,
+                cancelledByEmail: currentUser.email || '',
+                historyLogs: [
+                    ...(Array.isArray(reservationToCancel.fullData.historyLogs)
+                        ? reservationToCancel.fullData.historyLogs
+                        : []),
+                    cancellationLog
+                ]
+            });
+            setReservationToCancel(null);
+            setCancellationRemark('');
+        } catch (error) {
+            console.error('Error cancelling reservation:', error);
+            setCancellationError('The reservation could not be cancelled and moved to history. Please try again.');
+        } finally {
+            setIsCancelling(false);
+        }
+    };
 
     // --- MAP & JOIN DATA ---
     const approvalData = reservationsData.map((res) => {
@@ -247,7 +301,10 @@ const Approval = ({ currentUserRole = '' }) => {
                 <div className="requests-header">
                     <div className="requests-title">
                         <h2>Pending Request</h2>
-                        <p>Review and manage facility reservation requests.</p>
+                        <div className="approval-status-legend" aria-label="Reservation status legend">
+                            <span><i className="status-legend-dot pending" /> Pending</span>
+                            <span><i className="status-legend-dot approved" /> Approved</span>
+                        </div>
                     </div>
 
                     <div className={`request-tools ${canFilterApprovalView ? 'has-approval-filter' : ''}`}>
@@ -326,6 +383,21 @@ const Approval = ({ currentUserRole = '' }) => {
                                         >
                                             <i className="ph ph-eye"></i> View Details
                                         </button>
+                                        {canCancelReservations && (
+                                            <button
+                                                type="button"
+                                                className="approval-cancel-btn"
+                                                onClick={() => {
+                                                    setReservationToCancel(request);
+                                                    setCancellationRemark('');
+                                                    setCancellationError('');
+                                                }}
+                                                title="Cancel Reservation"
+                                                aria-label={`Cancel reservation for ${request.event}`}
+                                            >
+                                                <i className="ph ph-x"></i>
+                                            </button>
+                                        )}
                                     </div>
                                     
                                 </div>
@@ -335,6 +407,7 @@ const Approval = ({ currentUserRole = '' }) => {
                                 No matching requests found.
                             </div>
                         )}
+
                     </div>
                 </div>
 
@@ -358,6 +431,64 @@ const Approval = ({ currentUserRole = '' }) => {
                         </button>
                         <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                             <PendingRequest data={selectedRequest.fullData} isSuperAdmin={isSuperAdmin} />
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {reservationToCancel && (
+                <div className="approval-cancel-overlay">
+                    <div
+                        className="approval-cancel-modal"
+                        role="dialog"
+                        aria-modal="true"
+                        aria-labelledby="approval-cancel-title"
+                    >
+                        <h3 id="approval-cancel-title">Confirm Cancelation</h3>
+                        <p>
+                            Add a remark to cancel the reservation for{' '}
+                            <strong>{reservationToCancel.event}</strong>. It will be marked cancelled,
+                            moved to history, and removed from the active schedule.
+                        </p>
+                        <label className="approval-cancellation-remark">
+                            <span>Cancellation remark <strong>*</strong></span>
+                            <textarea
+                                value={cancellationRemark}
+                                onChange={(event) => {
+                                    setCancellationRemark(event.target.value.slice(0, 1000));
+                                    if (event.target.value.trim()) setCancellationError('');
+                                }}
+                                placeholder="Explain why this reservation is being cancelled..."
+                                rows={4}
+                                maxLength={1000}
+                                required
+                                disabled={isCancelling}
+                            />
+                        </label>
+                        {cancellationError && (
+                            <p className="approval-cancellation-error" role="alert">
+                                {cancellationError}
+                            </p>
+                        )}
+                        <div className="approval-cancel-actions">
+                            <button
+                                type="button"
+                                onClick={() => {
+                                    setReservationToCancel(null);
+                                    setCancellationRemark('');
+                                    setCancellationError('');
+                                }}
+                                disabled={isCancelling}
+                            >
+                                Back
+                            </button>
+                            <button
+                                type="button"
+                                onClick={confirmCancellation}
+                                disabled={isCancelling || !cancellationRemark.trim()}
+                            >
+                                {isCancelling ? 'Removing...' : 'Continue'}
+                            </button>
                         </div>
                     </div>
                 </div>

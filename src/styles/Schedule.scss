@@ -44,6 +44,32 @@ $blue-main: #3B82F6;
         line-height: 1.25;
       }
 
+      .schedule-status-legend {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 12px;
+        margin-top: 6px;
+
+        span {
+          display: inline-flex;
+          align-items: center;
+          gap: 5px;
+          color: $text-muted;
+          font-size: var(--font-body);
+          line-height: 1.4;
+        }
+
+        .status-legend-dot {
+          width: 8px;
+          height: 8px;
+          border-radius: 50%;
+
+          &.pending { background: #f59e0b; }
+          &.approved { background: #10b981; }
+        }
+      }
+
       p {
         margin: 0;
         color: $text-muted;
@@ -174,7 +200,7 @@ $blue-main: #3B82F6;
             display: inline-block;
             flex-shrink: 0;
 
-            &.pending { background-color: #3b82f6; box-shadow: 0 0 0 3px #dbeafe; } 
+            &.pending { background-color: #f59e0b; box-shadow: 0 0 0 3px #fff2c7; }
             &.approved { background-color: #10b981; box-shadow: 0 0 0 3px #d9f8ec; }
             &.rejected { background-color: #ef4444; box-shadow: 0 0 0 3px #ffe2e2; }
             &.cancelled { background-color: #94a3b8; box-shadow: 0 0 0 3px #e2e8f0; }
@@ -411,6 +437,11 @@ $blue-main: #3B82F6;
       justify-content: space-between;
       gap: 20px;
       padding: 20px 24px;
+
+      .controls-group {
+        width: min(100%, 420px);
+        flex: 0 1 420px;
+      }
     }
 
     .card-footer {

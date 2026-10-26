@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { collection, onSnapshot, doc, deleteDoc, setDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { collection, onSnapshot } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
+import { archiveReservation } from '../services/archiveReservation';
 
 const Schedule = ({ currentUserRole = '' }) => {
   const navigate = useNavigate();
@@ -146,26 +147,19 @@ const Schedule = ({ currentUserRole = '' }) => {
         text: remark,
         state: 'cancelled'
       };
-      const cancellationData = {
+      const { id, ...reservationData } = deleteModalData.fullData;
+      await archiveReservation(id, {
+        ...reservationData,
         status: 'Cancelled',
         cancellationRemark: remark,
         cancelledAt,
         cancelledBy: currentUser?.uid || '',
         cancelledByEmail: currentUser?.email || '',
-        historyLogs: arrayUnion(cancellationLog)
-      };
-      const reservationRef = doc(db, 'reservations', deleteModalData.id);
-      await updateDoc(reservationRef, cancellationData);
-      const { id, ...reservationData } = deleteModalData.fullData;
-      await setDoc(doc(db, 'archive', id), {
-        ...reservationData,
-        ...cancellationData,
         historyLogs: [
           ...(Array.isArray(reservationData.historyLogs) ? reservationData.historyLogs : []),
           cancellationLog
         ]
-      }, { merge: true       });
-      await deleteDoc(reservationRef);
+      });
       setDeleteModalData(null);
       setCancellationRemark('');
     } catch (error) {
@@ -182,6 +176,10 @@ const Schedule = ({ currentUserRole = '' }) => {
         <div className="card-header">
           <div className="title-group">
             <h3>Schedule</h3>
+            <div className="schedule-status-legend" aria-label="Reservation status legend">
+              <span><i className="status-legend-dot pending" /> Pending</span>
+              <span><i className="status-legend-dot approved" /> Approved</span>
+            </div>
           </div>
           <div className="controls-group">
             <div className="search-box">
@@ -312,11 +310,12 @@ const Schedule = ({ currentUserRole = '' }) => {
               <textarea
                 value={cancellationRemark}
                 onChange={(event) => {
-                  setCancellationRemark(event.target.value);
+                  setCancellationRemark(event.target.value.slice(0, 1000));
                   if (event.target.value.trim()) setCancellationError('');
                 }}
                 placeholder="Explain why this reservation is being cancelled..."
                 rows={4}
+                maxLength={1000}
                 required
                 disabled={isDeleting}
               />

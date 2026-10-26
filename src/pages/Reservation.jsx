@@ -19,6 +19,7 @@ import { sendReservationEmail } from '../services/emailService';
 import {
   isReservationIncludedInFacilityCapacity
 } from '../services/facilityCapacity';
+import { isReservationActive } from '../services/reservationStatus';
 import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import {
   findFacilityConflict,
@@ -184,6 +185,7 @@ const Reservation = () => {
   const [endTime, setEndTime] = useState('');
   const [durationHours, setDurationHours] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resubmissionRemark, setResubmissionRemark] = useState('');
   
   // DYNAMIC SELECTION CARTS
   const [selectedEquip, setSelectedEquip] = useState({});
@@ -454,11 +456,8 @@ const Reservation = () => {
   const mappedEquipmentList = inventoryEquipments.map(item => {
     let reservedCount = 0;
     reservationsData.forEach(res => {
-      const statusLower = (res.status || '').toLowerCase().trim();
-      if (statusLower !== 'rejected' && statusLower !== 'cancelled') {
-        if (res.id !== editReservationId && res.selectedEquip && res.selectedEquip[item.id]) {
-          reservedCount += Number(res.selectedEquip[item.id]);
-        }
+      if (res.id !== editReservationId && isReservationActive(res) && res.selectedEquip?.[item.id]) {
+        reservedCount += Number(res.selectedEquip[item.id]);
       }
     });
 
@@ -1066,6 +1065,10 @@ const Reservation = () => {
           id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
           role: 'Requestor',
           badge: 'Resubmitted',
+          remark: resubmissionRemark.trim(),
+          timestamp: reservationUpdate.updatedAt,
+          modificationRequestedByRoleKey: editingReservation.modificationRequestedByRoleKey || '',
+          modificationRequestLogId: editingReservation.modificationRequestLogId || '',
           date: new Date().toLocaleString('en-US', {
             month: 'short',
             day: 'numeric',
@@ -1074,16 +1077,19 @@ const Reservation = () => {
             minute: '2-digit'
           }),
           approverName: formData.fullName,
-          text: 'Reservation updated and resubmitted for approval.',
+          text: resubmissionRemark.trim() || 'Reservation updated and resubmitted for approval.',
           state: 'pending'
         };
         await updateDoc(doc(db, 'reservations', editingReservation.id), {
           ...reservationUpdate,
           modificationRemark: deleteField(),
           modificationRequestedBy: deleteField(),
+          modificationRequestedByRoleKey: deleteField(),
+          modificationRequestLogId: deleteField(),
           modificationRequestedAt: deleteField(),
           historyLogs: arrayUnion(resubmissionLog)
         });
+        setResubmissionRemark('');
       } else {
         await addDoc(collection(db, 'reservations'), {
           ...reservationUpdate,
@@ -1891,6 +1897,25 @@ const Reservation = () => {
           </div>
         </div>
       </div>
+
+      {editingReservation && (
+        <div className="form-card resubmission-remarks-card">
+          <div className="section-header">Remarks</div>
+          <div className="input-group">
+            <label htmlFor="resubmission-remark">Add a remark for your resubmission</label>
+            <textarea
+              id="resubmission-remark"
+              value={resubmissionRemark}
+              onChange={(event) => setResubmissionRemark(event.target.value.slice(0, 1000))}
+              placeholder="Explain the changes you made or add a note for the approver..."
+              maxLength={1000}
+              rows={4}
+              disabled={isSubmitting}
+            />
+            <span className="remark-character-count">{resubmissionRemark.length}/1000</span>
+          </div>
+        </div>
+      )}
 
       {/* CERTIFICATION & ACTIONS */}
       <div className="certification">

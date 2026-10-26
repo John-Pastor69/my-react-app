@@ -8,6 +8,7 @@ const db = getFirestore();
 const excludedReservationStatuses = new Set([
   "rejected",
   "cancelled",
+  "canceled",
   "expired",
   "archived",
 ]);

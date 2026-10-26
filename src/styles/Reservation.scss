@@ -96,6 +96,33 @@ $orange-main: #F59E0B;
     }
   }
 
+  .resubmission-remarks-card {
+    .section-header {
+      margin-bottom: 0.8rem;
+    }
+
+    .input-group {
+      position: relative;
+
+      textarea {
+        min-height: 6rem;
+        resize: vertical;
+        background: #ffffff;
+
+        &:focus {
+          border-color: $blue-main;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+        }
+      }
+    }
+
+    .remark-character-count {
+      align-self: flex-end;
+      color: $text-muted;
+      font-size: var(--font-small);
+    }
+  }
+
   .section-divider { 
     margin: 1.625rem 0 1.375rem; 
     border: 0; 

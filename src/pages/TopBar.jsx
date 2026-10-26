@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bell, Menu, Trash2 } from 'lucide-react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
-import { Link } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
 import PendingRequest from './PendingRequest';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
@@ -70,6 +70,7 @@ const isExpired = (eventDate, endTime, days = 1) => {
 };
 
 const TopBar = ({ toggleSidebar }) => {
+  const navigate = useNavigate();
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   const [userData, setUserData] = useState({
     displayName: 'Loading...',
@@ -237,7 +238,11 @@ const TopBar = ({ toggleSidebar }) => {
       return user?.name || user?.fullName || user?.displayName || fallbackName || 'the requestor';
     };
 
-    reservationsData.forEach(res => {
+    const notificationReservations = [...new Map(
+      [...historyData, ...reservationsData].map((reservation) => [reservation.id, reservation])
+    ).values()];
+
+    notificationReservations.forEach(res => {
       const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
       const requestorName = requestor.name || requestor.fullName || requestor.displayName || res.fullName || 'the requestor';
       const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
@@ -245,32 +250,20 @@ const TopBar = ({ toggleSidebar }) => {
       const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
       
       // --- 1. REQUESTOR NOTIFICATIONS ---
-      if (res.userId === uid || res.userEmail === email) {
+      const isRequestor = res.userId === uid || res.userEmail === email;
+      if (isRequestor) {
         const status = (res.status || '').toLowerCase().trim();
-        if (['approved', 'rejected', 'cancelled', 'expired', 'to modify'].includes(status)) {
-          const isToModify = status === 'to modify';
-          const notificationType = status === 'approved'
-            ? 'approved'
-            : status === 'rejected' ? 'rejected' : isToModify ? 'to_modify' : status;
-          const notificationTitle = isToModify
-            ? 'To Modify'
-            : status.charAt(0).toUpperCase() + status.slice(1);
-          const modificationRemark = typeof res.modificationRemark === 'string'
-            ? res.modificationRemark.trim()
-            : '';
-          const actionState = isToModify ? 'to_modify' : status;
+        if (['approved', 'rejected', 'cancelled', 'expired'].includes(status)) {
+          const notificationTitle = status.charAt(0).toUpperCase() + status.slice(1);
           const latestActionLog = Array.isArray(res.historyLogs)
-            ? [...res.historyLogs].reverse().find(log => log.state === actionState)
+            ? [...res.historyLogs].reverse().find(log => log.state === status)
             : null;
-          const actionBy = latestActionLog?.approverName
-            || (isToModify ? res.modificationRequestedBy : '');
+          const actionBy = latestActionLog?.approverName;
           const actionByText = actionBy ? ` by ${actionBy}` : '';
           const message = status === 'approved'
             ? `Your reservation for ${res.eventName || 'an event'} has been approved${actionByText}.`
             : status === 'rejected'
               ? `Your request for ${res.eventName || 'an event'} was declined${actionByText}.`
-              : isToModify
-                ? `Your reservation for ${res.eventName || 'an event'} was returned for modification${actionByText}.${modificationRemark ? ` Remarks: ${modificationRemark}` : ''}`
               : status === 'cancelled'
                 ? `Your reservation for ${res.eventName || 'an event'} was cancelled by ${resolveUserName(res.cancelledBy, res.cancelledByEmail, requestorName)}.`
                 : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`;
@@ -278,14 +271,10 @@ const TopBar = ({ toggleSidebar }) => {
             ? res.cancelledAt || res.updatedAt || res.createdAt
             : status === 'expired'
               ? res.expiredAt || res.updatedAt || res.createdAt
-              : isToModify
-                ? res.modificationRequestedAt || res.updatedAt || res.createdAt
               : res.updatedAt || res.createdAt;
           newNotifs.push({
-            id: isToModify
-              ? `${res.id}-to_modify-${latestActionLog?.id || notificationTime || ''}`
-              : `${res.id}-${status}`,
-            type: notificationType,
+            id: `${res.id}-${status}`,
+            type: status,
             title: notificationTitle,
             message,
             time: notificationTime,
@@ -295,10 +284,58 @@ const TopBar = ({ toggleSidebar }) => {
         }
       }
 
+      if (isRequestor && Array.isArray(res.historyLogs)) {
+        res.historyLogs
+          .filter(log => log.state === 'to_modify' && log.id)
+          .forEach((modificationRequest) => {
+            const modificationRemark = typeof modificationRequest.text === 'string'
+              ? modificationRequest.text.trim()
+              : '';
+            const actionBy = modificationRequest.approverName;
+            const actionByText = actionBy ? ` by ${actionBy}` : '';
+            const notificationTime = modificationRequest.timestamp
+              || modificationRequest.date
+              || res.modificationRequestedAt
+              || res.updatedAt
+              || res.createdAt;
+            newNotifs.push({
+              id: `${res.id}-to_modify-${modificationRequest.id}`,
+              type: 'to_modify',
+              title: 'To Modify',
+              message: `Your reservation for ${res.eventName || 'an event'} was returned for modification${actionByText}.${modificationRemark ? ` Remarks: ${modificationRemark}` : ''}`,
+              time: notificationTime,
+              rawDate: new Date(notificationTime || 0),
+              fullData: res
+            });
+          });
+      }
+
       // --- 2. APPROVER NOTIFICATIONS ---
       const myIndex = APPROVAL_ROLE_HIERARCHY.indexOf(myRoleKey);
       
       const reservationStatus = (res.status || '').toLowerCase().trim();
+      const resubmissionLogs = Array.isArray(res.historyLogs)
+        ? res.historyLogs.filter(log => (
+          log.badge === 'Resubmitted'
+          && log.modificationRequestedByRoleKey === myRoleKey
+        ))
+        : [];
+      resubmissionLogs.forEach((resubmission) => {
+        const notificationTime = resubmission.timestamp || res.updatedAt || res.createdAt;
+        const resubmissionRemark = typeof resubmission.remark === 'string'
+          ? resubmission.remark.trim()
+          : '';
+        newNotifs.push({
+          id: `${res.id}-resubmitted-${resubmission.id}`,
+          type: 'resubmitted',
+          title: 'Reservation Resubmitted',
+          message: `${requestorName} resubmitted ${res.eventName || 'a reservation'} after your modification request.${resubmissionRemark ? ` Remarks: ${resubmissionRemark}` : ''}`,
+          time: notificationTime,
+          rawDate: new Date(notificationTime || 0),
+          fullData: res
+        });
+      });
+
       if (
         myIndex > 0
         && !['rejected', 'approved', 'to modify'].includes(reservationStatus)
@@ -344,6 +381,15 @@ const TopBar = ({ toggleSidebar }) => {
       const notificationTime = isCancelled
         ? res.cancelledAt || res.updatedAt || res.createdAt
         : res.expiredAt || res.updatedAt || res.createdAt;
+      const isRequestorCancellation = isCancelled && (
+        (res.cancelledBy && res.userId && res.cancelledBy === res.userId)
+        || (res.cancelledByEmail && res.userEmail
+          && res.cancelledByEmail.toLowerCase() === res.userEmail.toLowerCase())
+        || (Array.isArray(res.historyLogs) && res.historyLogs.some(log => (
+          log.state === 'cancelled'
+          && normalizeApprovalRoleKey(log.role) === 'requestor'
+        )))
+      );
 
       if (res.userId === uid || res.userEmail === email) {
         newNotifs.push({
@@ -359,7 +405,10 @@ const TopBar = ({ toggleSidebar }) => {
         });
       }
 
-      if (isCancelled && ['mis', 'mis admin', 'building admin', 'super admin'].includes(myRoleKey)) {
+      if (
+        isRequestorCancellation
+        && ['mis', 'mis admin', 'building admin', 'super admin'].includes(myRoleKey)
+      ) {
         const cancellationRemark = typeof res.cancellationRemark === 'string'
           ? res.cancellationRemark.trim()
           : '';
@@ -475,6 +524,7 @@ const TopBar = ({ toggleSidebar }) => {
                           {notif.type === 'action' && <div className="notif-avatar bg-blue">ℹ</div>}
                           {notif.type === 'rejected' && <div className="notif-avatar bg-red">✕</div>}
                           {notif.type === 'to_modify' && <div className="notif-avatar bg-yellow">✎</div>}
+                          {notif.type === 'resubmitted' && <div className="notif-avatar bg-blue">↻</div>}
                           {notif.type === 'expired' && <div className="notif-avatar bg-charcoal">!</div>}
                           {notif.type === 'cancelled' && <div className="notif-avatar bg-gray">×</div>}
                           
@@ -530,7 +580,13 @@ const TopBar = ({ toggleSidebar }) => {
                     ✕
                 </button>
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
-                    <PendingRequest data={selectedRequest} />
+                    <PendingRequest
+                      data={selectedRequest}
+                      onEditReservation={(reservationId) => {
+                        setSelectedRequest(null);
+                        navigate(`/reserve?edit=${encodeURIComponent(reservationId)}`);
+                      }}
+                    />
                 </div>
             </div>
         </div>
