@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationActive } from '../services/reservationStatus';
@@ -197,6 +197,8 @@ const DashboardKpis = ({ metrics, pendingApprovals, isAdminDashboard }) => (
 );
 
 const Dashboard = ({ currentUserRole }) => {
+  const [searchParams, setSearchParams] = useSearchParams();
+  const dashboardSearchQuery = searchParams.get('search') || '';
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [equipmentData, setEquipmentData] = useState([]);
@@ -207,7 +209,7 @@ const Dashboard = ({ currentUserRole }) => {
   const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [reservationSearchFilters, setReservationSearchFilters] = useState({
-    query: '',
+    query: dashboardSearchQuery,
     status: 'all',
     source: 'all',
     startDate: '',
@@ -221,6 +223,14 @@ const Dashboard = ({ currentUserRole }) => {
     endTime: '',
     status: 'all'
   });
+
+  const closeDashboardSearch = () => {
+    setSearchParams((current) => {
+      const next = new URLSearchParams(current);
+      next.delete('search');
+      return next;
+    }, { replace: true });
+  };
 
   useEffect(() => {
     return auth.onAuthStateChanged((user) => {
@@ -354,8 +364,7 @@ const Dashboard = ({ currentUserRole }) => {
         return name.includes(query)
           || email.includes(query)
           || (normalizedPhoneQuery && phone.replace(/\D/g, '').includes(normalizedPhoneQuery));
-      })
-      .slice(0, 8);
+      });
   }, [usersData, reservationSearchFilters.query]);
 
   const todayKey = toDateInputValue(new Date());
@@ -780,7 +789,7 @@ const Dashboard = ({ currentUserRole }) => {
         </div>
       </header>
 
-      <section className="dashboard-operations" aria-label="Dashboard operations and search">
+      <section className="dashboard-operations" aria-label="Dashboard operations">
         {isAdminDashboard && hasAnalyticsDashboard && (
           <DashboardFilters
             filters={filters}
@@ -928,10 +937,32 @@ const Dashboard = ({ currentUserRole }) => {
           </article>
         )}
 
-          <section className="dashboard-panel reservation-search-panel" aria-label="Reservation search">
+          {dashboardSearchQuery && (
+            <div
+              className="dashboard-search-modal-overlay"
+              role="presentation"
+              onMouseDown={(event) => {
+                if (event.target === event.currentTarget) closeDashboardSearch();
+              }}
+            >
+              <section
+                className="dashboard-search-modal"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="dashboard-search-title"
+              >
+                <button
+                  type="button"
+                  className="dashboard-search-modal-close"
+                  aria-label="Close dashboard search"
+                  onClick={closeDashboardSearch}
+                >
+                  ×
+                </button>
+                <div className="dashboard-panel reservation-search-panel">
             <div className="panel-heading">
               <div>
-                <h2>Search</h2>
+                <h2 id="dashboard-search-title">Search</h2>
                 <p>Search active and archived records by reference, event, people, date, time, facility, or equipment.</p>
               </div>
               <span className="panel-total">
@@ -1027,14 +1058,16 @@ const Dashboard = ({ currentUserRole }) => {
             <button
               className="filter-reset reservation-search-reset"
               type="button"
-              onClick={() => setReservationSearchFilters({
-                query: '',
-                status: 'all',
-                source: 'all',
-                startDate: '',
-                endDate: '',
-                sort: 'latest'
-              })}
+              onClick={() => {
+                setReservationSearchFilters({
+                  query: '',
+                  status: 'all',
+                  source: 'all',
+                  startDate: '',
+                  endDate: '',
+                  sort: 'latest'
+                });
+              }}
             >
               Clear search and filters
             </button>
@@ -1125,7 +1158,10 @@ const Dashboard = ({ currentUserRole }) => {
             ) : (
               <p className="panel-empty">No reservations match the current search and filters.</p>
             )}
-          </section>
+                </div>
+              </section>
+            </div>
+          )}
       </section>
 
       {hasAnalyticsDashboard ? (

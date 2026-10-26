@@ -302,6 +302,29 @@ $red-main: #EF4444;
           border: 0.0667rem solid #CBD5E1;
         }
       }
+
+      .profile-phone-input {
+        position: relative;
+        display: flex;
+        align-items: center;
+
+        > span {
+          position: absolute;
+          left: 1.0667rem;
+          z-index: 1;
+          color: $text-dark;
+          pointer-events: none;
+        }
+
+        input {
+          padding-left: 2.65rem;
+        }
+      }
+
+      .profile-phone-error {
+        color: $red-main;
+        font-size: calc(var(--font-body) * 0.85);
+      }
     }
   }
 

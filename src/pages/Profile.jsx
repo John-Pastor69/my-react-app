@@ -9,6 +9,14 @@ import '../styles/Profile.scss';
 
 const MAX_GIF_SIZE = 10 * 1024 * 1024;
 
+const normalizePhoneNumber = (value) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('09')) return digits.slice(0, 11);
+  if (digits.startsWith('639')) return `0${digits.slice(2, 12)}`;
+  if (digits.startsWith('9')) return `0${digits.slice(0, 10)}`;
+  return digits ? `09${digits.slice(-9)}` : '09';
+};
+
 const Profile = ({ currentUserRole }) => {
   const [searchParams] = useSearchParams();
   const requestedProfileId = searchParams.get('userId');
@@ -121,7 +129,7 @@ const Profile = ({ currentUserRole }) => {
               dateJoined: joinedDate || 'N/A', 
               officeLocation: data.officeLocation || '',
               department: data.department || '',
-              phone: data.phone || '',
+              phone: normalizePhoneNumber(data.phone),
               avatarUrl: data.avatarUrl || '',
               bannerUrl: data.bannerUrl || ''
             }));
@@ -144,7 +152,12 @@ const Profile = ({ currentUserRole }) => {
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
-    const sanitizedValue = name === 'phone' ? value.replace(/[^0-9]/g, '').slice(0, 11) : value;
+    let sanitizedValue = value;
+    if (name === 'phone') {
+      const digits = value.replace(/\D/g, '');
+      const nationalDigits = digits.startsWith('09') ? digits.slice(2) : digits;
+      sanitizedValue = `09${nationalDigits.slice(0, 9)}`;
+    }
     setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
   };
 
@@ -185,6 +198,11 @@ const Profile = ({ currentUserRole }) => {
 
   const handleSave = async () => {
     if (!isEditing) return;
+
+    if (!/^09\d{9}$/.test(formData.phone)) {
+      setSaveError('Enter a complete 11-digit phone number starting with 09.');
+      return;
+    }
     
     setIsSaving(true);
     setSaveSuccess(false);
@@ -501,7 +519,34 @@ const Profile = ({ currentUserRole }) => {
               </div>
               <div className="input-group">
                 <label>PHONE NUMBER</label>
-                <input type="text" name="phone" value={formData.phone} onChange={handleInputChange} maxLength={11} readOnly={!isEditing} placeholder="09XX XXX XXXX" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
+                {isEditing ? (
+                  <div className="profile-phone-input">
+                    <span aria-hidden="true">09</span>
+                    <input
+                      type="tel"
+                      inputMode="numeric"
+                      name="phone"
+                      value={formData.phone.slice(2)}
+                      onChange={handleInputChange}
+                      maxLength={9}
+                      aria-label="Phone number, remaining 9 digits after 09"
+                      placeholder="XXX XXX XXX"
+                      className="profile-dynamic-input editing"
+                    />
+                  </div>
+                ) : (
+                  <input
+                    type="text"
+                    name="phone"
+                    value={formData.phone}
+                    readOnly
+                    placeholder="09XX XXX XXXX"
+                    className="profile-dynamic-input"
+                  />
+                )}
+                {isEditing && saveError && !/^09\d{9}$/.test(formData.phone) && (
+                  <span className="profile-phone-error">{saveError}</span>
+                )}
               </div>
               {formData.role?.toLowerCase() !== 'requestor' && (
                 <div className="input-group">

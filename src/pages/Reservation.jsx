@@ -33,7 +33,7 @@ import '../styles/Reservation.scss';
 const initialFormState = {
   fullName: '', 
   requestorTypes: [],
-  contactNumber: '', 
+  contactNumber: '09',
   emailAddress: '', 
   eventName: '', 
   expectedParticipants: '', 
@@ -56,7 +56,19 @@ const parseOptionalCapacity = (value) => {
   return Number.isInteger(capacity) && capacity > 0 ? capacity : null;
 };
 
+const getEndorserNameWithoutFacultySuffix = (name) => (
+  sanitizeAlphabeticName(name.replace(/\s*\(Faculty\)\s*/gi, ' ').trim())
+);
+
 const sanitizeAlphabeticName = (value) => value.replace(/[^A-Za-z ]/g, '');
+
+const normalizeContactNumber = (value) => {
+  const digits = String(value || '').replace(/\D/g, '');
+  if (digits.startsWith('09')) return digits.slice(0, 11);
+  if (digits.startsWith('639')) return `0${digits.slice(2, 12)}`;
+  if (digits.startsWith('9')) return `0${digits.slice(0, 10)}`;
+  return `09${digits.slice(-9)}`;
+};
 
 const canSkipReservationLeadTime = (role) => {
   const normalizedRole = (role || '').toLowerCase().trim().replace(/_/g, ' ');
@@ -255,7 +267,9 @@ const Reservation = () => {
             setFormData(prev => ({
               ...prev,
               fullName: prev.fullName || cleanName,
-              contactNumber: prev.contactNumber || userData.phone || '',
+              contactNumber: prev.contactNumber !== '09'
+                ? prev.contactNumber
+                : normalizeContactNumber(userData.phone),
               emailAddress: normalizedRole === 'super admin'
                 ? 'null@gmail.com'
                 : prev.emailAddress || userData.email || user.email || '',
@@ -315,7 +329,7 @@ const Reservation = () => {
           requestorTypes: Array.isArray(reservation.requestorTypes)
             ? reservation.requestorTypes.slice(0, 1)
             : [],
-          contactNumber: reservation.contactNumber || '',
+          contactNumber: normalizeContactNumber(reservation.contactNumber),
           emailAddress: reservation.emailAddress || '',
           eventName: sanitizeAlphabeticName(reservation.eventName || ''),
           expectedParticipants: String(reservation.expectedParticipants || ''),
@@ -557,6 +571,17 @@ const Reservation = () => {
   const selectedSchedule = reservationsData.find(
     (reservation) => reservation.id === selectedScheduleId
   );
+  const normalizedCurrentRole = userRole.replace(/_/g, ' ').trim().toLowerCase();
+  const isSelectedScheduleOwner = Boolean(currentUser && selectedSchedule && (
+    selectedSchedule.userId === currentUser.uid
+    || (
+      (selectedSchedule.userEmail || selectedSchedule.emailAddress || '').trim().toLowerCase()
+      && (selectedSchedule.userEmail || selectedSchedule.emailAddress || '').trim().toLowerCase()
+        === (currentUser.email || '').trim().toLowerCase()
+    )
+  ));
+  const canViewSelectedScheduleIdentity = !['requestor', 'user'].includes(normalizedCurrentRole)
+    || isSelectedScheduleOwner;
 
   // --- CALCULATE DURATION ---
   useEffect(() => {
@@ -594,7 +619,11 @@ const Reservation = () => {
       return updated;
     });
 
-    if (inputValue && String(inputValue).trim() !== '') {
+    if (
+      inputValue
+      && String(inputValue).trim() !== ''
+      && (field !== 'contactNumber' || /^09\d{9}$/.test(inputValue))
+    ) {
       clearMissingField(field);
     }
 
@@ -606,7 +635,7 @@ const Reservation = () => {
   const handleEndorserSelect = (endorser) => {
     setFormData(prev => ({
       ...prev,
-      endorserName: sanitizeAlphabeticName(endorser.cleanName),
+      endorserName: getEndorserNameWithoutFacultySuffix(endorser.cleanName),
       endorserDesignation: endorser.department || prev.endorserDesignation,
       endorserEmail: endorser.email
     }));
@@ -902,7 +931,7 @@ const Reservation = () => {
     // Validate all required fields in top-to-bottom order
     const requiredOrder = [
       { key: 'fullName', missing: !formData.fullName.trim() },
-      { key: 'contactNumber', missing: !formData.contactNumber.trim() },
+      { key: 'contactNumber', missing: !/^09\d{9}$/.test(formData.contactNumber) },
       { key: 'emailAddress', missing: !formData.emailAddress.trim() },
       ...(userRole === 'requestor' ? [
         { key: 'requestorTypes', missing: formData.requestorTypes.length === 0 }
@@ -1270,17 +1299,27 @@ const Reservation = () => {
             ref={el => fieldRefs.current.contactNumber = el}
           >
             <label>Contact Number <span className="req">*</span></label>
-            <div className="input-with-icon left-icon">
+            <div className="input-with-icon left-icon contact-number-input">
               <i className="ph ph-phone"></i>
+              <span className="contact-number-prefix" aria-hidden="true">09</span>
               <input
-                type="text" 
-                value={formData.contactNumber} 
-                onChange={(e) => handleInputChange('contactNumber', e.target.value.replace(/\D/g, '').slice(0, 11))} 
-                maxLength={11}
-                placeholder="09XX XXX XXXX" 
+                type="tel"
+                inputMode="numeric"
+                value={formData.contactNumber.slice(2)}
+                onChange={(e) => {
+                  const digits = e.target.value.replace(/\D/g, '');
+                  const nationalDigits = digits.startsWith('09') ? digits.slice(2) : digits;
+                  handleInputChange('contactNumber', `09${nationalDigits.slice(0, 9)}`);
+                }}
+                maxLength={9}
+                aria-label="Contact number, remaining 9 digits after 09"
+                placeholder="XXX XXX XXX"
                 className={missingFields.contactNumber ? 'input-error' : ''}
               />
             </div>
+            {missingFields.contactNumber && (
+              <span className="field-error">Enter a complete 11-digit mobile number starting with 09.</span>
+            )}
           </div>
           <div 
             className={`input-group full-width ${missingFields.emailAddress ? 'field-missing' : ''}`}
@@ -1338,7 +1377,14 @@ const Reservation = () => {
                             className="autocomplete-item"
                             onClick={() => handleEndorserSelect(endorser)}
                           >
-                            <span className="endorser-dropdown-name">{endorser.cleanName}</span>
+                            <span className="endorser-dropdown-name-row">
+                              <span className="endorser-dropdown-name">
+                                {endorser.cleanName.replace(/\s*\(Faculty\)\s*/gi, ' ').replace(/\s+/g, ' ').trim()}
+                              </span>
+                              {/\(Faculty\)/i.test(endorser.cleanName) && (
+                                <span className="endorser-dropdown-role">Faculty</span>
+                              )}
+                            </span>
                             <span className="endorser-dropdown-email">{endorser.email}</span>
                           </div>
                       ))}
@@ -2067,7 +2113,11 @@ const Reservation = () => {
             >
               ×
             </button>
-            <ReservationDetails data={selectedSchedule} />
+            <ReservationDetails
+              data={selectedSchedule}
+              showRequestorInfo={canViewSelectedScheduleIdentity}
+              showApprovalHistory={canViewSelectedScheduleIdentity}
+            />
           </div>
         </div>
       )}

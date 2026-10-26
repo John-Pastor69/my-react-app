@@ -196,6 +196,7 @@ $orange-main: #F59E0B;
     }
 
     input[type='text'], 
+    input[type='tel'],
     input[type='email'], 
     input[type='number'], 
     input[type='time'],
@@ -259,6 +260,22 @@ $orange-main: #F59E0B;
       &.left-icon { 
         i { left: 0.75rem; } 
         input, select { padding-left: 2.25rem; } 
+      }
+
+      &.contact-number-input {
+        .contact-number-prefix {
+          position: absolute;
+          z-index: 1;
+          top: 50%;
+          left: 2.25rem;
+          transform: translateY(-50%);
+          color: $text-muted;
+          pointer-events: none;
+        }
+
+        input {
+          padding-left: 3.5rem;
+        }
       }
 
       &.right-icon { 
@@ -399,10 +416,30 @@ $orange-main: #F59E0B;
             background-color: #F8FAFC;
           }
 
+          .endorser-dropdown-name-row {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.75rem;
+            min-width: 0;
+          }
+
           .endorser-dropdown-name {
+            flex: 1 1 auto;
+            min-width: 0;
             font-size: var(--font-body);
             font-weight: 600;
             color: $text-dark;
+            overflow-wrap: anywhere;
+          }
+
+          .endorser-dropdown-role {
+            flex: 0 0 auto;
+            margin-left: auto;
+            color: $text-muted;
+            font-size: 0.75rem;
+            font-weight: 600;
+            white-space: nowrap;
           }
 
           .endorser-dropdown-email {

@@ -310,8 +310,7 @@ main,
       "dashboard-kpis"
       "approval"
       "upcoming"
-      "resource-alerts"
-      "reservation-search";
+      "resource-alerts";
 
     .dashboard-filters {
       grid-area: dashboard-filters;
@@ -323,23 +322,74 @@ main,
     }
     .approval-panel { grid-area: approval; }
     .upcoming-panel { grid-area: upcoming; }
-    .reservation-search-panel { grid-area: reservation-search; }
     .resource-alerts-panel { grid-area: resource-alerts; }
   }
 
   &.staff-dashboard .dashboard-operations {
     grid-template-areas:
       "approval"
-      "upcoming"
-      "reservation-search";
+      "upcoming";
 
     .approval-panel { grid-area: approval; }
     .upcoming-panel { grid-area: upcoming; }
-    .reservation-search-panel { grid-area: reservation-search; }
   }
 
   .reservation-search-panel {
     margin-bottom: 1rem;
+  }
+
+  .dashboard-search-modal-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 1200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: rgba(15, 23, 42, 0.62);
+  }
+
+  .dashboard-search-modal {
+    position: relative;
+    width: min(72rem, 100%);
+    max-height: min(92vh, 60rem);
+    overflow: auto;
+    border-radius: 0.85rem;
+    background: $surface;
+    box-shadow: 0 1.25rem 3rem rgba(15, 23, 42, 0.24);
+
+    .reservation-search-panel {
+      margin: 0;
+      padding: 1.5rem;
+    }
+
+    .panel-heading {
+      padding-right: 2.5rem;
+    }
+  }
+
+  .dashboard-search-modal-close {
+    position: absolute;
+    top: 0.65rem;
+    right: 0.65rem;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border: 1px solid $border;
+    border-radius: 50%;
+    background: $surface;
+    color: $ink;
+    font-size: 1.4rem;
+    line-height: 1;
+    cursor: pointer;
+    box-shadow: 0 2px 8px rgba(15, 23, 42, 0.12);
+
+    &:hover {
+      background: #f1f5f9;
+    }
   }
 
   .reservation-search-fields {
@@ -1393,8 +1443,7 @@ main,
       "dashboard-filters dashboard-filters"
       "dashboard-kpis dashboard-kpis"
       "approval upcoming"
-      "resource-alerts resource-alerts"
-      "reservation-search reservation-search";
+      "resource-alerts resource-alerts";
 
     .dashboard-filters {
       grid-area: dashboard-filters;
@@ -1418,16 +1467,10 @@ main,
       grid-area: resource-alerts;
     }
 
-    .reservation-search-panel {
-      grid-area: reservation-search;
-      margin-bottom: 0;
-    }
   }
 
   .mis-dashboard-content.staff-dashboard .dashboard-operations {
-    grid-template-areas:
-      "approval upcoming"
-      "reservation-search reservation-search";
+    grid-template-areas: "approval upcoming";
 
     .approval-panel {
       grid-area: approval;
@@ -1437,10 +1480,6 @@ main,
       grid-area: upcoming;
     }
 
-    .reservation-search-panel {
-      grid-area: reservation-search;
-      margin-bottom: 0;
-    }
   }
 
   .mis-dashboard-content.staff-dashboard {
@@ -1457,10 +1496,6 @@ main,
   }
 
   .mis-dashboard-content {
-    .reservation-search-panel {
-      grid-column: 1 / -1;
-    }
-
     .resource-alerts-panel {
       grid-column: 1 / -1;
     }

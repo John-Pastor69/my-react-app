@@ -1,5 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Bell, Menu, Trash2 } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { createPortal } from 'react-dom';
+import { Bell, CalendarDays, ChevronDown, ChevronUp, Menu, Search, Trash2, UserRound } from 'lucide-react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
@@ -89,6 +90,13 @@ const TopBar = ({ toggleSidebar }) => {
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null); 
   const notifRef = useRef(null);
+  const searchRef = useRef(null);
+  const [globalSearchQuery, setGlobalSearchQuery] = useState('');
+  const [isGlobalSearchOpen, setIsGlobalSearchOpen] = useState(false);
+  const [isCompactViewport, setIsCompactViewport] = useState(
+    () => window.matchMedia('(max-width: 64rem)').matches
+  );
+  const [mobileSearchContainer, setMobileSearchContainer] = useState(null);
 
   // Local storage for read notifications persistence
   const [readNotifs, setReadNotifs] = useState(() => {
@@ -107,10 +115,71 @@ const TopBar = ({ toggleSidebar }) => {
 
   const [currentUser, setCurrentUser] = useState(null);
   const archivingReservationsRef = useRef(new Set());
+  const normalizedRole = normalizeApprovalRoleKey(userData.role);
+  const canOpenDashboardSearch = !['requestor', 'user'].includes(normalizedRole);
+  const canSearchUsers = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRole);
+  const globalSearchResults = useMemo(() => {
+    const query = globalSearchQuery.trim().toLowerCase();
+    if (query.length < 2) return { users: [], reservations: [] };
+
+    const reservations = [...new Map(
+      [...historyData, ...reservationsData].map((reservation) => [reservation.id, reservation])
+    ).values()].filter((reservation) => {
+      const searchableText = [
+        reservation.refNo,
+        reservation.eventName,
+        reservation.title,
+        reservation.fullName,
+        reservation.userEmail,
+        reservation.userRole,
+        reservation.endorserName,
+        reservation.endorserEmail,
+        reservation.eventDate,
+        reservation.endDate,
+        reservation.startTime,
+        reservation.endTime,
+        reservation.status,
+        reservation.purpose,
+        reservation.eventType,
+        JSON.stringify(reservation)
+      ].filter(Boolean).join(' ').toLowerCase();
+      return searchableText.includes(query);
+    });
+    const users = canSearchUsers
+      ? usersData.filter((user) => (
+        normalizeApprovalRoleKey(user.role) !== 'super admin'
+        && [
+          user.name,
+          user.email,
+          user.phone
+        ].filter(Boolean).join(' ').toLowerCase().includes(query)
+      ))
+      : [];
+
+    return { users, reservations };
+  }, [globalSearchQuery, historyData, reservationsData, usersData, canSearchUsers]);
+  const openDashboardSearch = () => {
+    const query = globalSearchQuery.trim();
+    if (!query || !canOpenDashboardSearch) return;
+    setIsGlobalSearchOpen(false);
+    navigate(`/dashboard?search=${encodeURIComponent(query)}`);
+  };
 
   useEffect(() => {
     const intervalId = setInterval(() => setCurrentDateTime(new Date()), 60_000);
     return () => clearInterval(intervalId);
+  }, []);
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia('(max-width: 64rem)');
+    const updateViewport = () => setIsCompactViewport(mediaQuery.matches);
+    updateViewport();
+    mediaQuery.addEventListener('change', updateViewport);
+    return () => mediaQuery.removeEventListener('change', updateViewport);
+  }, []);
+
+  useEffect(() => {
+    setMobileSearchContainer(document.getElementById('sidebar-mobile-search'));
   }, []);
 
   // Close notification dropdown when clicking outside
@@ -118,6 +187,9 @@ const TopBar = ({ toggleSidebar }) => {
     const handleClickOutside = (event) => {
       if (notifRef.current && !notifRef.current.contains(event.target)) {
         setIsNotifOpen(false);
+      }
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setIsGlobalSearchOpen(false);
       }
     };
     document.addEventListener('mousedown', handleClickOutside);
@@ -460,13 +532,157 @@ const TopBar = ({ toggleSidebar }) => {
     localStorage.setItem('facilityResDeletedNotifs', JSON.stringify(updatedDeleted));
   };
 
+  const globalSearchControl = canOpenDashboardSearch ? (
+    <div className="global-search-wrapper" ref={searchRef}>
+      <form
+        className="global-search-bar"
+        role="search"
+        onSubmit={(event) => {
+          event.preventDefault();
+          openDashboardSearch();
+        }}
+      >
+        <Search size={18} aria-hidden="true" />
+        <input
+          type="search"
+          aria-label="Search users and reservations"
+          aria-expanded={isGlobalSearchOpen}
+          placeholder="Search"
+          value={globalSearchQuery}
+          onFocus={() => setIsGlobalSearchOpen(true)}
+          onChange={(event) => {
+            setGlobalSearchQuery(event.target.value);
+            setIsGlobalSearchOpen(true);
+          }}
+        />
+        <button
+          type="button"
+          className="global-search-toggle"
+          aria-label={isGlobalSearchOpen ? 'Close search results' : 'Open search results'}
+          onClick={() => setIsGlobalSearchOpen((isOpen) => !isOpen)}
+        >
+          {isGlobalSearchOpen ? <ChevronUp size={18} /> : <ChevronDown size={18} />}
+        </button>
+      </form>
+
+      {isGlobalSearchOpen && (
+        <div className="global-search-dropdown">
+          {globalSearchQuery.trim().length < 2 ? (
+            <div className="global-search-empty">
+              <Search size={36} aria-hidden="true" />
+              <span>Search users and reservations</span>
+              <small>Enter at least 2 characters to see results.</small>
+            </div>
+          ) : (
+            <>
+              {canSearchUsers && globalSearchResults.users.length > 0 && (
+                <section className="global-search-group" aria-label="Matching users">
+                  <div className="global-search-group-heading">
+                    <strong>Users</strong>
+                    <span>{globalSearchResults.users.length} matches</span>
+                  </div>
+                  <div className="global-search-user-list">
+                    {globalSearchResults.users.slice(0, 3).map((user) => (
+                      <button
+                        type="button"
+                        className="global-search-user"
+                        key={user.id}
+                        onClick={() => {
+                          setIsGlobalSearchOpen(false);
+                          navigate(`/account?userId=${encodeURIComponent(user.id)}`);
+                        }}
+                      >
+                        <span className="global-search-user-avatar">
+                          {user.avatarUrl
+                            ? <img src={user.avatarUrl} alt="" />
+                            : (user.name || user.email || '?').charAt(0).toUpperCase()}
+                        </span>
+                        <strong>{user.name || 'Unnamed user'}</strong>
+                        <span>{user.email || 'No email listed'}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {globalSearchResults.users.length > 3 && (
+                    <button
+                      type="button"
+                      className="global-search-view-more"
+                      onClick={openDashboardSearch}
+                    >
+                      View {globalSearchResults.users.length - 3} more
+                    </button>
+                  )}
+                </section>
+              )}
+
+              {globalSearchResults.reservations.length > 0 && (
+                <section className="global-search-group" aria-label="Matching reservations">
+                  <div className="global-search-group-heading">
+                    <strong>Reservations</strong>
+                    <span>{globalSearchResults.reservations.length} matches</span>
+                  </div>
+                  <div className="global-search-reservation-list">
+                    {globalSearchResults.reservations.slice(0, 3).map((reservation) => (
+                      <button
+                        type="button"
+                        className="global-search-reservation"
+                        key={reservation.id}
+                        onClick={openDashboardSearch}
+                      >
+                        <CalendarDays size={18} aria-hidden="true" />
+                        <span>
+                          <strong>{reservation.eventName || reservation.title || 'Untitled reservation'}</strong>
+                          <small>
+                            {reservation.refNo || 'No reference'}
+                            {' · '}{reservation.fullName || reservation.userEmail || 'Unknown user'}
+                            {' · '}{reservation.status || 'Pending'}
+                          </small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                  {globalSearchResults.reservations.length > 3 && (
+                    <button
+                      type="button"
+                      className="global-search-view-more"
+                      onClick={openDashboardSearch}
+                    >
+                      View {globalSearchResults.reservations.length - 3} more
+                    </button>
+                  )}
+                </section>
+              )}
+
+              {globalSearchResults.users.length === 0
+                && globalSearchResults.reservations.length === 0 && (
+                  <div className="global-search-no-results">
+                    <UserRound size={22} aria-hidden="true" />
+                    <span>No matching users or reservations.</span>
+                  </div>
+                )}
+
+              <button
+                type="button"
+                className="global-search-open-dashboard"
+                onClick={openDashboardSearch}
+              >
+                Open full Dashboard search
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  ) : null;
+
   return (
     <>
       <header className="topbar">
         <div className="header-titles">
-          <button className="mobile-menu-btn" onClick={toggleSidebar}>
+          <button className="mobile-menu-btn" onClick={toggleSidebar} aria-label="Open menu">
             <Menu size={24} />
           </button>
+
+        {!isCompactViewport && globalSearchControl}
         </div>
 
         <div className="header-actions">
@@ -566,6 +782,13 @@ const TopBar = ({ toggleSidebar }) => {
           </Link>
         </div>
       </header>
+
+      {isCompactViewport && mobileSearchContainer && globalSearchControl
+        ? createPortal(
+          <div className="topbar mobile-search-portal">{globalSearchControl}</div>,
+          mobileSearchContainer
+        )
+        : null}
 
       {/* --- MODAL POPUP --- */}
       {selectedRequest && (

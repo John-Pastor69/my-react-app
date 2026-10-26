@@ -58,6 +58,7 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
     <aside className={`sidebar ${isOpen ? 'open' : ''}`}>
       <div className="mobile-sidebar-header">
         <span className="mobile-menu-text">Menu</span>
+        <div className="mobile-sidebar-search" id="sidebar-mobile-search" />
         <button className="close-btn" onClick={() => setIsOpen(false)}>
           <X size={28} />
         </button>

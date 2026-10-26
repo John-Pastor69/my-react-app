@@ -37,7 +37,13 @@ const formatEventDateRange = (startDateStr, numDays) => {
   return `${startFormatted} - ${endFormatted}`;
 };
 
-const ReservationDetails = ({ data, additionalActions = null }) => {
+const ReservationDetails = ({
+  data,
+  additionalActions = null,
+  showRequestorInfo = true,
+  showApprovalTracker = true,
+  showApprovalHistory = true
+}) => {
   const [currentData, setCurrentData] = useState(data);
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
@@ -522,32 +528,34 @@ const ReservationDetails = ({ data, additionalActions = null }) => {
           </div>
 
           {/* Card 3: Requestor Information */}
-          <div className="card">
-            <h3><span className="card-icon">👤</span> Requestor Information</h3>
-            <div className="info-grid">
-              <div>
-                <label>FULL NAME</label>
-                <div className="val font-bold word-break">{requestorName}</div>
-                <label>REQUESTOR TYPE</label>
-                <div className="val word-break">{requestorTypeDisplay}</div>
-              </div>
-              <div>
-                <label>CONTACT NUMBER</label>
-                <div className="val word-break">{contactNumber}</div>
-              </div>
-              <div>
-                <label>EMAIL ADDRESS</label>
-                <div className="val word-break">{email}</div>
-              </div>
-              <div>
-                <label>DATE SUBMITTED</label>
-                <div className="val">{dateSubmitted}</div>
+          {showRequestorInfo && (
+            <div className="card">
+              <h3><span className="card-icon">👤</span> Requestor Information</h3>
+              <div className="info-grid">
+                <div>
+                  <label>FULL NAME</label>
+                  <div className="val font-bold word-break">{requestorName}</div>
+                  <label>REQUESTOR TYPE</label>
+                  <div className="val word-break">{requestorTypeDisplay}</div>
+                </div>
+                <div>
+                  <label>CONTACT NUMBER</label>
+                  <div className="val word-break">{contactNumber}</div>
+                </div>
+                <div>
+                  <label>EMAIL ADDRESS</label>
+                  <div className="val word-break">{email}</div>
+                </div>
+                <div>
+                  <label>DATE SUBMITTED</label>
+                  <div className="val">{dateSubmitted}</div>
+                </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* Card 4: Endorser Information (Conditional) */}
-          {hasEndorser && (
+          {showRequestorInfo && hasEndorser && (
             <div className="card">
               <div className="endorser-header-row">
                 <h3><span className="card-icon">🤵</span> Endorser Information</h3>
@@ -624,7 +632,8 @@ const ReservationDetails = ({ data, additionalActions = null }) => {
       </div>
 
       {/* Approval Tracker */}
-      <div className="card tracker-card">
+      {showApprovalTracker && (
+        <div className="card tracker-card">
         <h3>📊 Approval Tracker</h3>
 
         <div className="pipeline-container">
@@ -649,10 +658,12 @@ const ReservationDetails = ({ data, additionalActions = null }) => {
             <span><span className="dot dot-queued">●</span> Queued</span>
           </div>
         </div>
-      </div>
+        </div>
+      )}
 
       {/* History Logs */}
-      <div className="card history-card">
+      {showApprovalHistory && (
+        <div className="card history-card">
         <h3>📑 Approval History & Remarks</h3>
 
         <div className="history-list">
@@ -696,7 +707,8 @@ const ReservationDetails = ({ data, additionalActions = null }) => {
              </div>
           )}
         </div>
-      </div>
+        </div>
+      )}
     </div>
   );
 };
