@@ -1,5 +1,20 @@
 export const LOGOUT_EVENT_KEY = 'facilityResLogout';
 
+// A lifetime lock is owned by this document, never by copied sessionStorage.
+// The browser releases it automatically when the document closes or crashes.
+export function acquireTabAccess(uid, locks = navigator.locks) {
+  if (!locks) return Promise.reject(new Error('This browser does not support secure single-tab access.'));
+  return new Promise((resolve, reject) => {
+    locks.request(`facilityResTab:${uid}`, { ifAvailable: true }, async lock => {
+      if (!lock) {
+        resolve(null);
+        return;
+      }
+      await new Promise(release => resolve({ uid, release }));
+    }).catch(reject);
+  });
+}
+
 export async function getBrowserSessionId(uid) {
   const key = `active_session_${uid}`;
   const readOrCreate = () => {

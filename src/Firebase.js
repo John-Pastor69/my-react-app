@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, OAuthProvider } from 'firebase/auth';
+import { initializeAuth, browserSessionPersistence, browserPopupRedirectResolver, OAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from "firebase/storage";
 
@@ -15,7 +15,12 @@ const firebaseConfig = {
 
 const app = initializeApp(firebaseConfig);
 
-export const auth = getAuth(app);
+// Keep authentication inside this tab instead of automatically signing in all
+// other tabs through Firebase's default local persistence.
+export const auth = initializeAuth(app, {
+  persistence: browserSessionPersistence,
+  popupRedirectResolver: browserPopupRedirectResolver,
+});
 export const db = getFirestore(app);
 
 // Initialize the Microsoft Provider

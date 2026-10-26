@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
-import { clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY } from './services/browserSession';
+import { acquireTabAccess, clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY } from './services/browserSession';
 
 import SideBar from './pages/SideBar';
 import TopBar from './pages/TopBar'; 
@@ -29,6 +29,7 @@ export default function App() {
   const initialRedirectDone = useRef(false);
   const isLoggingOut = useRef(false);
   const sessionUid = useRef(null);
+  const tabAccess = useRef(null);
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -38,6 +39,7 @@ export default function App() {
   const [userRole, setUserRole] = useState('requestor');
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
+  const [tabBlocked, setTabBlocked] = useState('');
 
   // --- 2FA ENFORCEMENT STATES ---
   const [twoFactorMode, setTwoFactorMode] = useState(null); // 'setup' | 'verify' | null
@@ -58,6 +60,8 @@ export default function App() {
     try {
       await signOut(auth);
     } finally {
+      tabAccess.current?.release();
+      tabAccess.current = null;
       isLoggingOut.current = false; 
       await clearBrowserCaches();
     }
@@ -92,6 +96,37 @@ export default function App() {
         setIsAuthLoading(true);
         setTwoFactorMode(null);
         setTwoFactorSecret(null);
+        setTabBlocked('');
+        // Block duplicate tabs before reading account data or writing a session.
+        // Do not sign out a blocked tab: Firebase sign-out would evict the owner.
+        let access;
+        try {
+          if (tabAccess.current && tabAccess.current.uid !== user.uid) {
+            tabAccess.current.release();
+            tabAccess.current = null;
+          }
+          access = tabAccess.current || await acquireTabAccess(user.uid);
+        } catch (error) {
+          if (disposed || version !== authVersion) return;
+          setTabBlocked(error.message);
+          setIsAuthLoading(false);
+          await signOut(auth);
+          return;
+        }
+        if (disposed || version !== authVersion || isLoggingOut.current) {
+          access?.release();
+          return;
+        }
+        if (!access) {
+          setTabBlocked('Your account is already open in another tab. Return to that tab. To use this one, close the other tab, then reload this page and sign in.');
+          setIsAuthLoading(false);
+          // Authentication is tab-scoped, so removing this tab's credentials
+          // leaves the owner signed in.
+          await signOut(auth);
+          if (window.opener) window.close();
+          return;
+        }
+        tabAccess.current = access;
         sessionUid.current = user.uid;
         
         const isSuperAdminProvider = user.providerData.some(p => p.providerId === 'password');
@@ -115,7 +150,7 @@ export default function App() {
           
           const localSessionId = await getBrowserSessionId(user.uid);
           if (disposed || version !== authVersion || auth.currentUser !== user || isLoggingOut.current) return;
-          const isVerifiedThisSession = localStorage.getItem(`2fa_verified_${user.uid}`) === localSessionId;
+          const isVerifiedThisSession = sessionStorage.getItem(`2fa_verified_${user.uid}`) === localSessionId;
 
           const userSnap = await getDoc(userRef);
           if (disposed || version !== authVersion || auth.currentUser !== user || isLoggingOut.current) return;
@@ -227,7 +262,10 @@ export default function App() {
           if (!disposed && version === authVersion) setIsAuthLoading(false);
         }
       } else {
+        tabAccess.current?.release();
+        tabAccess.current = null;
         if (sessionUid.current) {
+          setTabBlocked('');
           clearAccountStorage();
           void clearBrowserCaches();
         }
@@ -245,10 +283,6 @@ export default function App() {
     const syncSession = (event) => {
       if (event.key === LOGOUT_EVENT_KEY && event.newValue) {
         void handleLogoutFromAnotherTab();
-      } else if (event.key === `2fa_verified_${auth.currentUser?.uid}`
-        && event.newValue === localStorage.getItem(`active_session_${auth.currentUser?.uid}`)) {
-        // Re-read the account policy before unlocking another tab.
-        window.location.reload();
       }
     };
     const handleLogoutFromAnotherTab = async () => {
@@ -262,7 +296,7 @@ export default function App() {
     window.addEventListener('storage', syncSession);
 
     const handleTabClose = () => {
-      if (auth.currentUser) {
+      if (auth.currentUser && tabAccess.current) {
         updateDoc(doc(db, 'users', auth.currentUser.uid), {
           status: 'Inactive',
           lastActive: new Date().toISOString()
@@ -271,7 +305,7 @@ export default function App() {
     };
 
     const handleVisibilityChange = () => {
-      if (auth.currentUser) {
+      if (auth.currentUser && tabAccess.current) {
         if (document.visibilityState === 'hidden') {
           updateDoc(doc(db, 'users', auth.currentUser.uid), {
             status: 'Inactive',
@@ -292,6 +326,8 @@ export default function App() {
 
     return () => {
       disposed = true;
+      tabAccess.current?.release();
+      tabAccess.current = null;
       unsubscribe();
       window.removeEventListener('storage', syncSession);
       if (heartbeatInterval) clearInterval(heartbeatInterval);
@@ -301,6 +337,18 @@ export default function App() {
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [navigate]); 
+
+  if (tabBlocked) {
+    return (
+      <main style={{ minHeight: '100vh', display: 'grid', placeItems: 'center', background: '#F8FAFC', padding: '24px' }}>
+        <section role="alert" style={{ maxWidth: '440px', textAlign: 'center', color: '#0f172a' }}>
+          <h1>Session already in use</h1>
+          <p>{tabBlocked}</p>
+          <button onClick={() => window.location.reload()}>Check again</button>
+        </section>
+      </main>
+    );
+  }
 
   if (isAuthLoading) {
     return (
@@ -323,7 +371,7 @@ export default function App() {
         uid={auth.currentUser?.uid}
         userEmail={auth.currentUser?.email}
         onSuccess={() => {
-          localStorage.setItem(`2fa_verified_${auth.currentUser.uid}`, localStorage.getItem(`active_session_${auth.currentUser.uid}`));
+          sessionStorage.setItem(`2fa_verified_${auth.currentUser.uid}`, localStorage.getItem(`active_session_${auth.currentUser.uid}`));
           
           setTwoFactorMode(null);
           setIsAuthenticated(true);

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY } from './browserSession.js';
+import { acquireTabAccess, clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY } from './browserSession.js';
 import { sanitizeEventName } from './eventName.js';
 
 const makeStorage = () => {
@@ -13,7 +13,7 @@ const makeStorage = () => {
   return storage;
 };
 
-test('tabs share a session; logout removes account data and permits a fresh session', async () => {
+test('logout removes account data and permits a fresh browser session', async () => {
   globalThis.localStorage = makeStorage();
   globalThis.sessionStorage = makeStorage();
   const [firstTab, secondTab] = await Promise.all([
@@ -37,6 +37,59 @@ test('tabs share a session; logout removes account data and permits a fresh sess
   assert.equal(localStorage.getItem(LOGOUT_EVENT_KEY), 'broadcast');
   assert.equal(localStorage.getItem('firebase:authUser'), 'managed by Firebase signOut');
   assert.notEqual(await getBrowserSessionId('account1'), firstTab);
+});
+
+// Represents the browser lock manager shared by independent documents.
+const makeLocks = () => {
+  const held = new Set();
+  return {
+    async request(name, options, callback) {
+      if (held.has(name)) {
+        assert.equal(options.ifAvailable, true);
+        return callback(null);
+      }
+      held.add(name);
+      try {
+        return await callback({ name });
+      } finally {
+        held.delete(name);
+      }
+    },
+  };
+};
+
+test('the first authenticated tab keeps access and a second cannot displace it', async () => {
+  const locks = makeLocks();
+  const first = await acquireTabAccess('same-account', locks);
+  assert.ok(first);
+  assert.equal(await acquireTabAccess('same-account', locks), null);
+  assert.equal(await acquireTabAccess('same-account', locks), null);
+  first.release();
+  await new Promise(resolve => setImmediate(resolve));
+  const next = await acquireTabAccess('same-account', locks);
+  assert.ok(next);
+  next.release();
+});
+
+test('simultaneous tab login grants exactly one owner', async () => {
+  const locks = makeLocks();
+  const tabs = await Promise.all(Array.from({ length: 5 }, () => acquireTabAccess('same-account', locks)));
+  const owners = tabs.filter(Boolean);
+  assert.equal(owners.length, 1);
+  owners[0].release();
+});
+
+test('a duplicated tab cannot bypass ownership by copying browser storage', async () => {
+  const locks = makeLocks();
+  const first = await acquireTabAccess('same-account', locks);
+  sessionStorage.setItem('active_session_same-account', 'copied-id');
+  sessionStorage.setItem('2fa_verified_same-account', 'copied-id');
+  assert.equal(await acquireTabAccess('same-account', locks), null);
+  first.release();
+});
+
+test('single-tab protection fails closed if the browser lacks Web Locks', async () => {
+  await assert.rejects(acquireTabAccess('same-account', null), /does not support/);
 });
 
 test('clears every Cache Storage entry for the site', async () => {
