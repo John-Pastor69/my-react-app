@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { lazy, Suspense, useState, useEffect, useMemo, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Bell, CalendarDays, ChevronDown, ChevronUp, Menu, Search, Trash2, UserRound } from 'lucide-react';
 import { collection, doc, onSnapshot } from 'firebase/firestore';
@@ -8,6 +8,8 @@ import PendingRequest from './PendingRequest';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { archiveExpiredApprovedReservations, isReservationEndReached } from '../services/reservationExpiration';
 import '../styles/TopBar.scss'; 
+
+const ReservationDetails = lazy(() => import('./ReservationDetails'));
 
 // Helper function to format timestamp into "X ago"
 const timeAgo = (dateInput) => {
@@ -89,6 +91,7 @@ const TopBar = ({ toggleSidebar }) => {
   const [notifications, setNotifications] = useState([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null); 
+  const [selectedReservation, setSelectedReservation] = useState(null);
   const notifRef = useRef(null);
   const searchRef = useRef(null);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
@@ -626,7 +629,10 @@ const TopBar = ({ toggleSidebar }) => {
                         type="button"
                         className="global-search-reservation"
                         key={reservation.id}
-                        onClick={openDashboardSearch}
+                        onClick={() => {
+                          setSelectedReservation(reservation);
+                          setIsGlobalSearchOpen(false);
+                        }}
                       >
                         <CalendarDays size={18} aria-hidden="true" />
                         <span>
@@ -665,7 +671,7 @@ const TopBar = ({ toggleSidebar }) => {
                 className="global-search-open-dashboard"
                 onClick={openDashboardSearch}
               >
-                Open full Dashboard search
+                Open full Search
               </button>
             </>
           )}
@@ -812,6 +818,39 @@ const TopBar = ({ toggleSidebar }) => {
                     />
                 </div>
             </div>
+        </div>
+      )}
+      {selectedReservation && (
+        <div
+          className="topbar-modal-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setSelectedReservation(null);
+          }}
+        >
+          <div className="modal-wrapper">
+            <button
+              type="button"
+              className="close-modal-btn"
+              onClick={() => setSelectedReservation(null)}
+              aria-label="Close reservation details"
+            >
+              ✕
+            </button>
+            <div
+              className="modal-content"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Reservation details"
+            >
+              <Suspense fallback={<p className="loading-text">Loading reservation details...</p>}>
+                <ReservationDetails
+                  key={selectedReservation.id}
+                  data={selectedReservation}
+                />
+              </Suspense>
+            </div>
+          </div>
         </div>
       )}
     </>
