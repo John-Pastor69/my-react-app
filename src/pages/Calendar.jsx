@@ -1,11 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from "../Firebase";
-import { collection, onSnapshot, doc, getDoc, getDocs, updateDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc, writeBatch } from "firebase/firestore";
+import { useNavigate } from 'react-router-dom';
 import "../styles/Calendar.scss";
 import ReservationDetails from './ReservationDetails';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationEndReached } from '../services/reservationExpiration';
-import { findFacilityConflict } from '../services/reservationConflicts';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -65,65 +65,8 @@ const monthNames = Array.from({ length: 12 }, (_, month) =>
   new Date(2000, month, 1).toLocaleString('default', { month: 'long' })
 );
 
-const toDateInputValue = (value) => {
-  if (!value) return '';
-  const dateString = String(value).trim();
-  if (/^\d{4}-\d{2}-\d{2}$/.test(dateString)) return dateString;
-  const parts = dateString.includes('/') ? dateString.split('/') : dateString.split('-');
-  if (parts.length !== 3 || parts.some((part) => !/^\d+$/.test(part))) return '';
-  const [month, day, year] = parts.map(Number);
-  const parsedDate = new Date(year, month - 1, day);
-  if (
-    parsedDate.getFullYear() !== year
-    || parsedDate.getMonth() !== month - 1
-    || parsedDate.getDate() !== day
-  ) return '';
-  return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
-
-const toStoredDateValue = (value) => {
-  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  return match ? `${match[2]}/${match[3]}/${match[1]}` : '';
-};
-
-const getReservationEndDateInput = (reservation) => {
-  const explicitEndDate = toDateInputValue(reservation.endDate);
-  if (explicitEndDate) return explicitEndDate;
-
-  const startDate = toDateInputValue(reservation.eventDate || reservation.date);
-  if (!startDate) return '';
-  const [year, month, day] = startDate.split('-').map(Number);
-  const endDate = new Date(year, month - 1, day);
-  endDate.setDate(endDate.getDate() + Math.max(1, Number(reservation.days) || 1) - 1);
-  return `${endDate.getFullYear()}-${String(endDate.getMonth() + 1).padStart(2, '0')}-${String(endDate.getDate()).padStart(2, '0')}`;
-};
-
-const toTimeInputValue = (value) => {
-  const match = String(value || '').trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-  if (!match) return '';
-  let hours = Number(match[1]) % 12;
-  if (match[3].toUpperCase() === 'PM') hours += 12;
-  return `${String(hours).padStart(2, '0')}:${match[2]}`;
-};
-
-const toStoredTimeValue = (value) => {
-  const match = value.match(/^(\d{2}):(\d{2})$/);
-  if (!match) return '';
-  const hours = Number(match[1]);
-  const meridiem = hours >= 12 ? 'PM' : 'AM';
-  const displayHours = hours % 12 || 12;
-  return `${String(displayHours).padStart(2, '0')}:${match[2]} ${meridiem}`;
-};
-
-const getInclusiveDays = (startDate, endDate) => {
-  const [startYear, startMonth, startDay] = startDate.split('-').map(Number);
-  const [endYear, endMonth, endDay] = endDate.split('-').map(Number);
-  const start = Date.UTC(startYear, startMonth - 1, startDay);
-  const end = Date.UTC(endYear, endMonth - 1, endDay);
-  return Math.round((end - start) / 86400000) + 1;
-};
-
 const Calendar = ({ currentUserRole }) => {
+  const navigate = useNavigate();
   // 1. STATE & REFS
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
@@ -133,15 +76,6 @@ const Calendar = ({ currentUserRole }) => {
   const [equipmentMap, setEquipmentMap] = useState({});
   const [utilitiesMap, setUtilitiesMap] = useState({});
   const [selectedRequest, setSelectedRequest] = useState(null);
-  const [isEditingModification, setIsEditingModification] = useState(false);
-  const [modificationForm, setModificationForm] = useState({
-    startDate: '',
-    endDate: '',
-    startTime: '',
-    endTime: ''
-  });
-  const [modificationError, setModificationError] = useState('');
-  const [isSavingModification, setIsSavingModification] = useState(false);
   const [userRole, setUserRole] = useState('');
   
   const sidebarRef = useRef(null);
@@ -157,98 +91,6 @@ const Calendar = ({ currentUserRole }) => {
   const [deleteError, setDeleteError] = useState('');
 
   const [currentUser, setCurrentUser] = useState(null);
-
-  const handleStartModification = (reservation) => {
-    if (!canModifyReservations || (reservation.status || '').toLowerCase().trim() !== 'approved') return;
-    setModificationForm({
-      startDate: toDateInputValue(reservation.eventDate || reservation.date),
-      endDate: getReservationEndDateInput(reservation),
-      startTime: toTimeInputValue(reservation.startTime),
-      endTime: toTimeInputValue(reservation.endTime)
-    });
-    setModificationError('');
-    setIsEditingModification(true);
-  };
-
-  const handleSaveModification = async (event) => {
-    event.preventDefault();
-    if (
-      !selectedRequest
-      || !canModifyReservations
-      || (selectedRequest.status || '').toLowerCase().trim() !== 'approved'
-      || !reservationsData.some((reservation) => reservation.id === selectedRequest.id)
-      || isSavingModification
-    ) return;
-
-    const { startDate, endDate, startTime, endTime } = modificationForm;
-    if (!startDate || !endDate || !startTime || !endTime) {
-      setModificationError('Enter a start date, end date, start time, and end time.');
-      return;
-    }
-    if (endDate < startDate) {
-      setModificationError('The end date must be on or after the start date.');
-      return;
-    }
-    if (startTime === endTime) {
-      setModificationError('Start and end times cannot be the same.');
-      return;
-    }
-
-    setIsSavingModification(true);
-    setModificationError('');
-    const updatedDatesAndTimes = {
-      eventDate: toStoredDateValue(startDate),
-      endDate: toStoredDateValue(endDate),
-      days: getInclusiveDays(startDate, endDate),
-      startTime: toStoredTimeValue(startTime),
-      endTime: toStoredTimeValue(endTime)
-    };
-    try {
-      if ((selectedRequest.facilities || []).length > 0) {
-        const [reservationsSnapshot, facilitiesSnapshot] = await Promise.all([
-          getDocs(collection(db, 'reservations')),
-          getDocs(collection(db, 'facilities'))
-        ]);
-        const currentReservations = reservationsSnapshot.docs.map((reservationDoc) => ({
-          id: reservationDoc.id,
-          ...reservationDoc.data()
-        }));
-        const currentFacilities = facilitiesSnapshot.docs.map((facilityDoc) => ({
-          id: facilityDoc.id,
-          ...facilityDoc.data()
-        }));
-        const conflict = findFacilityConflict(currentReservations, {
-          ...updatedDatesAndTimes,
-          facilities: selectedRequest.facilities,
-          expectedParticipants: selectedRequest.expectedParticipants,
-          excludeReservationId: selectedRequest.id
-        }, currentFacilities);
-
-        if (conflict) {
-          const conflictDateRange = formatEventDateRange(
-            conflict.eventDate,
-            conflict.endDate,
-            conflict.days || 1
-          );
-          setModificationError(
-            `Schedule conflict with "${conflict.eventName || 'another reservation'}" for ${conflict.conflictFacilityName}, `
-            + `${conflictDateRange}, `
-            + `${conflict.startTime || 'N/A'}–${conflict.endTime || 'N/A'}.`
-          );
-          return;
-        }
-      }
-
-      await updateDoc(doc(db, 'reservations', selectedRequest.id), updatedDatesAndTimes);
-      setSelectedRequest((current) => ({ ...current, ...updatedDatesAndTimes }));
-      setIsEditingModification(false);
-    } catch (error) {
-      console.error('Failed to modify reservation date and time:', error);
-      setModificationError('Could not save the changes. Please try again.');
-    } finally {
-      setIsSavingModification(false);
-    }
-  };
 
   const handleDateClick = (dateStr) => {
     setSelectedDate(dateStr);
@@ -802,80 +644,19 @@ const Calendar = ({ currentUserRole }) => {
       {selectedRequest && (
         <div className="modal-overlay">
           <div className="modal-wrapper">
-            <button className="close-modal-btn" onClick={() => {
-              setSelectedRequest(null);
-              setIsEditingModification(false);
-            }}>✕</button>
+            <button className="close-modal-btn" onClick={() => setSelectedRequest(null)}>✕</button>
             <div className="modal-content">
               <ReservationDetails
                 data={selectedRequest}
                 additionalActions={canModifySelectedRequest ? (
                   <div className="calendar-modify-actions">
-                    {!isEditingModification ? (
-                      <button
-                        type="button"
-                        className="calendar-modify-button"
-                        onClick={() => handleStartModification(selectedRequest)}
-                      >
-                        Modify
-                      </button>
-                    ) : (
-                      <form className="calendar-modify-form" onSubmit={handleSaveModification}>
-                        <label>
-                          Start date
-                          <input
-                            type="date"
-                            value={modificationForm.startDate}
-                            onChange={(event) => setModificationForm((form) => ({ ...form, startDate: event.target.value }))}
-                            required
-                          />
-                        </label>
-                        <label>
-                          End date
-                          <input
-                            type="date"
-                            value={modificationForm.endDate}
-                            onChange={(event) => setModificationForm((form) => ({ ...form, endDate: event.target.value }))}
-                            required
-                          />
-                        </label>
-                        <label>
-                          Start time
-                          <input
-                            type="time"
-                            value={modificationForm.startTime}
-                            onChange={(event) => setModificationForm((form) => ({ ...form, startTime: event.target.value }))}
-                            required
-                          />
-                        </label>
-                        <label>
-                          End time
-                          <input
-                            type="time"
-                            value={modificationForm.endTime}
-                            onChange={(event) => setModificationForm((form) => ({ ...form, endTime: event.target.value }))}
-                            required
-                          />
-                        </label>
-                        {modificationError && <p className="calendar-modify-error" role="alert">{modificationError}</p>}
-                        <div className="calendar-modify-form-actions">
-                          <button
-                            type="button"
-                            className="calendar-modify-cancel"
-                            onClick={() => {
-                              setIsEditingModification(false);
-                              setModificationError('');
-                            }}
-                            disabled={isSavingModification}
-                          >
-                            Cancel
-                          </button>
-                          <button type="submit" className="calendar-modify-save" disabled={isSavingModification}>
-                            {isSavingModification ? 'Saving…' : 'Save changes'}
-                          </button>
-                        </div>
-                      </form>
-                    )}
+                    <button
+                      type="button"
+                      className="calendar-modify-button"
+                      onClick={() => navigate(`/reserve?edit=${encodeURIComponent(selectedRequest.id)}&adminEdit=true`)}
+                    >
+                      Edit Reservation
+                    </button>
                   </div>
                 ) : null}
               />

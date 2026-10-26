@@ -20,6 +20,7 @@ import {
   isReservationIncludedInFacilityCapacity
 } from '../services/facilityCapacity';
 import { isReservationActive } from '../services/reservationStatus';
+import { isReservationEndReached } from '../services/reservationExpiration';
 import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import {
   findFacilityConflict,
@@ -170,6 +171,7 @@ const Reservation = () => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editReservationId = searchParams.get('edit');
+  const isAdminEditMode = searchParams.get('adminEdit') === 'true';
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState('requestor');
@@ -287,9 +289,18 @@ const Reservation = () => {
         }
 
         const reservation = { id: reservationSnap.id, ...reservationSnap.data() };
+        const reservationStatus = (reservation.status || '').toLowerCase().trim();
         const isOwner = reservation.userId === currentUser.uid
           || reservation.userEmail === currentUser.email;
-        if (!isOwner || (reservation.status || '').toLowerCase().trim() !== 'to modify') {
+        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const currentRole = (userSnap.data()?.role || '').toLowerCase().trim().replace(/_/g, ' ');
+        const canEditApprovedReservation = canSkipReservationLeadTime(currentRole)
+          && reservationStatus === 'approved'
+          && !isReservationEndReached(reservation);
+        if (
+          (isAdminEditMode && !canEditApprovedReservation)
+          || (!isAdminEditMode && (!isOwner || reservationStatus !== 'to modify'))
+        ) {
           throw new Error('This reservation is not available for modification.');
         }
 
@@ -348,7 +359,7 @@ const Reservation = () => {
     return () => {
       isActive = false;
     };
-  }, [currentUser, editReservationId]);
+  }, [currentUser, editReservationId, isAdminEditMode]);
 
   // --- LOAD DRAFT ON MOUNT ---
   useEffect(() => {
@@ -874,6 +885,7 @@ const Reservation = () => {
   };
 
   const handleSubmit = async () => {
+    if (isAdminEditMode && (!editReservationId || !editingReservation)) return;
     if (!certified || isSubmitting) return;
     
     if (!currentUser) {
@@ -1043,7 +1055,9 @@ const Reservation = () => {
       const reservationUpdate = {
         refNo: generatedRefNo,
         ...formData,
-        requestorTypes: userRole === 'requestor' ? formData.requestorTypes : [],
+        requestorTypes: editingReservation
+          ? formData.requestorTypes
+          : userRole === 'requestor' ? formData.requestorTypes : [],
         userId: editingReservation?.userId || currentUser.uid,
         userEmail: editingReservation?.userEmail || currentUser.email,
         userRole: editingReservation?.userRole || userRole,
@@ -1056,11 +1070,32 @@ const Reservation = () => {
         aircon,
         selectedEquip,
         selectedUtilities,
-        status: 'Pending',
+        status: isAdminEditMode ? editingReservation?.status || 'Approved' : 'Pending',
         updatedAt: new Date().toISOString()
       };
 
-      if (editingReservation) {
+      if (editingReservation && isAdminEditMode) {
+        const adminEditLog = {
+          id: `modified-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`,
+          role: userRole,
+          badge: 'Modified',
+          timestamp: reservationUpdate.updatedAt,
+          date: new Date().toLocaleString('en-US', {
+            month: 'short',
+            day: 'numeric',
+            year: 'numeric',
+            hour: '2-digit',
+            minute: '2-digit'
+          }),
+          approverName: currentUser.email || 'Administrator',
+          text: 'Reservation details updated by an administrator.',
+          state: (editingReservation.status || 'approved').toLowerCase()
+        };
+        await updateDoc(doc(db, 'reservations', editingReservation.id), {
+          ...reservationUpdate,
+          historyLogs: arrayUnion(adminEditLog)
+        });
+      } else if (editingReservation) {
         const resubmissionLog = {
           id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
           role: 'Requestor',
@@ -1097,7 +1132,7 @@ const Reservation = () => {
         });
       }
 
-      if (formData.endorserEmail) {
+      if (formData.endorserEmail && !isAdminEditMode) {
         await sendReservationEmail(
           formData.endorserEmail,
           formData.endorserName,
@@ -1126,10 +1161,13 @@ const Reservation = () => {
       setCustomAlert({
         title: 'Success',
         message: editingReservation
-          ? `Reservation ${generatedRefNo} has been updated and resubmitted for approval.`
+          ? isAdminEditMode
+            ? `Reservation ${generatedRefNo} has been updated.`
+            : `Reservation ${generatedRefNo} has been updated and resubmitted for approval.`
           : `Reservation submitted successfully! Your Reference No. is ${generatedRefNo}.`,
         isSuccess: true,
-        returnToSchedule: Boolean(editingReservation)
+        returnToSchedule: Boolean(editingReservation && !isAdminEditMode),
+        returnToCalendar: Boolean(editingReservation && isAdminEditMode)
       });
 
     } catch (error) {
@@ -1164,7 +1202,7 @@ const Reservation = () => {
       
       <div className="form-header">
         <div className="title">
-          <i className="ph"></i>{editReservationId ? 'Modify Reservation' : 'Reservation Form'}
+          <i className="ph"></i>{isAdminEditMode ? 'Edit Reservation' : editReservationId ? 'Modify Reservation' : 'Reservation Form'}
         </div>
         <div className="required-note">
           All fields marked <span className="req">*</span> are required
@@ -1898,7 +1936,7 @@ const Reservation = () => {
         </div>
       </div>
 
-      {editingReservation && (
+      {editingReservation && !isAdminEditMode && (
         <div className="form-card resubmission-remarks-card">
           <div className="section-header">Remarks</div>
           <div className="input-group">
@@ -1926,7 +1964,7 @@ const Reservation = () => {
       <div className="form-actions">
         <button
           className="btn-outline"
-          onClick={() => editReservationId ? navigate('/schedule') : handleDiscard()}
+          onClick={() => editReservationId ? navigate(isAdminEditMode ? '/calendar' : '/schedule') : handleDiscard()}
           disabled={isSubmitting}
         >
           <i className={`ph ${editingReservation ? 'ph-arrow-left' : 'ph-trash'}`}></i>
@@ -1943,7 +1981,11 @@ const Reservation = () => {
             onClick={handleSubmit} 
             disabled={!certified || isSubmitting || !!liveConflict || isLoadingEdit || Boolean(editReservationId && !editingReservation)}
           >
-            {isLoadingEdit ? 'Loading Reservation...' : isSubmitting ? 'Submitting...' : editingReservation ? 'Resubmit Reservation' : 'Submit Reservation'}
+            {isLoadingEdit
+              ? 'Loading Reservation...'
+              : isSubmitting
+                ? isAdminEditMode ? 'Saving Changes...' : 'Submitting...'
+                : isAdminEditMode ? 'Save Changes' : editingReservation ? 'Resubmit Reservation' : 'Submit Reservation'}
           </button>
         </div>
       </div>
@@ -1962,8 +2004,10 @@ const Reservation = () => {
               <button
                 onClick={() => {
                   const returnToSchedule = customAlert.returnToSchedule;
+                  const returnToCalendar = customAlert.returnToCalendar;
                   setCustomAlert(null);
-                  if (returnToSchedule) navigate('/schedule');
+                  if (returnToCalendar) navigate('/calendar');
+                  else if (returnToSchedule) navigate('/schedule');
                 }}
                 className="modal-button"
               >
