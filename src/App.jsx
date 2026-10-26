@@ -3,6 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
+import { clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY } from './services/browserSession';
 
 import SideBar from './pages/SideBar';
 import TopBar from './pages/TopBar'; 
@@ -27,6 +28,7 @@ export default function App() {
   const location = useLocation(); 
   const initialRedirectDone = useRef(false);
   const isLoggingOut = useRef(false);
+  const sessionUid = useRef(null);
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -43,29 +45,29 @@ export default function App() {
 
   const handleLogout = async () => {
     isLoggingOut.current = true;
-
-    if (auth.currentUser) {
-      localStorage.removeItem(`userRole_${auth.currentUser.uid}`);
-      localStorage.removeItem(`req2FA_${auth.currentUser.uid}`);
-      sessionStorage.removeItem(`2fa_verified_${auth.currentUser.uid}`);
-      sessionStorage.removeItem(`active_session_${auth.currentUser.uid}`); 
-    }
+    localStorage.setItem(LOGOUT_EVENT_KEY, crypto.randomUUID());
+    clearAccountStorage();
     
     navigate('/', { replace: true });
 
     setIsAuthenticated(false); 
     setTwoFactorMode(null);
+    setTwoFactorSecret(null);
     setUserRole('requestor'); 
-    
-    setTimeout(async () => {
+    initialRedirectDone.current = false;
+    try {
       await signOut(auth);
+    } finally {
       isLoggingOut.current = false; 
-    }, 150); 
+      await clearBrowserCaches();
+    }
   };
 
   useEffect(() => {
     let heartbeatInterval = null;
     let sessionUnsubscribe = null; 
+    let disposed = false;
+    let authVersion = 0;
 
     getRedirectResult(auth).then((result) => {
       if (result) {
@@ -77,10 +79,20 @@ export default function App() {
     });
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const version = ++authVersion;
+      if (sessionUnsubscribe) {
+        sessionUnsubscribe();
+        sessionUnsubscribe = null;
+      }
 
       if (isLoggingOut.current) return;
 
       if (user) {
+        setIsAuthenticated(false);
+        setIsAuthLoading(true);
+        setTwoFactorMode(null);
+        setTwoFactorSecret(null);
+        sessionUid.current = user.uid;
         
         const isSuperAdminProvider = user.providerData.some(p => p.providerId === 'password');
 
@@ -101,26 +113,16 @@ export default function App() {
         try {
           const userRef = doc(db, 'users', user.uid);
           
-          let localSessionId = sessionStorage.getItem(`active_session_${user.uid}`);
-          if (!localSessionId) {
-            localSessionId = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2);
-            sessionStorage.setItem(`active_session_${user.uid}`, localSessionId);
-          }
-
-          const cachedRole = localStorage.getItem(`userRole_${user.uid}`);
-          const requires2FACache = localStorage.getItem(`req2FA_${user.uid}`) === 'true';
-          const isVerifiedThisSession = sessionStorage.getItem(`2fa_verified_${user.uid}`) === 'true';
-
-          if (cachedRole && (!requires2FACache || isVerifiedThisSession)) {
-            setUserRole(cachedRole);
-            setIsAuthenticated(true);
-            setIsAuthLoading(false); 
-          }
+          const localSessionId = await getBrowserSessionId(user.uid);
+          if (disposed || version !== authVersion || auth.currentUser !== user || isLoggingOut.current) return;
+          const isVerifiedThisSession = localStorage.getItem(`2fa_verified_${user.uid}`) === localSessionId;
 
           const userSnap = await getDoc(userRef);
+          if (disposed || version !== authVersion || auth.currentUser !== user || isLoggingOut.current) return;
           const nowIso = new Date().toISOString();
 
           let resolvedRole = 'requestor';
+          let needsTwoFactor = false;
 
           if (userSnap.exists()) {
             const userData = userSnap.data();
@@ -128,6 +130,7 @@ export default function App() {
             
             // OPT-IN POLICY: Only true if explicitly enabled
             const is2FAPolicyActive = userData.twoFactorEnabled === true;
+            needsTwoFactor = is2FAPolicyActive && !isVerifiedThisSession;
             
             updateDoc(userRef, {
               status: 'Active',
@@ -197,7 +200,7 @@ export default function App() {
           sessionUnsubscribe = onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
               const dbSessionId = docSnap.data().activeSessionId;
-              const currentLocalSession = sessionStorage.getItem(`active_session_${user.uid}`);
+              const currentLocalSession = localStorage.getItem(`active_session_${user.uid}`);
               
               if (dbSessionId && currentLocalSession && dbSessionId !== currentLocalSession) {
                 console.warn("Account accessed from another location. Logging out.");
@@ -207,7 +210,7 @@ export default function App() {
             }
           });
 
-          if (!localStorage.getItem(`req2FA_${user.uid}`)) {
+          if (!needsTwoFactor) {
             setIsAuthenticated(true);
             if (!initialRedirectDone.current && location.pathname === '/') {
                navigate(resolvedRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
@@ -216,19 +219,47 @@ export default function App() {
           }
 
         } catch (error) {
+          if (disposed || version !== authVersion || isLoggingOut.current) return;
           console.error("Error loading user session:", error);
           setLoginError("Failed to initialize user session.");
           setIsAuthenticated(false); 
         } finally {
-          setIsAuthLoading(false);
+          if (!disposed && version === authVersion) setIsAuthLoading(false);
         }
       } else {
+        if (sessionUid.current) {
+          clearAccountStorage();
+          void clearBrowserCaches();
+        }
+        sessionUid.current = null;
+        initialRedirectDone.current = false;
         setIsAuthenticated(false);
         setTwoFactorMode(null);
+        setTwoFactorSecret(null);
+        setUserRole('requestor');
         setIsAuthLoading(false);
         if (sessionUnsubscribe) sessionUnsubscribe(); 
       }
     });
+
+    const syncSession = (event) => {
+      if (event.key === LOGOUT_EVENT_KEY && event.newValue) {
+        void handleLogoutFromAnotherTab();
+      } else if (event.key === `2fa_verified_${auth.currentUser?.uid}`
+        && event.newValue === localStorage.getItem(`active_session_${auth.currentUser?.uid}`)) {
+        // Re-read the account policy before unlocking another tab.
+        window.location.reload();
+      }
+    };
+    const handleLogoutFromAnotherTab = async () => {
+      clearAccountStorage();
+      setIsAuthenticated(false);
+      setTwoFactorMode(null);
+      setTwoFactorSecret(null);
+      await signOut(auth);
+      await clearBrowserCaches();
+    };
+    window.addEventListener('storage', syncSession);
 
     const handleTabClose = () => {
       if (auth.currentUser) {
@@ -260,7 +291,9 @@ export default function App() {
     document.addEventListener('visibilitychange', handleVisibilityChange);
 
     return () => {
+      disposed = true;
       unsubscribe();
+      window.removeEventListener('storage', syncSession);
       if (heartbeatInterval) clearInterval(heartbeatInterval);
       if (sessionUnsubscribe) sessionUnsubscribe(); 
       window.removeEventListener('beforeunload', handleTabClose);
@@ -290,7 +323,7 @@ export default function App() {
         uid={auth.currentUser?.uid}
         userEmail={auth.currentUser?.email}
         onSuccess={() => {
-          sessionStorage.setItem(`2fa_verified_${auth.currentUser.uid}`, 'true'); 
+          localStorage.setItem(`2fa_verified_${auth.currentUser.uid}`, localStorage.getItem(`active_session_${auth.currentUser.uid}`));
           
           setTwoFactorMode(null);
           setIsAuthenticated(true);

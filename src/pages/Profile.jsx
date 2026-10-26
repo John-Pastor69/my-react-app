@@ -3,6 +3,7 @@ import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
 import { deleteUser, reauthenticateWithPopup, reauthenticateWithRedirect } from 'firebase/auth';
 import { useSearchParams } from 'react-router-dom';
 import { auth, db, microsoftProvider } from '../Firebase'; 
+import { clearAccountStorage, clearBrowserCaches, LOGOUT_EVENT_KEY } from '../services/browserSession';
 import * as OTPAuth from 'otpauth'; 
 import QRCode from 'qrcode'; 
 import '../styles/Profile.scss';
@@ -78,6 +79,9 @@ const Profile = ({ currentUserRole }) => {
             await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
             await deleteDoc(userDocRef);
             await deleteUser(user);
+            localStorage.setItem(LOGOUT_EVENT_KEY, crypto.randomUUID());
+            clearAccountStorage();
+            await clearBrowserCaches();
             window.location.href = '/'; 
             return; 
           } catch (e) {
@@ -381,6 +385,9 @@ const Profile = ({ currentUserRole }) => {
         
         await deleteDoc(userDocRef);
         await deleteUser(user);
+        localStorage.setItem(LOGOUT_EVENT_KEY, crypto.randomUUID());
+        clearAccountStorage();
+        await clearBrowserCaches();
         window.location.href = '/'; 
       }
     } catch (error) {

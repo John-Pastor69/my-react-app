@@ -28,6 +28,7 @@ import {
   parseDateOrdinal
 } from '../services/reservationConflicts';
 import ReservationDetails from './ReservationDetails';
+import { sanitizeEventName } from '../services/eventName';
 import '../styles/Reservation.scss';
 
 const initialFormState = {
@@ -331,7 +332,7 @@ const Reservation = () => {
             : [],
           contactNumber: normalizeContactNumber(reservation.contactNumber),
           emailAddress: reservation.emailAddress || '',
-          eventName: sanitizeAlphabeticName(reservation.eventName || ''),
+          eventName: sanitizeEventName(reservation.eventName),
           expectedParticipants: String(reservation.expectedParticipants || ''),
           eventType: Array.isArray(reservation.eventType)
             ? reservation.eventType.slice(0, 1)
@@ -389,7 +390,7 @@ const Reservation = () => {
             requestorTypes: Array.isArray(parsed.formData.requestorTypes)
               ? parsed.formData.requestorTypes.slice(0, 1)
               : [],
-            eventName: sanitizeAlphabeticName(parsed.formData.eventName || ''),
+            eventName: sanitizeEventName(parsed.formData.eventName),
             endorserName: sanitizeAlphabeticName(parsed.formData.endorserName || ''),
             eventType: Array.isArray(parsed.formData.eventType)
               ? parsed.formData.eventType.slice(0, 1)
@@ -599,9 +600,8 @@ const Reservation = () => {
 
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
-    const inputValue = ['eventName', 'endorserName'].includes(field)
-      ? sanitizeAlphabeticName(value)
-      : value;
+    const inputValue = field === 'eventName' ? sanitizeEventName(value)
+      : field === 'endorserName' ? sanitizeAlphabeticName(value) : value;
 
     setFormData(prev => {
       const updated = { ...prev, [field]: inputValue };
@@ -1706,7 +1706,8 @@ const Reservation = () => {
               type="text" 
               value={formData.eventName} 
               onChange={(e) => handleInputChange('eventName', e.target.value)} 
-              pattern="[A-Za-z ]*"
+              pattern="[A-Za-z0-9 ]*"
+              title="Use letters, numbers, and spaces only."
               maxLength={75}
               placeholder="e.g. Annual General Assembly" 
               className={missingFields.eventName ? 'input-error' : ''}
