@@ -23,6 +23,6 @@ dist-ssr
 *.sln
 *.sw?
 .env
-.backup.js
-.serviceAccountKey.json
+*_backup_*.json
+serviceAccountKey.json
     
