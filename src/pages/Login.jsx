@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithRedirect, signInWithPopup, signInWithEmailAndPassword } from 'firebase/auth';
 import { auth, microsoftProvider } from '../Firebase';
+import { NEW_LOGIN_KEY } from '../services/browserSession';
 import '../styles/Login.scss';
 
 export default function Login({ error, setError }) {
@@ -31,12 +32,14 @@ export default function Login({ error, setError }) {
     });
 
     try {
+      sessionStorage.setItem(NEW_LOGIN_KEY, 'true');
       if (window.location.hostname === 'localhost') {
         await signInWithPopup(auth, microsoftProvider);
       } else {
         await signInWithRedirect(auth, microsoftProvider);
       }
     } catch (err) {
+      sessionStorage.removeItem(NEW_LOGIN_KEY);
       console.error("Error signing in with Microsoft:", err.message);
       if (setError) setError("Microsoft login failed. Please try again.");
     }
@@ -46,9 +49,11 @@ export default function Login({ error, setError }) {
     e.preventDefault();
     if (setError) setError('');
     try {
+      sessionStorage.setItem(NEW_LOGIN_KEY, 'true');
       // Authenticate via standard Firebase Email/Password
       await signInWithEmailAndPassword(auth, adminEmail, adminPassword);
     } catch (err) {
+      sessionStorage.removeItem(NEW_LOGIN_KEY);
       console.error("Error signing in as admin:", err.message);
       if (setError) setError("Invalid Super Admin credentials.");
     }

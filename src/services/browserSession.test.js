@@ -41,18 +41,23 @@ test('logout removes account data and permits a fresh browser session', async ()
 
 // Represents the browser lock manager shared by independent documents.
 const makeLocks = () => {
-  const held = new Set();
+  const held = new Map();
   return {
     async request(name, options, callback) {
       if (held.has(name)) {
-        assert.equal(options.ifAvailable, true);
-        return callback(null);
+        if (options.steal) held.get(name).reject(new DOMException('Lock stolen', 'AbortError'));
+        else {
+          assert.equal(options.ifAvailable, true);
+          return callback(null);
+        }
       }
-      held.add(name);
+      const claim = {};
+      const stolen = new Promise((resolve, reject) => { claim.reject = reject; });
+      held.set(name, claim);
       try {
-        return await callback({ name });
+        return await Promise.race([callback({ name }), stolen]);
       } finally {
-        held.delete(name);
+        if (held.get(name) === claim) held.delete(name);
       }
     },
   };
@@ -69,6 +74,34 @@ test('the first authenticated tab keeps access and a second cannot displace it',
   const next = await acquireTabAccess('same-account', locks);
   assert.ok(next);
   next.release();
+});
+
+test('an explicit new login ends the old session and keeps the new tab active', async () => {
+  const locks = makeLocks();
+  const first = await acquireTabAccess('same-account', locks);
+  let firstEnded = false;
+  first.lost.then(() => { firstEnded = true; });
+  // Merely opening another tab does not end the original session.
+  assert.equal(await acquireTabAccess('same-account', locks), null);
+  assert.equal(firstEnded, false);
+  const next = await acquireTabAccess('same-account', locks, { takeover: true });
+  await first.lost;
+  assert.equal(firstEnded, true);
+  assert.ok(next);
+  first.release();
+  assert.equal(await acquireTabAccess('same-account', locks), null);
+  next.release();
+});
+
+test('logging in with another account does not end the original account session', async () => {
+  const locks = makeLocks();
+  const first = await acquireTabAccess('account1', locks);
+  let firstEnded = false;
+  first.lost.then(() => { firstEnded = true; });
+  const other = await acquireTabAccess('account2', locks, { takeover: true });
+  assert.equal(firstEnded, false);
+  first.release();
+  other.release();
 });
 
 test('simultaneous tab login grants exactly one owner', async () => {

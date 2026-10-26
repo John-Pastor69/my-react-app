@@ -3,7 +3,7 @@ import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-
 import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
-import { acquireTabAccess, clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY } from './services/browserSession';
+import { acquireTabAccess, clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY, NEW_LOGIN_KEY } from './services/browserSession';
 
 import SideBar from './pages/SideBar';
 import TopBar from './pages/TopBar'; 
@@ -97,15 +97,17 @@ export default function App() {
         setTwoFactorMode(null);
         setTwoFactorSecret(null);
         setTabBlocked('');
-        // Block duplicate tabs before reading account data or writing a session.
-        // Do not sign out a blocked tab: Firebase sign-out would evict the owner.
+        // Only an explicit successful login can replace the owning tab.
+        // Restoring or duplicating a tab never takes ownership away from it.
+        const takeover = sessionStorage.getItem(NEW_LOGIN_KEY) === 'true';
+        sessionStorage.removeItem(NEW_LOGIN_KEY);
         let access;
         try {
           if (tabAccess.current && tabAccess.current.uid !== user.uid) {
             tabAccess.current.release();
             tabAccess.current = null;
           }
-          access = tabAccess.current || await acquireTabAccess(user.uid);
+          access = tabAccess.current || await acquireTabAccess(user.uid, navigator.locks, { takeover });
         } catch (error) {
           if (disposed || version !== authVersion) return;
           setTabBlocked(error.message);
@@ -128,6 +130,24 @@ export default function App() {
         }
         tabAccess.current = access;
         sessionUid.current = user.uid;
+        access.lost.then(async () => {
+          if (disposed || tabAccess.current !== access) return;
+          ++authVersion;
+          sessionUnsubscribe?.();
+          sessionUnsubscribe = null;
+          tabAccess.current = null;
+          // Sign out this tab only; shared cleanup/broadcast would also log out
+          // the new tab that just signed in.
+          sessionUid.current = null;
+          sessionStorage.removeItem(`2fa_verified_${user.uid}`);
+          setIsAuthenticated(false);
+          setTwoFactorMode(null);
+          setTwoFactorSecret(null);
+          setIsAuthLoading(false);
+          setTabBlocked('This session ended because your account was signed in on another tab or window.');
+          await signOut(auth);
+          if (window.opener) window.close();
+        });
         
         const isSuperAdminProvider = user.providerData.some(p => p.providerId === 'password');
 
@@ -306,12 +326,7 @@ export default function App() {
 
     const handleVisibilityChange = () => {
       if (auth.currentUser && tabAccess.current) {
-        if (document.visibilityState === 'hidden') {
-          updateDoc(doc(db, 'users', auth.currentUser.uid), {
-            status: 'Inactive',
-            lastActive: new Date().toISOString()
-          }).catch(err => console.error("Failed to set inactive status:", err));
-        } else if (document.visibilityState === 'visible') {
+        if (document.visibilityState === 'visible') {
           updateDoc(doc(db, 'users', auth.currentUser.uid), {
             status: 'Active',
             lastActive: new Date().toISOString()
