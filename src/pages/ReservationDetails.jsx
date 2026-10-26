@@ -194,11 +194,12 @@ const ReservationDetails = ({
 
     return (
       <div className={`daily-time-list ${variant}`}>
-        {dailyTimeEntries.map(({ dates, time }) => {
+        {dailyTimeEntries.map(({ dates, time }, index) => {
           const groupKey = `${variant}-${time}`;
           const isExpanded = Boolean(expandedTimeGroups[groupKey]);
-          const visibleDates = isExpanded ? dates : dates.slice(0, 2);
-          const hiddenDateCount = dates.length - visibleDates.length;
+          const visibleDates = dates.slice(0, 2);
+          const additionalDates = dates.slice(2);
+          const expandedDatesId = `daily-time-dates-${variant}-${index}`;
 
           return (
             <div className="daily-time-entry" key={time}>
@@ -210,15 +211,23 @@ const ReservationDetails = ({
                     type="button"
                     className="daily-time-more"
                     aria-expanded={isExpanded}
+                    aria-controls={expandedDatesId}
                     onClick={() => setExpandedTimeGroups((groups) => ({
                       ...groups,
                       [groupKey]: !isExpanded
                     }))}
                   >
-                    {isExpanded ? 'View less' : `+${hiddenDateCount} more`}
+                    {isExpanded ? 'View less' : `+${additionalDates.length} more`}
                   </button>
                 )}
               </div>
+              {isExpanded && (
+                <div id={expandedDatesId} className="daily-time-expanded-dates" aria-label="Additional scheduled dates">
+                  {additionalDates.map((date) => (
+                    <span className="daily-time-date-chip" key={date}>{date}</span>
+                  ))}
+                </div>
+              )}
             </div>
           );
         })}
@@ -606,8 +615,10 @@ const ReservationDetails = ({
                 <div>
                   <label>FULL NAME</label>
                   <div className="val font-bold word-break">{requestorName}</div>
-                  <label>REQUESTOR TYPE</label>
-                  <div className="val word-break">{requestorTypeDisplay}</div>
+                  <div className="requestor-type-field">
+                    <label>REQUESTOR TYPE</label>
+                    <div className="val word-break">{requestorTypeDisplay}</div>
+                  </div>
                 </div>
                 <div>
                   <label>CONTACT NUMBER</label>

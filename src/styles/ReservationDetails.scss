@@ -56,6 +56,27 @@ $danger-red: #ef4444;
       line-height: 1.35;
     }
 
+    .daily-time-expanded-dates {
+      display: flex;
+      flex: 1 0 100%;
+      flex-wrap: wrap;
+      gap: 0.4rem;
+      max-height: 7rem;
+      overflow-y: auto;
+      padding: 0.55rem 0.15rem 0.1rem;
+      border-top: 1px solid #e5e7eb;
+    }
+
+    .daily-time-date-chip {
+      padding: 0.2rem 0.5rem;
+      border: 1px solid #e5e7eb;
+      border-radius: 999px;
+      background: #ffffff;
+      color: $text-dark;
+      font-size: var(--font-small);
+      line-height: 1.4;
+    }
+
     .daily-time-date-group {
       display: flex;
       align-items: center;
@@ -294,6 +315,10 @@ $danger-red: #ef4444;
         &.font-bold {
           font-weight: 600;
         }
+      }
+
+      .requestor-type-field {
+        margin-top: 0.75rem;
       }
     }
 

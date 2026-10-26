@@ -50,6 +50,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   
   // States for processing & modals
   const [remarks, setRemarks] = useState('');
+  const [expandedTimeGroups, setExpandedTimeGroups] = useState({});
   const [isProcessing, setIsProcessing] = useState(false);
   const [customAlert, setCustomAlert] = useState(null); 
   const [pendingAction, setPendingAction] = useState(null);
@@ -174,15 +175,77 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
   const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
-  const eventTime = Array.isArray(currentData.schedule) && currentData.schedule.length > 0
-    ? currentData.schedule.map((entry) => {
+  const scheduledYears = new Set((Array.isArray(currentData.schedule) ? currentData.schedule : []).map((entry) => (
+    String(entry.date || '').match(/^\d{4}-/)?.[0]
+      || String(entry.date || '').match(/\/(\d{4})$/)?.[1]
+      || ''
+  )).filter(Boolean));
+  const includeYearInScheduleDates = scheduledYears.size > 1;
+  const dailyTimeEntries = Array.isArray(currentData.schedule)
+    ? currentData.schedule.reduce((groups, entry) => {
       const parsedDate = new Date(`${entry.date}T00:00:00`);
       const dateLabel = Number.isNaN(parsedDate.getTime())
         ? entry.date
-        : parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      return `${dateLabel}: ${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
-    }).join(' | ')
+        : parsedDate.toLocaleDateString('en-US', {
+          month: 'short',
+          day: 'numeric',
+          ...(includeYearInScheduleDates ? { year: 'numeric' } : {})
+        });
+      const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
+      const existingGroup = groups.find((group) => group.time === time);
+      if (existingGroup) {
+        existingGroup.dates.push(dateLabel);
+      } else {
+        groups.push({ dates: [dateLabel], time });
+      }
+      return groups;
+    }, [])
+    : [];
+  const renderDailyTimeDisplay = (variant) => dailyTimeEntries.length > 0
+    ? (
+      <div className={`daily-time-list ${variant}`}>
+        {dailyTimeEntries.map(({ dates, time }, index) => {
+          const groupKey = `${variant}-${time}`;
+          const isExpanded = Boolean(expandedTimeGroups[groupKey]);
+          const visibleDates = dates.slice(0, 2);
+          const additionalDates = dates.slice(2);
+          const expandedDatesId = `daily-time-dates-${variant}-${index}`;
+
+          return (
+            <div className="daily-time-entry" key={time}>
+              <span className="daily-time-range">{time}</span>
+              <div className="daily-time-date-group">
+                <span className="daily-time-date">[{visibleDates.join(', ')}]</span>
+                {dates.length > 2 && (
+                  <button
+                    type="button"
+                    className="daily-time-more"
+                    aria-expanded={isExpanded}
+                    aria-controls={expandedDatesId}
+                    onClick={() => setExpandedTimeGroups((groups) => ({
+                      ...groups,
+                      [groupKey]: !isExpanded
+                    }))}
+                  >
+                    {isExpanded ? 'View less' : `+${additionalDates.length} more`}
+                  </button>
+                )}
+              </div>
+              {isExpanded && (
+                <div id={expandedDatesId} className="daily-time-expanded-dates" aria-label="Additional scheduled dates">
+                  {additionalDates.map((date) => (
+                    <span className="daily-time-date-chip" key={date}>{date}</span>
+                  ))}
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    )
     : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+  const eventTime = renderDailyTimeDisplay('details');
+  const summaryTime = renderDailyTimeDisplay('summary');
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
   
@@ -473,7 +536,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                 <label>EVENT DATE</label>
                 <div className="val">{eventDate}</div>
               </div>
-              <div>
+              <div className="time-detail-field">
                 <label>TIME</label>
                 <div className="val">{eventTime}</div>
               </div>
@@ -530,8 +593,10 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
               <div>
                 <label>FULL NAME</label>
                 <div className="val font-bold">{requestorName}</div>
-                <label>REQUESTOR TYPE</label>
-                <div className="val">{requestorTypeDisplay}</div>
+                <div className="requestor-type-field">
+                  <label>REQUESTOR TYPE</label>
+                  <div className="val">{requestorTypeDisplay}</div>
+                </div>
               </div>
               <div>
                 <label>CONTACT NUMBER</label>
@@ -597,7 +662,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
               </div>
               <div className="summary-item">
                 <span className="label">Duration</span>
-                <span className="val">{eventTime}</span>
+                <div className="val">{summaryTime}</div>
               </div>
               <div className="summary-item">
                 <span className="label">Attendees</span>
