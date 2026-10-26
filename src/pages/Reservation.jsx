@@ -65,7 +65,7 @@ const canSkipReservationLeadTime = (role) => {
 const getReservationDateMinimum = (role, skipLeadTime = false) => {
   const minDate = new Date();
   minDate.setHours(0, 0, 0, 0);
-  if (!skipLeadTime && !canSkipReservationLeadTime(role)) minDate.setDate(minDate.getDate() + 7);
+  if (!skipLeadTime && !canSkipReservationLeadTime(role)) minDate.setDate(minDate.getDate() + 3);
   return minDate;
 };
 
@@ -673,7 +673,7 @@ const Reservation = () => {
         if (inputDate < minDate) {
           setDateError(canSkipReservationLeadTime(userRole) || editingReservation
             ? 'Date cannot be in the past'
-            : 'Must be at least 7 days from today');
+            : 'Must be at least 3 days from today');
         } else {
           setDateError('');
           clearMissingField('eventDate');
@@ -705,7 +705,7 @@ const Reservation = () => {
         if (inputDate < minDate) {
           setDaysDateError(canSkipReservationLeadTime(userRole) || editingReservation
             ? 'Date cannot be in the past'
-            : 'Must be at least 7 days from today');
+            : 'Must be at least 3 days from today');
         } else {
           setDaysDateError('');
           clearMissingField('endDateInput');
