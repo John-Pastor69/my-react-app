@@ -266,7 +266,8 @@ $red-main: #EF4444;
         letter-spacing: 0.0333rem;
       }
 
-      input {
+      input,
+      select {
         background: $bg-panel;
         border: 0.0667rem solid transparent; 
         padding: 0.8rem 1.0667rem; 

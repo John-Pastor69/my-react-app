@@ -85,7 +85,7 @@ export default function App() {
         sessionUnsubscribe = null;
       }
 
-      if (isLoggingOut.current) return;
+      if (isLoggingOut.current || sessionStorage.getItem('is_registering') === 'true') return;
 
       if (user) {
         setIsAuthenticated(false);
@@ -175,6 +175,11 @@ export default function App() {
 
             // --- ADDED EMAIL VERIFICATION CHECK ---
             if (!user.emailVerified) {
+              // Check if they are in the middle of creating an account
+              if (sessionStorage.getItem('is_registering') === 'true') {
+                return; // Let Login.jsx finish saving the profile to Firestore first
+              }
+
               await signOut(auth);
               setLoginError("Please check your inbox and verify your email before logging in.");
               setIsAuthenticated(false);
@@ -200,7 +205,7 @@ export default function App() {
             const userData = userDocSnap.data();
             // If they are a super admin, we keep the 'super admin' role set above. Otherwise, read from doc.
             if (!isSuperAdmin) {
-              resolvedRole = userData.role || 'requestor';
+              resolvedRole = userData.role || (userData.accountType === 'Faculty' ? 'endorser' : 'requestor');
             }
             
             const is2FAPolicyActive = userData.twoFactorEnabled === true;
@@ -209,7 +214,8 @@ export default function App() {
             updateDoc(userRef, {
               status: 'Active',
               lastActive: nowIso,
-              activeSessionId: localSessionId 
+              activeSessionId: localSessionId,
+              emailVerified: true // Set field to true once they log in successfully after verifying
             }).catch(err => console.error("Heartbeat update failed:", err));
 
             if (!isVerifiedThisSession && is2FAPolicyActive) {
@@ -258,7 +264,7 @@ export default function App() {
               lastActive: nowIso,
               twoFactorEnabled: false, 
               activeSessionId: localSessionId 
-            }).catch(err => console.error("User creation failed:", err));
+            }, { merge: true }).catch(err => console.error("User creation failed:", err));
 
             setTwoFactorMode(null);
             localStorage.removeItem(`req2FA_${user.uid}`);

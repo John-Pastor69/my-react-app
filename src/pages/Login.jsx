@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore'; 
+import { doc, setDoc } from 'firebase/firestore';
 import { auth, db } from '../Firebase'; 
 import { NEW_LOGIN_KEY } from '../services/browserSession';
 import '../styles/Login.scss';
@@ -129,6 +129,9 @@ export default function Login({ error, setError }) {
           return;
         }
 
+        // Set flag so App.jsx doesn't kill the session before we finish writing the document
+        sessionStorage.setItem('is_registering', 'true');
+
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
         const fullName = `${firstName} ${lastName}`;
@@ -136,10 +139,49 @@ export default function Login({ error, setError }) {
           displayName: fullName
         });
 
+        // Generate absolute timestamp for timeCreated
+        const now = new Date();
+
+        await setDoc(doc(db, 'users', userCredential.user.uid), {
+          uid: userCredential.user.uid,
+          email: userCredential.user.email,
+          name: fullName,
+          firstName: firstName.trim(),
+          lastName: lastName.trim(),
+          accountType: tag,
+          role: tag === 'Faculty' ? 'endorser' : 'requestor',
+          studentNumber: tag === 'Student' || tag === 'Student Leader' ? studentNumber.trim() : '',
+          course: tag === 'Student' || tag === 'Student Leader' ? course : '',
+          department: tag === 'Admin Staff' || tag === 'Faculty' ? department : '',
+          emailVerified: false, // Default to false upon creation
+          timeCreated: now.toISOString() // Record exactly when account was made
+        }, { merge: true });
+
         await sendEmailVerification(userCredential.user);
+
+        // Safely sign out the user now that the document is saved
+        await auth.signOut();
+        sessionStorage.removeItem('is_registering');
+        sessionStorage.removeItem(NEW_LOGIN_KEY);
+        
+        // Immediately switch to login view and show the success message
+        setIsLogin(true);
+        setResetMessage('Registration successful! Please check your email inbox to verify your account.');
+        
+        // Clean up local fields
+        setFirstName('');
+        setLastName('');
+        setTag('');
+        setStudentNumber('');
+        setCourse('');
+        setDepartment('');
+        setEmail('');
+        setPassword('');
+        setConfirmPassword('');
       }
     } catch (err) {
       sessionStorage.removeItem(NEW_LOGIN_KEY);
+      sessionStorage.removeItem('is_registering');
       console.error("Authentication error:", err.message);
       
       if (setError) {
@@ -365,6 +407,10 @@ export default function Login({ error, setError }) {
                           style={{ 
                             background: 'none', 
                             border: 'none', 
+                            width: 'auto',
+                            padding: 0,
+                            borderRadius: 0,
+                            display: 'inline-flex',
                             color: resetCooldown > 0 ? '#94A3B8' : '#64748B', 
                             fontSize: '12px', 
                             cursor: resetCooldown > 0 ? 'not-allowed' : 'pointer', 
@@ -388,6 +434,21 @@ export default function Login({ error, setError }) {
                         required
                         style={inputStyle}
                       />
+                    </div>
+                  )}
+
+                  {/* TERMS AND CONDITIONS CHECKBOX FOR SIGN UP */}
+                  {!isLogin && (
+                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '8px' }}>
+                      <input 
+                        type="checkbox" 
+                        id="terms" 
+                        required 
+                        style={{ marginTop: '2px', cursor: 'pointer' }} 
+                      />
+                      <label htmlFor="terms" style={{ fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                        I agree to the <a href="#" style={{ color: themeBlue, textDecoration: 'underline' }}>Terms and Conditions</a> and consent to the collection of my data for the facility reservation system.
+                      </label>
                     </div>
                   )}
                   

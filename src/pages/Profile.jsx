@@ -59,7 +59,9 @@ const Profile = ({ currentUserRole }) => {
     firstName: '',
     lastName: '',
     email: '',
-    officeLocation: '',
+    accountType: '',
+    studentNumber: '',
+    course: '',
     department: '',
     phone: '',
     role: '',
@@ -114,12 +116,17 @@ const Profile = ({ currentUserRole }) => {
             let parsedLastName = '';
             let parsedFirstName = '';
 
-            if (fullName.includes(',')) {
+            if (data.firstName || data.lastName) {
+              parsedFirstName = data.firstName || '';
+              parsedLastName = data.lastName || '';
+            } else if (fullName.includes(',')) {
               const nameParts = fullName.split(',');
               parsedLastName = nameParts[0].trim(); 
               parsedFirstName = (nameParts[1] || '').replace(/\s*\(.*\)$/, '').trim(); 
             } else {
-              parsedFirstName = fullName; 
+              const nameParts = fullName.trim().split(/\s+/);
+              parsedFirstName = nameParts.shift() || '';
+              parsedLastName = nameParts.join(' ');
             }
 
             let joinedDate = data.dateJoined;
@@ -136,10 +143,18 @@ const Profile = ({ currentUserRole }) => {
               firstName: parsedFirstName,
               lastName: parsedLastName,
               email: data.email || (viewedProfileId ? '' : user.email || ''),
-              role: data.role ? data.role.toUpperCase() : (normalizedUserRole === 'super admin' ? 'SUPER ADMIN' : ''),
+              accountType: data.accountType || '',
+              studentNumber: data.studentNumber || '',
+              course: data.course || '',
+              role: data.role
+                ? data.role.toUpperCase()
+                : normalizedUserRole === 'super admin'
+                  ? 'SUPER ADMIN'
+                  : data.accountType === 'Faculty'
+                    ? 'ENDORSER'
+                    : 'REQUESTOR',
               status: data.status || 'Active',
               dateJoined: joinedDate || 'N/A', 
-              officeLocation: data.officeLocation || '',
               department: data.department || '',
               phone: normalizePhoneNumber(data.phone),
               avatarUrl: data.avatarUrl || '',
@@ -210,6 +225,16 @@ const Profile = ({ currentUserRole }) => {
   const handleSave = async () => {
     if (!isEditing) return;
 
+    const accountType = formData.accountType.toLowerCase();
+    if (['student', 'student leader'].includes(accountType) && !formData.studentNumber.trim()) {
+      setSaveError('Enter your student number.');
+      return;
+    }
+    if (['admin staff', 'faculty'].includes(accountType) && !formData.department.trim()) {
+      setSaveError('Enter your department or office.');
+      return;
+    }
+
     if (!/^09\d{9}$/.test(formData.phone) && formData.phone !== '09') {
       setSaveError('Enter a complete 11-digit phone number starting with 09.');
       return;
@@ -257,9 +282,13 @@ const Profile = ({ currentUserRole }) => {
         const userDocRef = doc(db, myCollection, user.uid);
         
         await updateDoc(userDocRef, {
+          accountType: formData.accountType,
+          studentNumber: ['Student', 'Student Leader'].includes(formData.accountType) ? formData.studentNumber.trim() : '',
+          course: ['Student', 'Student Leader'].includes(formData.accountType) ? formData.course : '',
           phone: formData.phone,
-          officeLocation: formData.officeLocation,
-          department: formData.department,
+          department: ['Admin Staff', 'Faculty'].includes(formData.accountType) || formData.role.toLowerCase() === 'endorser'
+            ? formData.department
+            : '',
           avatarUrl: updatedAvatarUrl,
           bannerUrl: updatedBannerUrl
         });
@@ -517,6 +546,30 @@ const Profile = ({ currentUserRole }) => {
                 <label>LAST NAME</label>
                 <input type="text" name="lastName" value={formData.lastName} readOnly className="profile-readonly-input" />
               </div>
+              <div className="input-group">
+                <label>ACCOUNT TYPE</label>
+                <input
+                  type="text"
+                  name="accountType"
+                  value={formData.accountType || 'N/A'}
+                  readOnly
+                  className="profile-readonly-input"
+                />
+              </div>
+              {['student', 'student leader'].includes(formData.accountType.toLowerCase()) && (
+                <div className="input-group">
+                  <label>STUDENT NUMBER</label>
+                  <input
+                    type="text"
+                    name="studentNumber"
+                    value={formData.studentNumber}
+                    onChange={handleInputChange}
+                    readOnly={!isEditing}
+                    required={isEditing}
+                    className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`}
+                  />
+                </div>
+              )}
               {!isSuperAdminProfile && (
                 <div className="input-group full-width">
                   <label>EMAIL</label>
@@ -562,18 +615,12 @@ const Profile = ({ currentUserRole }) => {
                   <span className="profile-phone-error">{saveError}</span>
                 )}
               </div>
-              {formData.role?.toLowerCase() !== 'requestor' && (
+              {['admin staff', 'faculty'].includes(formData.accountType.toLowerCase()) || formData.role?.toLowerCase() === 'endorser' ? (
                 <div className="input-group">
-                  <label>OFFICE LOCATION</label>
-                  <input type="text" name="officeLocation" value={formData.officeLocation} onChange={handleInputChange} readOnly={!isEditing} placeholder="e.g. Floor A, Room 102" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
+                  <label>DEPARTMENT / OFFICE</label>
+                  <input type="text" name="department" value={formData.department} onChange={handleInputChange} readOnly={!isEditing} required={isEditing && ['admin staff', 'faculty'].includes(formData.accountType.toLowerCase())} placeholder="e.g. SHS, MIS" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
                 </div>
-              )}
-              {formData.role?.toLowerCase() === 'endorser' && (
-                <div className="input-group">
-                  <label>DEPARTMENT</label>
-                  <input type="text" name="department" value={formData.department} onChange={handleInputChange} readOnly={!isEditing} placeholder="e.g. SHS, MIS" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
-                </div>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
