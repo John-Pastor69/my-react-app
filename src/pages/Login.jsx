@@ -152,7 +152,7 @@ export default function Login({ error, setError }) {
           role: tag === 'Faculty' ? 'endorser' : 'requestor',
           studentNumber: tag === 'Student' || tag === 'Student Leader' ? studentNumber.trim() : '',
           course: tag === 'Student' || tag === 'Student Leader' ? course : '',
-          department: tag === 'Admin Staff' || tag === 'Faculty' ? department : '',
+          department: ['Admin', 'Staff', 'Admin and Staff', 'Faculty'].includes(tag) ? department : '',
           emailVerified: false, // Default to false upon creation
           timeCreated: now.toISOString() // Record exactly when account was made
         }, { merge: true });
@@ -295,7 +295,8 @@ export default function Login({ error, setError }) {
                           <option value="" disabled>e.g. Student</option>
                           <option value="Student">Student</option>
                           <option value="Student Leader">Student Leader</option>
-                          <option value="Admin Staff">Admin Staff</option>
+                          <option value="Admin">Admin</option>
+                          <option value="Staff">Staff</option>
                           <option value="Faculty">Faculty</option>
                         </select>
                       </div>
@@ -346,7 +347,7 @@ export default function Login({ error, setError }) {
                         </>
                       )}
 
-                      {(tag === 'Admin Staff' || tag === 'Faculty') && (
+                      {(['Admin', 'Staff', 'Admin and Staff', 'Faculty'].includes(tag)) && (
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <label style={labelStyle}>Department / Office</label>
                           <select 

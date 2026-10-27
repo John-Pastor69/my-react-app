@@ -230,7 +230,7 @@ const Profile = ({ currentUserRole }) => {
       setSaveError('Enter your student number.');
       return;
     }
-    if (['admin staff', 'faculty'].includes(accountType) && !formData.department.trim()) {
+    if (['admin', 'staff', 'faculty'].includes(accountType) && !formData.department.trim()) {
       setSaveError('Enter your department or office.');
       return;
     }
@@ -286,7 +286,7 @@ const Profile = ({ currentUserRole }) => {
           studentNumber: ['Student', 'Student Leader'].includes(formData.accountType) ? formData.studentNumber.trim() : '',
           course: ['Student', 'Student Leader'].includes(formData.accountType) ? formData.course : '',
           phone: formData.phone,
-          department: ['Admin Staff', 'Faculty'].includes(formData.accountType) || formData.role.toLowerCase() === 'endorser'
+          department: ['Admin', 'Staff', 'Faculty'].includes(formData.accountType) || formData.role.toLowerCase() === 'endorser'
             ? formData.department
             : '',
           avatarUrl: updatedAvatarUrl,
@@ -615,10 +615,10 @@ const Profile = ({ currentUserRole }) => {
                 <label>DATE JOINED</label>
                 <input type="text" name="dateJoined" value={formData.dateJoined} readOnly className="profile-readonly-input" />
               </div>
-              {['admin staff', 'faculty'].includes(formData.accountType.toLowerCase()) || formData.role?.toLowerCase() === 'endorser' ? (
+              {['admin', 'staff', 'faculty'].includes(formData.accountType.toLowerCase()) || formData.role?.toLowerCase() === 'endorser' ? (
                 <div className="input-group">
                   <label>DEPARTMENT / OFFICE</label>
-                  <input type="text" name="department" value={formData.department} onChange={handleInputChange} readOnly={!isEditing} required={isEditing && ['admin staff', 'faculty'].includes(formData.accountType.toLowerCase())} placeholder="e.g. SHS, MIS" className={`profile-dynamic-input ${isEditing ? 'editing' : ''}`} />
+                  <input type="text" name="department" value={formData.department} readOnly placeholder="e.g. SHS, MIS" className="profile-readonly-input" />
                 </div>
               ) : null}
             </div>

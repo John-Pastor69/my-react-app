@@ -31,6 +31,8 @@ import '../styles/Reservation.scss';
 const initialFormState = {
   fullName: '', 
   requestorTypes: [],
+  studentNumber: '',
+  department: '',
   contactNumber: '09',
   emailAddress: '', 
   eventName: '', 
@@ -285,6 +287,7 @@ const Reservation = ({ currentUserRole }) => {
             const userData = userSnap.data();
             const normalizedRole = (currentUserRole || userData.role || 'requestor').toLowerCase().trim().replace(/_/g, ' ');
             setUserRole(normalizedRole);
+            const accountType = userData.accountType || '';
             
             const profileName = [userData.firstName, userData.lastName].filter(Boolean).join(' ')
               || userData.name
@@ -295,6 +298,9 @@ const Reservation = ({ currentUserRole }) => {
             setFormData(prev => ({
               ...prev,
               fullName: prev.fullName || cleanName,
+              requestorTypes: accountType ? [accountType] : prev.requestorTypes,
+              studentNumber: userData.studentNumber || prev.studentNumber,
+              department: userData.department || prev.department,
               contactNumber: prev.contactNumber !== '09'
                 ? prev.contactNumber
                 : normalizeContactNumber(userData.phone),
@@ -336,7 +342,8 @@ const Reservation = ({ currentUserRole }) => {
           || reservation.userEmail === currentUser.email;
         const userCollection = currentUserRole === 'super admin' ? 'super_users' : 'users';
         const userSnap = await getDoc(doc(db, userCollection, currentUser.uid));
-        const currentRole = (userSnap.data()?.role || '').toLowerCase().trim().replace(/_/g, ' ');
+        const userData = userSnap.data() || {};
+        const currentRole = (userData.role || '').toLowerCase().trim().replace(/_/g, ' ');
         const canEditApprovedReservation = canSkipReservationLeadTime(currentRole)
           && reservationStatus === 'approved'
           && !isReservationEndReached(reservation);
@@ -365,9 +372,13 @@ const Reservation = ({ currentUserRole }) => {
         setEditingReservation(reservation);
         setFormData({
           fullName: reservation.fullName || '',
-          requestorTypes: Array.isArray(reservation.requestorTypes)
-            ? reservation.requestorTypes.slice(0, 1)
-            : [],
+          requestorTypes: userData.accountType
+            ? [userData.accountType]
+            : Array.isArray(reservation.requestorTypes)
+              ? reservation.requestorTypes.slice(0, 1)
+              : [],
+          studentNumber: reservation.studentNumber || userData.studentNumber || '',
+          department: reservation.department || userData.department || '',
           contactNumber: normalizeContactNumber(reservation.contactNumber),
           emailAddress: reservation.emailAddress || '',
           eventName: sanitizeEventName(reservation.eventName).slice(0, 40),
@@ -436,9 +447,11 @@ const Reservation = ({ currentUserRole }) => {
           setFormData(prev => ({
             ...prev,
             ...parsed.formData,
-            requestorTypes: Array.isArray(parsed.formData.requestorTypes)
+            requestorTypes: Array.isArray(parsed.formData.requestorTypes) && parsed.formData.requestorTypes.length > 0
               ? parsed.formData.requestorTypes.slice(0, 1)
-              : [],
+              : prev.requestorTypes,
+            studentNumber: parsed.formData.studentNumber || prev.studentNumber,
+            department: parsed.formData.department || prev.department,
             eventName: sanitizeEventName(parsed.formData.eventName).slice(0, 40),
             purpose: (parsed.formData.purpose || '').slice(0, 600),
             endorserName: sanitizeAlphabeticName(parsed.formData.endorserName || ''),
@@ -523,11 +536,20 @@ const Reservation = ({ currentUserRole }) => {
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       const endorsers = users
-        .filter(user => user.role && user.role.toLowerCase() === 'endorser')
-        .map(user => ({
-          ...user,
-          cleanName: formatName(user.name)
-        }));
+        .filter(user => (user.role || user.personal_information?.role || '').toLowerCase() === 'endorser')
+        .map(user => {
+          const personalInformation = user.personal_information || {};
+          const profileName = [user.firstName || personalInformation.first_name, user.lastName || personalInformation.last_name]
+            .filter(Boolean)
+            .join(' ') || user.name;
+
+          return {
+            ...user,
+            cleanName: formatName(profileName),
+            department: user.department || personalInformation.department || '',
+            email: user.email || personalInformation.email_address || ''
+          };
+        });
       setEndorsersList(endorsers);
     }, (error) => console.error('Failed to load users:', error));
 
@@ -648,6 +670,8 @@ const Reservation = ({ currentUserRole }) => {
     (reservation) => reservation.id === selectedScheduleId
   );
   const normalizedCurrentRole = userRole.replace(/_/g, ' ').trim().toLowerCase();
+  const showProfileDepartment = ['room checker', 'mis', 'osa', 'building admin', 'academic head', 'school admin']
+    .includes(normalizedCurrentRole);
   const isSelectedScheduleOwner = Boolean(currentUser && selectedSchedule && (
     selectedSchedule.userId === currentUser.uid
     || (
@@ -686,8 +710,8 @@ const Reservation = ({ currentUserRole }) => {
         const matchedEndorser = endorsersList.find(
           e => e.cleanName.toLowerCase() === inputValue.trim().toLowerCase()
         );
-        if (matchedEndorser && matchedEndorser.department) {
-          updated.endorserDesignation = matchedEndorser.department;
+        if (matchedEndorser) {
+          updated.endorserDesignation = matchedEndorser.department || '';
           clearMissingField('endorserDesignation');
         }
       }
@@ -712,7 +736,7 @@ const Reservation = ({ currentUserRole }) => {
     setFormData(prev => ({
       ...prev,
       endorserName: getEndorserNameWithoutFacultySuffix(endorser.cleanName),
-      endorserDesignation: endorser.department || prev.endorserDesignation,
+      endorserDesignation: endorser.department || '',
       endorserEmail: endorser.email
     }));
     clearMissingField('endorserName');
@@ -965,11 +989,17 @@ const Reservation = ({ currentUserRole }) => {
     // Keep auto-filled readonly data when discarding
     const retainedFullName = formData.fullName;
     const retainedEmail = formData.emailAddress;
+    const retainedRequestorTypes = formData.requestorTypes;
+    const retainedStudentNumber = formData.studentNumber;
+    const retainedDepartment = formData.department;
     
     setFormData({
         ...initialFormState,
         fullName: retainedFullName,
-        emailAddress: retainedEmail
+        emailAddress: retainedEmail,
+        requestorTypes: retainedRequestorTypes,
+        studentNumber: retainedStudentNumber,
+        department: retainedDepartment
     });
     if (!preserveSchedule) {
       setDays(0);
@@ -1028,7 +1058,13 @@ const Reservation = ({ currentUserRole }) => {
       { key: 'contactNumber', missing: !/^09\d{9}$/.test(formData.contactNumber) },
       { key: 'emailAddress', missing: !formData.emailAddress.trim() },
       ...(userRole === 'requestor' ? [
-        { key: 'requestorTypes', missing: formData.requestorTypes.length === 0 }
+        { key: 'requestorTypes', missing: formData.requestorTypes.length === 0 },
+        ...(formData.requestorTypes.some(type => ['Student', 'Student Leader'].includes(type)) ? [
+          { key: 'studentNumber', missing: !formData.studentNumber.trim() }
+        ] : []),
+        ...(formData.requestorTypes.some(type => ['Admin', 'Staff', 'Faculty'].includes(type)) ? [
+          { key: 'department', missing: !formData.department.trim() }
+        ] : [])
       ] : []),
       ...((userRole === 'requestor' || userRole === 'user') ? [
         { key: 'endorserName', missing: !formData.endorserName.trim() },
@@ -1067,7 +1103,7 @@ const Reservation = ({ currentUserRole }) => {
       if (targetEl) {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const inputEl = firstMissingKey === 'requestorTypes'
-          ? targetEl.querySelector('input[type="checkbox"]')
+          ? targetEl.querySelector('input')
           : targetEl.querySelector('input:not([type="checkbox"]), textarea');
         if (inputEl && firstMissingKey !== 'eventDate' && firstMissingKey !== 'endDateInput') {
           inputEl.focus({ preventScroll: true });
@@ -1373,21 +1409,45 @@ const Reservation = ({ currentUserRole }) => {
                 ref={el => fieldRefs.current.requestorTypes = el}
               >
                 <label>Requestor Type <span className="req">*</span></label>
-                <div className="requestor-type-options" role="group" aria-label="Requestor type" aria-required="true">
-                  {['Student', 'Student Leader', 'Admin Staff'].map((type) => (
-                    <label
-                      key={type}
-                      className={`requestor-type-option ${formData.requestorTypes.includes(type) ? 'is-selected' : ''}`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={formData.requestorTypes.includes(type)}
-                        onChange={(e) => handleInputChange('requestorTypes', e.target.checked ? [type] : [])}
-                      />
-                      {type}
-                    </label>
-                  ))}
-                </div>
+                <input
+                  type="text"
+                  value={formData.requestorTypes[0] || ''}
+                  readOnly
+                  aria-label="Requestor type from profile"
+                  className={missingFields.requestorTypes ? 'input-error' : ''}
+                />
+                {['Student', 'Student Leader'].includes(formData.requestorTypes[0]) && (
+                  <div
+                    className={`input-group ${missingFields.studentNumber ? 'field-missing' : ''}`}
+                    ref={el => fieldRefs.current.studentNumber = el}
+                  >
+                    <label>Student Number <span className="req">*</span></label>
+                    <input
+                      type="text"
+                      value={formData.studentNumber}
+                      onChange={(e) => handleInputChange('studentNumber',   e.target.value)}
+                      maxLength={30}
+                      placeholder="Enter your student number"
+                      className={missingFields.studentNumber ? 'input-error' : ''}
+                    />
+                  </div>
+                )}
+                {['Admin', 'Staff', 'Faculty'].includes(formData.requestorTypes[0]) && (
+                  <div
+                    className={`input-group ${missingFields.department ? 'field-missing' : ''}`}
+                    ref={el => fieldRefs.current.department = el}
+                  >
+                    <label>Department / Office <span className="req">*</span></label>
+                    <input
+                      type="text"
+                      value={formData.department}
+                      onChange={(e) => handleInputChange('department', e.target.value)}
+                      maxLength={50}
+                      placeholder="Enter your department or office"
+                      className={missingFields.department ? 'input-error' : ''}
+                    />
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -1418,6 +1478,17 @@ const Reservation = ({ currentUserRole }) => {
               <span className="field-error">Enter a complete 11-digit mobile number starting with 09.</span>
             )}
           </div>
+          {showProfileDepartment && (
+            <div className="input-group">
+              <label>Department</label>
+              <input
+                type="text"
+                value={formData.department}
+                readOnly
+                placeholder="No department listed on profile"
+              />
+            </div>
+          )}
           <div 
             className={`input-group full-width ${missingFields.emailAddress ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.emailAddress = el}
@@ -1497,9 +1568,9 @@ const Reservation = ({ currentUserRole }) => {
                 <input 
                   type="text" 
                   value={formData.endorserDesignation} 
-                  onChange={(e) => handleInputChange('endorserDesignation', e.target.value)} 
+                  readOnly
                   maxLength={50}
-                  placeholder="e.g. Dean, Faculty Adviser" 
+                  placeholder="Select an endorser to fill department"
                   className={missingFields.endorserDesignation ? 'input-error' : ''}
                 />
               </div>
