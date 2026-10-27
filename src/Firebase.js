@@ -1,5 +1,5 @@
 import { initializeApp } from 'firebase/app';
-import { initializeAuth, browserSessionPersistence, browserPopupRedirectResolver, OAuthProvider } from 'firebase/auth';
+import { initializeAuth, browserSessionPersistence, browserPopupRedirectResolver } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from "firebase/storage";
 
@@ -22,11 +22,4 @@ export const auth = initializeAuth(app, {
   popupRedirectResolver: browserPopupRedirectResolver,
 });
 export const db = getFirestore(app);
-
-// Initialize the Microsoft Provider
-export const microsoftProvider = new OAuthProvider('microsoft.com');
 export const storage = getStorage(app);
-
-microsoftProvider.setCustomParameters({
-  common: 'ac848b9f-db81-4f90-8617-684472457a47'
-});

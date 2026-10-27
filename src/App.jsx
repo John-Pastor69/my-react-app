@@ -1,6 +1,6 @@
 import { useState, useEffect, Suspense, useRef, useCallback } from 'react';
 import { Routes, Route, Navigate, useNavigate, useLocation } from 'react-router-dom';
-import { signOut, getRedirectResult, onAuthStateChanged } from 'firebase/auth';
+import { signOut, onAuthStateChanged } from 'firebase/auth'; 
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
 import { acquireTabAccess, clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY, NEW_LOGIN_KEY } from './services/browserSession';
@@ -34,6 +34,7 @@ export default function App() {
   const isLoggingOut = useRef(false);
   const sessionUid = useRef(null);
   const tabAccess = useRef(null);
+  const profileCollection = useRef('users');
 
   useEffect(() => {
     setIsSidebarOpen(false);
@@ -77,15 +78,6 @@ export default function App() {
     let disposed = false;
     let authVersion = 0;
 
-    getRedirectResult(auth).then((result) => {
-      if (result) {
-        console.log("Successfully logged in via redirect!", result.user);
-      }
-    }).catch(err => {
-      console.error("Redirect Error:", err);
-      setLoginError("Login failed during redirect: " + err.message);
-    });
-
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       const version = ++authVersion;
       if (sessionUnsubscribe) {
@@ -101,8 +93,7 @@ export default function App() {
         setTwoFactorMode(null);
         setTwoFactorSecret(null);
         setTabBlocked('');
-        // Only an explicit successful login can replace the owning tab.
-        // Restoring or duplicating a tab never takes ownership away from it.
+
         const takeover = sessionStorage.getItem(NEW_LOGIN_KEY) === 'true';
         sessionStorage.removeItem(NEW_LOGIN_KEY);
         let access;
@@ -126,8 +117,6 @@ export default function App() {
         if (!access) {
           setTabBlocked('Your account is already open in another tab. Return to that tab. To use this one, close the other tab, then reload this page and sign in.');
           setIsAuthLoading(false);
-          // Authentication is tab-scoped, so removing this tab's credentials
-          // leaves the owner signed in.
           await signOut(auth);
           if (window.opener) window.close();
           return;
@@ -140,8 +129,6 @@ export default function App() {
           sessionUnsubscribe?.();
           sessionUnsubscribe = null;
           tabAccess.current = null;
-          // Sign out this tab only; shared cleanup/broadcast would also log out
-          // the new tab that just signed in.
           sessionUid.current = null;
           sessionStorage.removeItem(`2fa_verified_${user.uid}`);
           setIsAuthenticated(false);
@@ -153,41 +140,69 @@ export default function App() {
           if (window.opener) window.close();
         });
         
-        const isSuperAdminProvider = user.providerData.some(p => p.providerId === 'password');
-
-        const isStiEmail = user.email && (
-          user.email.endsWith('@globalcity.sti.edu.ph') || 
-          user.email.endsWith('@sti.edu.ph') ||
-          user.email.endsWith('@globalcity.sti.edu')
-        );
-
-        if (!isStiEmail && !isSuperAdminProvider) {
-          await signOut(auth);
-          setLoginError("Access denied. Only STI institutional accounts are allowed.");
-          setIsAuthenticated(false);
-          setIsAuthLoading(false);
-          return;
-        }
-
         try {
-          const userRef = doc(db, 'users', user.uid);
+          let isSuperAdmin = false;
+          let userDocSnap = null;
+          let resolvedRole = 'requestor';
+          let userRef = null;
+
+          // 1. Check if they exist in the super_users collection FIRST
+          const superAdminRef = doc(db, 'super_users', user.uid);
+          const superAdminSnap = await getDoc(superAdminRef);
+
+          if (superAdminSnap.exists()) {
+            isSuperAdmin = true;
+            profileCollection.current = 'super_users';
+            userDocSnap = superAdminSnap;
+            resolvedRole = 'super admin';
+            userRef = superAdminRef;
+          } else {
+            profileCollection.current = 'users';
+            // 2. If not a Super Admin, enforce the domain check for normal users
+            const isValidDomain = user.email && (
+              user.email.endsWith('@gmail.com') || 
+              user.email.endsWith('@outlook.com') ||
+              user.email.endsWith('@yahoo.com') 
+            );
+
+            if (!isValidDomain) {
+              await signOut(auth);
+              setLoginError("Access denied. Only @gmail.com, @outlook.com, or @yahoo.com domains are allowed.");
+              setIsAuthenticated(false);
+              setIsAuthLoading(false);
+              return;
+            }
+
+            // --- ADDED EMAIL VERIFICATION CHECK ---
+            if (!user.emailVerified) {
+              await signOut(auth);
+              setLoginError("Please check your inbox and verify your email before logging in.");
+              setIsAuthenticated(false);
+              setIsAuthLoading(false);
+              return;
+            }
+
+            // 3. Check the normal users collection
+            userRef = doc(db, 'users', user.uid);
+            userDocSnap = await getDoc(userRef);
+          }
           
           const localSessionId = await getBrowserSessionId(user.uid);
           if (disposed || version !== authVersion || auth.currentUser !== user || isLoggingOut.current) return;
           const isVerifiedThisSession = sessionStorage.getItem(`2fa_verified_${user.uid}`) === localSessionId;
 
-          const userSnap = await getDoc(userRef);
           if (disposed || version !== authVersion || auth.currentUser !== user || isLoggingOut.current) return;
           const nowIso = new Date().toISOString();
 
-          let resolvedRole = 'requestor';
           let needsTwoFactor = false;
 
-          if (userSnap.exists()) {
-            const userData = userSnap.data();
-            resolvedRole = userData.role || 'requestor';
+          if (userDocSnap.exists()) {
+            const userData = userDocSnap.data();
+            // If they are a super admin, we keep the 'super admin' role set above. Otherwise, read from doc.
+            if (!isSuperAdmin) {
+              resolvedRole = userData.role || 'requestor';
+            }
             
-            // OPT-IN POLICY: Only true if explicitly enabled
             const is2FAPolicyActive = userData.twoFactorEnabled === true;
             needsTwoFactor = is2FAPolicyActive && !isVerifiedThisSession;
             
@@ -197,14 +212,12 @@ export default function App() {
               activeSessionId: localSessionId 
             }).catch(err => console.error("Heartbeat update failed:", err));
 
-            // OPT-IN 2FA LOGIC
             if (!isVerifiedThisSession && is2FAPolicyActive) {
               if (userData.twoFactorSecret) {
                 setTwoFactorSecret(userData.twoFactorSecret);
                 setTwoFactorMode('verify');
                 localStorage.setItem(`req2FA_${user.uid}`, 'true'); 
               } else {
-                // Failsafe: Should not happen if they actually set it up, but just in case
                 setTwoFactorMode('setup');
                 localStorage.setItem(`req2FA_${user.uid}`, 'true'); 
               }
@@ -214,20 +227,21 @@ export default function App() {
             }
             
           } else {
+            // --- NEW USER CREATION LOGIC (Only runs for normal users) ---
+            if (isSuperAdmin) {
+               // This block should never run for super admins since we already verified their document exists above.
+               console.error("Super admin document missing during initialization.");
+               return; 
+            }
+
             const d = new Date();
             const month = String(d.getMonth() + 1).padStart(2, '0');
             const day = String(d.getDate()).padStart(2, '0');
             const liveDate = `${month}/${day}/${d.getFullYear()}`;
-            const rawName = user.displayName || "Super Admin";
+            const rawName = user.displayName || "New User";
             
-            if (isSuperAdminProvider) {
-              resolvedRole = 'super admin';
-            } else if (user.email && user.email.endsWith('@globalcity.sti.edu')) {
+            if (/faculty|endorser/i.test(rawName)) {
               resolvedRole = 'endorser';
-            } else if (/faculty/i.test(rawName)) {
-              resolvedRole = 'endorser';
-            } else if (/student/i.test(rawName)) {
-              resolvedRole = 'requestor';
             } else {
               resolvedRole = 'requestor'; 
             }
@@ -242,11 +256,10 @@ export default function App() {
               phone: '',
               status: 'Active',
               lastActive: nowIso,
-              twoFactorEnabled: false, // Default OFF for new users
+              twoFactorEnabled: false, 
               activeSessionId: localSessionId 
             }).catch(err => console.error("User creation failed:", err));
 
-            // Since it's off by default, we don't enforce setup anymore
             setTwoFactorMode(null);
             localStorage.removeItem(`req2FA_${user.uid}`);
           }
@@ -288,6 +301,7 @@ export default function App() {
       } else {
         tabAccess.current?.release();
         tabAccess.current = null;
+        profileCollection.current = 'users';
         if (sessionUid.current) {
           setTabBlocked('');
           clearAccountStorage();
@@ -321,7 +335,9 @@ export default function App() {
 
     const handleTabClose = () => {
       if (auth.currentUser && tabAccess.current) {
-        updateDoc(doc(db, 'users', auth.currentUser.uid), {
+        const userRef = doc(db, profileCollection.current, auth.currentUser.uid);
+            
+        updateDoc(userRef, {
           status: 'Inactive',
           lastActive: new Date().toISOString()
         }).catch(err => console.error("Failed to set inactive status:", err));
@@ -331,7 +347,9 @@ export default function App() {
     const handleVisibilityChange = () => {
       if (auth.currentUser && tabAccess.current) {
         if (document.visibilityState === 'visible') {
-          updateDoc(doc(db, 'users', auth.currentUser.uid), {
+          const userRef = doc(db, profileCollection.current, auth.currentUser.uid);
+
+          updateDoc(userRef, {
             status: 'Active',
             lastActive: new Date().toISOString()
           }).catch(err => console.error("Failed to set active status:", err));
@@ -355,7 +373,6 @@ export default function App() {
       window.removeEventListener('pagehide', handleTabClose);
       document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
-  // Route changes must not tear down the tab lock or restart authentication.
   }, [handleLogout]);
 
   if (tabBlocked) {
@@ -389,6 +406,7 @@ export default function App() {
         mode={twoFactorMode}
         existingSecret={twoFactorSecret}
         uid={auth.currentUser?.uid}
+        userCollection={userRole === 'super admin' ? 'super_users' : 'users'}
         userEmail={auth.currentUser?.email}
         onSuccess={() => {
           sessionStorage.setItem(`2fa_verified_${auth.currentUser.uid}`, localStorage.getItem(`active_session_${auth.currentUser.uid}`));
@@ -419,7 +437,7 @@ export default function App() {
         userRole={userRole} 
       />
       <div className="main-content">
-        <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} />
+        <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} userRole={userRole}/>
         <div className="page-content">
           <Suspense fallback={<div className="loading-text">Loading..</div>}>
             <Routes> 

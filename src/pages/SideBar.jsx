@@ -39,8 +39,11 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
   const handleSignOut = async () => {
     try {
       if (auth.currentUser) {
-        // --- SET STATUS TO INACTIVE BEFORE LOGGING OUT ---
-        const userRef = doc(db, 'users', auth.currentUser.uid);
+        // --- LOGOUT TARGET UPDATED HERE ---
+        // Determine target collection based on userRole
+        const targetCollection = normalizedRole === 'super admin' ? 'super_users' : 'users';
+        
+        const userRef = doc(db, targetCollection, auth.currentUser.uid);
         await updateDoc(userRef, {
           status: 'Inactive',
           lastActive: new Date().toISOString()

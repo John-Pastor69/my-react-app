@@ -11,7 +11,6 @@ import '../styles/TopBar.scss';
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
 
-// Helper function to format timestamp into "X ago"
 const timeAgo = (dateInput) => {
   if (!dateInput) return 'Just now';
   const normalizedDateInput = typeof dateInput === 'string'
@@ -36,7 +35,6 @@ const timeAgo = (dateInput) => {
   return Math.floor(seconds) + " seconds ago";
 };
 
-// Helper to check if event has expired based on Date, End Time, and Duration (days)
 const isExpired = (eventDate, endTime, days = 1) => {
   if (!eventDate) return false;
   const now = new Date();
@@ -72,7 +70,8 @@ const isExpired = (eventDate, endTime, days = 1) => {
   return now > endDateTime;
 };
 
-const TopBar = ({ toggleSidebar }) => {
+// --- NEW PROPS ADDED HERE ---
+const TopBar = ({ toggleSidebar, userRole }) => {
   const navigate = useNavigate();
   const [currentDateTime, setCurrentDateTime] = useState(() => new Date());
   const [userData, setUserData] = useState({
@@ -82,12 +81,10 @@ const TopBar = ({ toggleSidebar }) => {
     avatarUrl: null
   });
   
-  // Real-time Database State
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   
-  // Notification & Modal State
   const [notifications, setNotifications] = useState([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [selectedRequest, setSelectedRequest] = useState(null); 
@@ -101,19 +98,16 @@ const TopBar = ({ toggleSidebar }) => {
   );
   const [mobileSearchContainer, setMobileSearchContainer] = useState(null);
 
-  // Local storage for read notifications persistence
   const [readNotifs, setReadNotifs] = useState(() => {
     const saved = localStorage.getItem('facilityResReadNotifs');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Local storage for deleted (cleared) notifications
   const [deletedNotifs, setDeletedNotifs] = useState(() => {
     const saved = localStorage.getItem('facilityResDeletedNotifs');
     return saved ? JSON.parse(saved) : [];
   });
 
-  // Derived state: Check if there is AT LEAST ONE unread notification
   const hasUnread = notifications.some(notif => !readNotifs.includes(notif.id));
 
   const [currentUser, setCurrentUser] = useState(null);
@@ -185,7 +179,6 @@ const TopBar = ({ toggleSidebar }) => {
     setMobileSearchContainer(document.getElementById('sidebar-mobile-search'));
   }, []);
 
-  // Close notification dropdown when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
       if (notifRef.current && !notifRef.current.contains(event.target)) {
@@ -206,15 +199,20 @@ const TopBar = ({ toggleSidebar }) => {
     return () => unsubscribeAuth();
   }, []);
 
-  // Fetch Current User Identity
+  // --- IDENTITY FETCH UPDATED HERE ---
   useEffect(() => {
     if (!currentUser) return;
 
-    const docRef = doc(db, 'users', currentUser.uid);
+    // Use userRole prop to determine which collection to read from
+    const targetCollection = userRole === 'super admin' ? 'super_users' : 'users';
+    const docRef = doc(db, targetCollection, currentUser.uid);
+    
     const unsubscribeSnapshot = onSnapshot(docRef, (docSnap) => {
       if (docSnap.exists()) {
         const data = docSnap.data();
-        const rawName = data.name || '';
+        
+        // Fallback for manual super admin creation (where 'name' might not exist yet)
+        const rawName = data.name || (userRole === 'super admin' ? 'Super Admin' : '');
         
         let finalDisplayName = rawName;
         let finalAvatarName = rawName.replace(/ /g, '+');
@@ -228,7 +226,7 @@ const TopBar = ({ toggleSidebar }) => {
           finalAvatarName = `${parsedFirstName}+${parsedLastName}`;
         }
 
-        let fetchedRole = data.role ? data.role : 'Requestor';
+        let fetchedRole = data.role ? data.role : (userRole === 'super admin' ? 'super admin' : 'Requestor');
         const lowerRole = fetchedRole.toLowerCase();
         
         if (lowerRole === 'mis') fetchedRole = 'MIS';
@@ -243,11 +241,9 @@ const TopBar = ({ toggleSidebar }) => {
       }
     });
     
-    // Now this correctly returns to the React useEffect cleanup!
     return () => unsubscribeSnapshot();
-  }, [currentUser]);
+  }, [currentUser, userRole]); // Added userRole to dependencies
 
-  // Fetch Global Reservations & Users for Notification Logic
   useEffect(() => {
     if (!currentUser) return;
 
@@ -297,7 +293,6 @@ const TopBar = ({ toggleSidebar }) => {
       });
   }, [currentDateTime, currentUser, reservationsData, userData.role]);
 
-  // Process active reservation and archived reservation notifications
   useEffect(() => {
     if (!userData.role || userData.role === '...' || !auth.currentUser) return;
 
@@ -324,7 +319,6 @@ const TopBar = ({ toggleSidebar }) => {
       const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
       const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
       
-      // --- 1. REQUESTOR NOTIFICATIONS ---
       const isRequestor = res.userId === uid || res.userEmail === email;
       if (isRequestor) {
         const status = (res.status || '').toLowerCase().trim();
@@ -385,7 +379,6 @@ const TopBar = ({ toggleSidebar }) => {
           });
       }
 
-      // --- 2. APPROVER NOTIFICATIONS ---
       const myIndex = APPROVAL_ROLE_HIERARCHY.indexOf(myRoleKey);
       
       const reservationStatus = (res.status || '').toLowerCase().trim();
@@ -504,30 +497,24 @@ const TopBar = ({ toggleSidebar }) => {
       }
     });
 
-    // Filter out notifications that the user explicitly cleared
     const uniqueNotifs = [...new Map(newNotifs.map((notif) => [notif.id, notif])).values()];
     const filteredNotifs = uniqueNotifs.filter(notif => !deletedNotifs.includes(notif.id));
     
-    // Sort newest first
     filteredNotifs.sort((a, b) => b.rawDate - a.rawDate);
     setNotifications(filteredNotifs);
   }, [reservationsData, historyData, usersData, userData, deletedNotifs]);
 
-  // Click handler: Opens modal and marks notification as read
   const handleNotifItemClick = (notif) => {
-    // Mark as read if it isn't already
     if (!readNotifs.includes(notif.id)) {
       const updatedReadNotifs = [...readNotifs, notif.id];
       setReadNotifs(updatedReadNotifs);
       localStorage.setItem('facilityResReadNotifs', JSON.stringify(updatedReadNotifs));
     }
     
-    // Set data for the modal and close the dropdown
     setSelectedRequest(notif.fullData);
     setIsNotifOpen(false);
   };
 
-  // Click handler: Clears (deletes) all current notifications from view
   const handleClearAllNotifs = () => {
     const allCurrentIds = notifications.map(n => n.id);
     const updatedDeleted = [...new Set([...deletedNotifs, ...allCurrentIds])];
@@ -708,7 +695,6 @@ const TopBar = ({ toggleSidebar }) => {
             })}</strong>
           </Link>
 
-          {/* Notification Wrapper */}
           <div className="notification-wrapper" ref={notifRef}>
             <button 
               className="notification-btn" 
@@ -719,7 +705,6 @@ const TopBar = ({ toggleSidebar }) => {
               {hasUnread && <span className="notification-dot"></span>}
             </button>
 
-            {/* Dropdown Window */}
             {isNotifOpen && (
               <div className="notification-dropdown">
                 <div className="dropdown-header">
@@ -796,7 +781,6 @@ const TopBar = ({ toggleSidebar }) => {
         )
         : null}
 
-      {/* --- MODAL POPUP --- */}
       {selectedRequest && (
         <div className="topbar-modal-overlay"> 
             <div className="modal-wrapper">

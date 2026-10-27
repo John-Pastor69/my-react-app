@@ -5,7 +5,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '../Firebase';
 import '../styles/TwoFactorGate.scss'; 
 
-export default function TwoFactorGate({ mode, existingSecret, uid, userEmail, onSuccess, onCancel }) {
+export default function TwoFactorGate({ mode, existingSecret, uid, userCollection = 'users', userEmail, onSuccess, onCancel }) {
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [isVerifying, setIsVerifying] = useState(false);
@@ -56,7 +56,7 @@ export default function TwoFactorGate({ mode, existingSecret, uid, userEmail, on
       if (mode === 'setup') {
         try {
           // Save the newly generated secret to their database profile
-          await updateDoc(doc(db, 'users', uid), {
+          await updateDoc(doc(db, userCollection, uid), {
             twoFactorEnabled: true,
             twoFactorSecret: activeSecret
           });

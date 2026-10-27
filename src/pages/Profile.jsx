@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
-import { deleteUser, reauthenticateWithPopup, reauthenticateWithRedirect } from 'firebase/auth';
+import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'; 
 import { useSearchParams } from 'react-router-dom';
-import { auth, db, microsoftProvider } from '../Firebase'; 
+import { auth, db } from '../Firebase'; 
 import { clearAccountStorage, clearBrowserCaches, LOGOUT_EVENT_KEY } from '../services/browserSession';
 import * as OTPAuth from 'otpauth'; 
 import QRCode from 'qrcode'; 
@@ -26,6 +26,10 @@ const Profile = ({ currentUserRole }) => {
   const viewedProfileId = canViewOtherProfiles ? requestedProfileId : '';
   const isViewingOtherProfile = Boolean(viewedProfileId);
   
+  // --- DETERMINE TARGET COLLECTION ---
+  const myCollection = normalizedUserRole === 'super admin' ? 'super_users' : 'users';
+  const fetchCollection = viewedProfileId ? 'users' : myCollection;
+
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
@@ -37,12 +41,11 @@ const Profile = ({ currentUserRole }) => {
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [bannerPreview, setBannerPreview] = useState(null);
 
-  // --- GITHUB-STYLE DELETE ACCOUNT STATES ---
-  const [deleteStep, setDeleteStep] = useState(0); // 0: closed, 1: warning, 2: confirmation
+  const [deleteStep, setDeleteStep] = useState(0); 
   const [deleteVerification, setDeleteVerification] = useState('');
+  const [deletePassword, setDeletePassword] = useState(''); 
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // --- 2FA STATES ---
   const [is2FAEnabled, setIs2FAEnabled] = useState(false);
   const [show2FAModal, setShow2FAModal] = useState(false);
   const [qrCodeDataUrl, setQrCodeDataUrl] = useState('');
@@ -65,6 +68,7 @@ const Profile = ({ currentUserRole }) => {
     avatarUrl: '',
     bannerUrl: ''
   });
+  
   const isSuperAdminProfile = formData.role.toLowerCase().trim().replace(/_/g, ' ') === 'super admin';
             
   useEffect(() => {
@@ -75,7 +79,7 @@ const Profile = ({ currentUserRole }) => {
         if (!viewedProfileId && localStorage.getItem('pendingAccountDeletion') === 'true') {
           localStorage.removeItem('pendingAccountDeletion'); 
           try {
-            const userDocRef = doc(db, 'users', user.uid);
+            const userDocRef = doc(db, myCollection, user.uid);
             await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
             await deleteDoc(userDocRef);
             await deleteUser(user);
@@ -90,18 +94,22 @@ const Profile = ({ currentUserRole }) => {
         }
 
         try {
-          const docRef = doc(db, 'users', viewedProfileId || user.uid);
+          // --- FIX: Querying the correct collection ---
+          const docRef = doc(db, fetchCollection, viewedProfileId || user.uid);
           const docSnap = await getDoc(docRef);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
             const isHiddenSuperAdmin = (data.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin'
               && docSnap.id !== user.uid;
+            
             if (isHiddenSuperAdmin) {
               setProfileLoadError('This user profile could not be found.');
               return;
             }
-            const fullName = data.name || '';
+            
+            // Fallback for manually created Super Admins
+            const fullName = data.name || (normalizedUserRole === 'super admin' && !viewedProfileId ? 'Super Admin' : '');
             
             let parsedLastName = '';
             let parsedFirstName = '';
@@ -128,7 +136,7 @@ const Profile = ({ currentUserRole }) => {
               firstName: parsedFirstName,
               lastName: parsedLastName,
               email: data.email || (viewedProfileId ? '' : user.email || ''),
-              role: data.role ? data.role.toUpperCase() : '',
+              role: data.role ? data.role.toUpperCase() : (normalizedUserRole === 'super admin' ? 'SUPER ADMIN' : ''),
               status: data.status || 'Active',
               dateJoined: joinedDate || 'N/A', 
               officeLocation: data.officeLocation || '',
@@ -138,7 +146,6 @@ const Profile = ({ currentUserRole }) => {
               bannerUrl: data.bannerUrl || ''
             }));
 
-            // OPT-IN STATUS: Only true if explicitly true in DB
             setIs2FAEnabled(data.twoFactorEnabled === true);
             
           } else {
@@ -152,7 +159,7 @@ const Profile = ({ currentUserRole }) => {
     });
 
     return () => unsubscribe(); 
-  }, [viewedProfileId]);
+  }, [viewedProfileId, fetchCollection, myCollection, normalizedUserRole]);
 
   const handleInputChange = (e) => {
     const { name, value } = e.target;
@@ -203,7 +210,7 @@ const Profile = ({ currentUserRole }) => {
   const handleSave = async () => {
     if (!isEditing) return;
 
-    if (!/^09\d{9}$/.test(formData.phone)) {
+    if (!/^09\d{9}$/.test(formData.phone) && formData.phone !== '09') {
       setSaveError('Enter a complete 11-digit phone number starting with 09.');
       return;
     }
@@ -246,7 +253,8 @@ const Profile = ({ currentUserRole }) => {
           updatedBannerUrl = await uploadToCloudinary(bannerFile);
         }
 
-        const userDocRef = doc(db, 'users', user.uid);
+        // --- FIX: Saving to the correct collection ---
+        const userDocRef = doc(db, myCollection, user.uid);
         
         await updateDoc(userDocRef, {
           phone: formData.phone,
@@ -277,12 +285,12 @@ const Profile = ({ currentUserRole }) => {
     }
   };
 
-  // --- 2FA OPT-OUT / ENABLE HANDLERS ---
   const handleInitiate2FA = async () => {
     if (is2FAEnabled) {
       if (window.confirm('Are you sure you want to disable Two-Factor Authentication? It is recommended to keep this enabled.')) {
         try {
-          const userDocRef = doc(db, 'users', auth.currentUser.uid);
+          // --- FIX: Updating 2FA on correct collection ---
+          const userDocRef = doc(db, myCollection, auth.currentUser.uid);
           await updateDoc(userDocRef, {
             twoFactorEnabled: false,
             twoFactorSecret: null
@@ -334,7 +342,8 @@ const Profile = ({ currentUserRole }) => {
 
     if (delta !== null) {
       try {
-        const userDocRef = doc(db, 'users', auth.currentUser.uid);
+        // --- FIX: Updating 2FA on correct collection ---
+        const userDocRef = doc(db, myCollection, auth.currentUser.uid);
         await updateDoc(userDocRef, {
           twoFactorEnabled: true,
           twoFactorSecret: pendingSecret
@@ -351,10 +360,10 @@ const Profile = ({ currentUserRole }) => {
     }
   };
 
-  // --- GITHUB-STYLE DELETE HANDLERS ---
   const closeDeleteModal = () => {
     setDeleteStep(0);
     setDeleteVerification('');
+    setDeletePassword(''); 
   };
 
   const handleDeleteAccount = async () => {
@@ -365,22 +374,18 @@ const Profile = ({ currentUserRole }) => {
       const user = auth.currentUser;
       if (user) {
         try {
-          if (window.location.hostname === 'localhost') {
-            await reauthenticateWithPopup(user, microsoftProvider);
-          } else {
-            localStorage.setItem('pendingAccountDeletion', 'true');
-            await reauthenticateWithRedirect(user, microsoftProvider);
-            return; 
-          }
+          const credential = EmailAuthProvider.credential(user.email, deletePassword);
+          await reauthenticateWithCredential(user, credential);
         } catch (reauthError) {
           console.error("Re-authentication failed:", reauthError);
-          alert("We could not verify your identity. Account deletion cancelled.");
+          alert("Incorrect password. We could not verify your identity. Account deletion cancelled.");
           setIsDeleting(false);
           closeDeleteModal();
           return; 
         }
-
-        const userDocRef = doc(db, 'users', user.uid);
+        
+        const userDocRef = doc(db, myCollection, user.uid);
+        
         await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
         
         await deleteDoc(userDocRef);
@@ -403,6 +408,8 @@ const Profile = ({ currentUserRole }) => {
     <div className="profile-container">
       {profileLoadError && <p className="profile-save-error" role="alert">{profileLoadError}</p>}
       
+      {!profileLoadError && (
+      <>
       <div className="profile-hero">
         <div 
           className="banner-bg" 
@@ -551,7 +558,7 @@ const Profile = ({ currentUserRole }) => {
                     className="profile-dynamic-input"
                   />
                 )}
-                {isEditing && saveError && !/^09\d{9}$/.test(formData.phone) && (
+                {isEditing && saveError && !/^09\d{9}$/.test(formData.phone) && formData.phone !== '09' && (
                   <span className="profile-phone-error">{saveError}</span>
                 )}
               </div>
@@ -574,7 +581,6 @@ const Profile = ({ currentUserRole }) => {
         {!isViewingOtherProfile && (
           <div className="profile-sidebar">
             
-            {/* OPT-IN/OUT SECURITY ZONE */}
             <div className="side-panel card-style security-zone">
               <div className="section-title">
                 <div className="icon-wrap bg-indigo-soft"><i className="ph-fill ph-shield-check"></i></div>
@@ -599,7 +605,6 @@ const Profile = ({ currentUserRole }) => {
               </div>
             </div>
 
-            {/* GITHUB STYLE DANGER ZONE */}
             <div className="side-panel card-style danger-zone">
               <div className="section-title">
                 <div className="icon-wrap danger-icon-wrap"><i className="ph-fill ph-warning"></i></div>
@@ -622,7 +627,6 @@ const Profile = ({ currentUserRole }) => {
           </div>
         )}
 
-        {/* 2FA SETUP MODAL */}
         {show2FAModal && (
           <div className="modal-overlay">
             <div className="modal-content text-center two-factor-setup-modal">
@@ -637,7 +641,6 @@ const Profile = ({ currentUserRole }) => {
                 </div>
               )}
 
-              {/* Manual Setup Key Display */}
               <div className="manual-key-wrapper">
                 <span className="manual-key-label">Setup Key</span>
                 <div className="manual-key-action">
@@ -672,7 +675,6 @@ const Profile = ({ currentUserRole }) => {
           </div>
         )}
 
-        {/* GITHUB STYLE DELETE MODALS */}
         {deleteStep > 0 && (
           <div className="modal-overlay">
             <div className="modal-content github-delete-modal">
@@ -703,17 +705,28 @@ const Profile = ({ currentUserRole }) => {
               {deleteStep === 2 && (
                 <div className="delete-step-2">
                   <p className="verify-instructions">
-                    To confirm, type "<strong>delete my account</strong>" in the box below
+                    To confirm, enter your password and type "<strong>delete my account</strong>" below
                   </p>
+                  
+                  <input 
+                    type="password" 
+                    placeholder="Enter your password"
+                    value={deletePassword} 
+                    onChange={(e) => setDeletePassword(e.target.value)} 
+                    style={{ marginBottom: '10px' }}
+                  />
+
                   <input 
                     type="text" 
+                    placeholder="Type 'delete my account'"
                     value={deleteVerification} 
                     onChange={(e) => setDeleteVerification(e.target.value)} 
                     autoFocus
                   />
+                  
                   <button 
                     className="btn-danger-full" 
-                    disabled={deleteVerification !== 'delete my account' || isDeleting} 
+                    disabled={deleteVerification !== 'delete my account' || !deletePassword || isDeleting} 
                     onClick={handleDeleteAccount}
                   >
                     {isDeleting ? "Deleting..." : "Delete Account"}
@@ -724,7 +737,6 @@ const Profile = ({ currentUserRole }) => {
           </div>
         )}
 
-        {/* IMAGE EXPANSION MODAL */}
         {expandedImage && (
           <div className="modal-overlay" onClick={() => setExpandedImage(null)}>
             <div className="image-modal-content" onClick={(e) => e.stopPropagation()}>
@@ -735,8 +747,9 @@ const Profile = ({ currentUserRole }) => {
             </div>
           </div>
         )}
-        
       </div>
+      </>
+      )}
     </div>
   );
 };
