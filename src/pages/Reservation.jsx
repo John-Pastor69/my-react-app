@@ -199,14 +199,14 @@ const formatScheduleDate = (date) => {
   });
 };
 
-const Reservation = () => {
+const Reservation = ({ currentUserRole }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const editReservationId = searchParams.get('edit');
   const isAdminEditMode = searchParams.get('adminEdit') === 'true';
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
-  const [userRole, setUserRole] = useState('requestor');
+  const [userRole, setUserRole] = useState(currentUserRole || 'requestor');
   const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editReservationId));
 
   // --- FORM STATES ---
@@ -278,14 +278,19 @@ const Reservation = () => {
       if (user) {
         setCurrentUser(user);
         try {
-          const userRef = doc(db, 'users', user.uid);
+          const userCollection = currentUserRole === 'super admin' ? 'super_users' : 'users';
+          const userRef = doc(db, userCollection, user.uid);
           const userSnap = await getDoc(userRef);
           if (userSnap.exists()) {
             const userData = userSnap.data();
-            const normalizedRole = (userData.role || 'requestor').toLowerCase().trim().replace(/_/g, ' ');
+            const normalizedRole = (currentUserRole || userData.role || 'requestor').toLowerCase().trim().replace(/_/g, ' ');
             setUserRole(normalizedRole);
             
-            const cleanName = formatName(userData.name);
+            const profileName = [userData.firstName, userData.lastName].filter(Boolean).join(' ')
+              || userData.name
+              || user.displayName
+              || (normalizedRole === 'super admin' ? 'Super Admin' : '');
+            const cleanName = formatName(profileName);
 
             setFormData(prev => ({
               ...prev,
@@ -306,7 +311,7 @@ const Reservation = () => {
       }
     });
     return () => unsubscribeAuth();
-  }, []);
+  }, [currentUserRole]);
 
   useEffect(() => {
     if (!editReservationId) {
@@ -329,7 +334,8 @@ const Reservation = () => {
         const reservationStatus = (reservation.status || '').toLowerCase().trim();
         const isOwner = reservation.userId === currentUser.uid
           || reservation.userEmail === currentUser.email;
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        const userCollection = currentUserRole === 'super admin' ? 'super_users' : 'users';
+        const userSnap = await getDoc(doc(db, userCollection, currentUser.uid));
         const currentRole = (userSnap.data()?.role || '').toLowerCase().trim().replace(/_/g, ' ');
         const canEditApprovedReservation = canSkipReservationLeadTime(currentRole)
           && reservationStatus === 'approved'
@@ -417,7 +423,7 @@ const Reservation = () => {
     return () => {
       isActive = false;
     };
-  }, [currentUser, editReservationId, isAdminEditMode]);
+  }, [currentUser, currentUserRole, editReservationId, isAdminEditMode]);
 
   // --- LOAD DRAFT ON MOUNT ---
   useEffect(() => {

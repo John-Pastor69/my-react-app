@@ -570,20 +570,6 @@ const Profile = ({ currentUserRole }) => {
                   />
                 </div>
               )}
-              {!isSuperAdminProfile && (
-                <div className="input-group full-width">
-                  <label>EMAIL</label>
-                  <input type="email" name="email" value={formData.email} readOnly className="profile-readonly-input" />
-                </div>
-              )}
-              <div className="input-group">
-                <label>ROLE</label>
-                <input type="text" name="role" value={formData.role} readOnly className="profile-readonly-input" />
-              </div>
-              <div className="input-group">
-                <label>DATE JOINED</label>
-                <input type="text" name="dateJoined" value={formData.dateJoined} readOnly className="profile-readonly-input" />
-              </div>
               <div className="input-group">
                 <label>PHONE NUMBER</label>
                 {isEditing ? (
@@ -614,6 +600,20 @@ const Profile = ({ currentUserRole }) => {
                 {isEditing && saveError && !/^09\d{9}$/.test(formData.phone) && formData.phone !== '09' && (
                   <span className="profile-phone-error">{saveError}</span>
                 )}
+              </div>
+              {!isSuperAdminProfile && (
+                <div className="input-group full-width">
+                  <label>EMAIL</label>
+                  <input type="email" name="email" value={formData.email} readOnly className="profile-readonly-input" />
+                </div>
+              )}
+              <div className="input-group">
+                <label>ROLE</label>
+                <input type="text" name="role" value={formData.role} readOnly className="profile-readonly-input" />
+              </div>
+              <div className="input-group">
+                <label>DATE JOINED</label>
+                <input type="text" name="dateJoined" value={formData.dateJoined} readOnly className="profile-readonly-input" />
               </div>
               {['admin staff', 'faculty'].includes(formData.accountType.toLowerCase()) || formData.role?.toLowerCase() === 'endorser' ? (
                 <div className="input-group">
