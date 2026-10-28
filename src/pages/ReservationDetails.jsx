@@ -242,7 +242,10 @@ const ReservationDetails = ({
     .map((id) => ({
       id,
       name: facilitiesMap[id]?.name || id,
-      participants: Number(currentData.facilityParticipants?.[id])
+      participants: Number(
+        currentData.facilityParticipants?.[id]
+        ?? ((currentData.facilities || []).length === 1 ? currentData.expectedParticipants : 0)
+      )
     }))
     .filter(({ participants }) => Number.isInteger(participants) && participants > 0);
   const description = currentData.purpose || 'No description provided.';

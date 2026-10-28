@@ -636,7 +636,7 @@ const Reservation = ({ currentUserRole }) => {
   );
   const expectedParticipantCount = formData.facilities.length > 0
     ? totalFacilityParticipants
-    : Number(formData.expectedParticipants);
+    : Number(formData.expectedParticipants || 0);
   const dailySchedule = getScheduleDates(eventDate, endDateInput)
     .filter((date) => !removedScheduleDates.includes(date))
     .map((date) => ({
@@ -688,11 +688,6 @@ const Reservation = ({ currentUserRole }) => {
       limits: getFacilityCapacityLimits(facility),
       available: getFacilityRemainingCapacity(facility)
     }));
-  const participantCountOutOfRange = formData.facilities.length === 0
-    && Boolean(formData.expectedParticipants && (
-      !Number.isInteger(expectedParticipantCount)
-      || expectedParticipantCount <= 0
-    ));
   const facilityParticipantErrors = Object.fromEntries(
     selectedFacilityCapacities.map(({ facility, limits, available }) => {
       const participants = Number(facilityParticipants[facility.id]);
@@ -820,7 +815,6 @@ const Reservation = ({ currentUserRole }) => {
         Object.entries(prev).filter(([facilityId]) => updatedFacilities.includes(facilityId))
       ));
       clearMissingField(getFacilityParticipantFieldKey(value));
-      clearMissingField('expectedParticipants');
       clearMissingField(field);
       return;
     }
@@ -1176,7 +1170,7 @@ const Reservation = ({ currentUserRole }) => {
           missing: !Number.isInteger(Number(facilityParticipants[facility.id]))
             || Number(facilityParticipants[facility.id]) <= 0
         }))
-        : [{ key: 'expectedParticipants', missing: !formData.expectedParticipants.trim() }]),
+        : []),
       { key: 'eventType', missing: formData.eventType.length === 0 },
       { key: 'eventDate', missing: !eventDate.trim() || !!dateError },
       { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
@@ -1238,18 +1232,6 @@ const Reservation = ({ currentUserRole }) => {
         fieldRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
         return;
       }
-    } else if (
-      !Number.isInteger(expectedParticipantCount)
-      || expectedParticipantCount <= 0
-    ) {
-      setMissingFields({ expectedParticipants: true });
-      setCustomAlert({
-        title: 'Participant Limit',
-        message: 'Enter a positive whole number of participants.',
-        isSuccess: false
-      });
-      fieldRefs.current.expectedParticipants?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      return;
     }
 
     if (!hasFacility && !hasEquipment) {
@@ -2065,32 +2047,6 @@ const Reservation = ({ currentUserRole }) => {
             />
           </div>
           
-          {formData.facilities.length === 0 && (
-            <div
-              className={`input-group ${missingFields.expectedParticipants || participantCountOutOfRange ? 'field-missing' : ''}`}
-              ref={el => fieldRefs.current.expectedParticipants = el}
-            >
-              <label>Expected Number of Participants <span className="req">*</span></label>
-              <div className="input-with-icon left-icon">
-                <i className="ph ph-users"></i>
-                <input
-                  type="number"
-                  min={1}
-                  step="1"
-                  value={formData.expectedParticipants}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    if (value === '' || (/^\d+$/.test(value) && Number(value) > 0)) {
-                      handleInputChange('expectedParticipants', value);
-                    }
-                  }}
-                  placeholder="e.g. 150"
-                  className={missingFields.expectedParticipants || participantCountOutOfRange ? 'input-error' : ''}
-                />
-              </div>
-            </div>
-          )}
-
           {/* Row 2 Left: Event Type & Taken Schedules */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
             <div 
