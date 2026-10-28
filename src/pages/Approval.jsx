@@ -45,6 +45,7 @@ const Approval = ({ currentUserRole = '' }) => {
     const [isCancelling, setIsCancelling] = useState(false);
     const [reservationsData, setReservationsData] = useState([]);
     const [usersData, setUsersData] = useState([]);
+    const [superUsersData, setSuperUsersData] = useState([]);
     const [approverRoleKey, setApproverRoleKey] = useState('');
     
     // --- REAL-TIME FIRESTORE LISTENERS ---
@@ -61,9 +62,15 @@ const Approval = ({ currentUserRole = '' }) => {
             setUsersData(usersList);
         }, (error) => console.error('Failed to load users:', error));
 
+        const unsubSuperUsers = onSnapshot(collection(db, 'super_users'), (snapshot) => {
+            const superUsersList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+            setSuperUsersData(superUsersList);
+        }, (error) => console.error('Failed to load super users:', error));
+
         return () => {
             unsubRes();
             unsubUsers();
+            unsubSuperUsers();
         };
     }, [currentUser]);
 
@@ -81,8 +88,10 @@ const Approval = ({ currentUserRole = '' }) => {
             }
 
             try {
-                const userRef = doc(db, 'users', user.uid);
-                const userSnap = await getDoc(userRef);
+                let userSnap = await getDoc(doc(db, 'users', user.uid));
+                if (!userSnap.exists()) {
+                    userSnap = await getDoc(doc(db, 'super_users', user.uid));
+                }
                 if (userSnap.exists()) {
                     const userData = userSnap.data();
                     const rawRole = userData.role || 'user';
@@ -111,7 +120,8 @@ const Approval = ({ currentUserRole = '' }) => {
         setIsSavingApprovalView(true);
         setApprovalViewError('');
         try {
-            await updateDoc(doc(db, 'users', currentUser.uid), { approvalView: nextView });
+            const userCollection = isSuperAdmin ? 'super_users' : 'users';
+            await updateDoc(doc(db, userCollection, currentUser.uid), { approvalView: nextView });
             setApprovalView(nextView);
         } catch (error) {
             console.error('Failed to save approval view:', error);
@@ -122,7 +132,9 @@ const Approval = ({ currentUserRole = '' }) => {
     };
 
     // --- GET CURRENT LOGGED-IN USER NAME ---
-    const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email) || {};
+    const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email)
+        || superUsersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email)
+        || {};
     const currentUserName = formatName(currentUserDoc.name || '');
 
     const confirmCancellation = async () => {
@@ -174,7 +186,9 @@ const Approval = ({ currentUserRole = '' }) => {
 
     // --- MAP & JOIN DATA ---
     const approvalData = reservationsData.map((res) => {
-        const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+        const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId || u.id === res.userId)
+            || superUsersData.find(u => u.email === res.userEmail || u.uid === res.userId || u.id === res.userId)
+            || {};
         
         let submitDate = 'Unknown';
         if (res.createdAt) {

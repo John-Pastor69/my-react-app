@@ -333,6 +333,46 @@ $danger-red: #ef4444;
         }
       }
 
+      .attendees-total {
+        display: flex;
+        align-items: center;
+        flex-wrap: wrap;
+        gap: 0.5rem;
+      }
+
+      .participant-breakdown-toggle {
+        padding: 0;
+        border: 0;
+        background: none;
+        color: $primary-blue;
+        font: inherit;
+        font-size: var(--font-body);
+        cursor: pointer;
+        text-decoration: underline;
+      }
+
+      .facility-participant-breakdown {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        margin-top: 0.5rem;
+        padding: 0.6rem 0.7rem;
+        border: 1px solid $border-color;
+        border-radius: 0.4rem;
+        background: #f8fafc;
+      }
+
+      .facility-participant-row {
+        display: flex;
+        justify-content: space-between;
+        gap: 0.75rem;
+        font-size: var(--font-body);
+
+        strong {
+          flex: 0 0 auto;
+        }
+      }
+
       .requestor-type-field {
         margin-top: 0.75rem;
       }

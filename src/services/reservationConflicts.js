@@ -189,6 +189,17 @@ const parseCapacity = (value) => {
   return Number.isInteger(capacity) && capacity > 0 ? capacity : null;
 };
 
+export const getParticipantsForFacility = (reservation, facilityId) => {
+  const facilityParticipants = reservation.facilityParticipants;
+  if (
+    facilityParticipants
+    && Object.prototype.hasOwnProperty.call(facilityParticipants, facilityId)
+  ) {
+    return Number(facilityParticipants[facilityId]);
+  }
+  return Number(reservation.expectedParticipants);
+};
+
 const createConflictResult = (overlap, conflictDetails) => ({
   ...overlap.reservation,
   ...conflictDetails,
@@ -209,7 +220,7 @@ export const findFacilityConflict = (reservations, request, facilities) => {
     if (maxCapacity !== null) {
       const activeReservations = getActiveFacilityReservations(reservations, request, facilityId);
       const hasUnknownCapacity = activeReservations.some((reservation) => {
-        const participants = Number(reservation.expectedParticipants);
+        const participants = getParticipantsForFacility(reservation, facilityId);
         return !Number.isInteger(participants) || participants <= 0;
       });
       if (hasUnknownCapacity) {
@@ -221,10 +232,10 @@ export const findFacilityConflict = (reservations, request, facilities) => {
       }
 
       const occupiedCapacity = activeReservations.reduce(
-        (total, reservation) => total + Number(reservation.expectedParticipants),
+        (total, reservation) => total + getParticipantsForFacility(reservation, facilityId),
         0
       );
-      const requestedCapacity = Number(request.expectedParticipants);
+      const requestedCapacity = getParticipantsForFacility(request, facilityId);
       if (occupiedCapacity + requestedCapacity > maxCapacity) {
         return {
           ...activeReservations[0],

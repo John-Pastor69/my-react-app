@@ -50,6 +50,7 @@ const ReservationDetails = ({
   const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
   const [expandedTimeGroups, setExpandedTimeGroups] = useState({});
+  const [showFacilityParticipants, setShowFacilityParticipants] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState('');
@@ -237,6 +238,13 @@ const ReservationDetails = ({
   const eventTimeDisplay = renderDailyTimeDisplay('details');
   const summaryTimeDisplay = renderDailyTimeDisplay('summary');
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
+  const facilityParticipantBreakdown = (currentData.facilities || [])
+    .map((id) => ({
+      id,
+      name: facilitiesMap[id]?.name || id,
+      participants: Number(currentData.facilityParticipants?.[id])
+    }))
+    .filter(({ participants }) => Number.isInteger(participants) && participants > 0);
   const description = currentData.purpose || 'No description provided.';
   
   const facilityNames = (currentData.facilities || []).map(id => facilitiesMap[id]?.name || id);
@@ -269,7 +277,7 @@ const ReservationDetails = ({
   }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
   const utilityNames = (Array.isArray(currentData.selectedUtilities) ? currentData.selectedUtilities : [])
-    .map((id) => utilitiesMap[id]?.name || id);
+    .map((id) => `${Number(currentData.selectedUtilityUnits?.[id]) || 1}x ${utilitiesMap[id]?.name || id}`);
   if (typeof currentData.otherUtility === 'string' && currentData.otherUtility.trim()) {
     utilityNames.push(currentData.otherUtility.trim());
   }
@@ -567,7 +575,29 @@ const ReservationDetails = ({
               </div>
               <div>
                 <label>EXPECTED ATTENDEES</label>
-                <div className="val">{expectedAttendees}</div>
+                <div className="val attendees-total">
+                  <span>{expectedAttendees}</span>
+                  {facilityParticipantBreakdown.length > 0 && (
+                    <button
+                      type="button"
+                      className="participant-breakdown-toggle"
+                      aria-expanded={showFacilityParticipants}
+                      onClick={() => setShowFacilityParticipants((expanded) => !expanded)}
+                    >
+                      {showFacilityParticipants ? 'View less' : 'View more'}
+                    </button>
+                  )}
+                </div>
+                {showFacilityParticipants && facilityParticipantBreakdown.length > 0 && (
+                  <div className="facility-participant-breakdown">
+                    {facilityParticipantBreakdown.map(({ id, name, participants }) => (
+                      <div className="facility-participant-row" key={id}>
+                        <span>{name}</span>
+                        <strong>{participants} attendees</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="full-width-field">

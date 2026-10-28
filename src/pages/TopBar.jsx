@@ -84,6 +84,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [usersData, setUsersData] = useState([]);
+  const [superUsersData, setSuperUsersData] = useState([]);
   
   const [notifications, setNotifications] = useState([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -259,10 +260,15 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       setUsersData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
 
+    const unsubSuperUsers = onSnapshot(collection(db, 'super_users'), (snapshot) => {
+      setSuperUsersData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+
     return () => {
       unsubRes();
       unsubHistory();
       unsubUsers();
+      unsubSuperUsers();
     };
   }, [currentUser]);
 
@@ -300,12 +306,21 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     const uid = auth.currentUser.uid;
     const email = auth.currentUser.email;
     let newNotifs = [];
-    const resolveUserName = (userId, userEmail, fallbackName) => {
-      const user = usersData.find(candidate => (
-        (userId && candidate.uid === userId)
+    const findUser = (userId, userEmail) => (
+      [...usersData, ...superUsersData].find(candidate => (
+        (userId && (candidate.uid === userId || candidate.id === userId))
         || (userEmail && candidate.email === userEmail)
-      ));
-      return user?.name || user?.fullName || user?.displayName || fallbackName || 'the requestor';
+      ))
+    );
+    const getProfileName = (user) => (
+      [user?.firstName, user?.lastName].filter(Boolean).join(' ')
+      || user?.name
+      || user?.fullName
+      || user?.displayName
+    );
+    const resolveUserName = (userId, userEmail, fallbackName) => {
+      const user = findUser(userId, userEmail);
+      return getProfileName(user) || fallbackName || 'the requestor';
     };
 
     const notificationReservations = [...new Map(
@@ -313,7 +328,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     ).values()];
 
     notificationReservations.forEach(res => {
-      const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+      const requestor = findUser(res.userId, res.userEmail) || {};
       const requestorName = requestor.name || requestor.fullName || requestor.displayName || res.fullName || 'the requestor';
       const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
       const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
@@ -361,7 +376,16 @@ const TopBar = ({ toggleSidebar, userRole }) => {
               ? modificationRequest.text.trim()
               : '';
             const actionBy = modificationRequest.approverName;
-            const actionByText = actionBy ? ` by ${actionBy}` : '';
+            const actionByProfile = actionBy?.includes('@')
+              ? findUser(null, actionBy)
+              : null;
+            const actionByName = actionByProfile ? getProfileName(actionByProfile) : actionBy;
+            const hasActionBy = actionByName
+              && !/^loading(?:\.+)?$/i.test(actionByName.trim())
+              && !actionByName.includes('@');
+            const actionByText = hasActionBy
+              ? ` by ${actionByName}`
+              : modificationRequest.role ? ` by ${modificationRequest.role}` : '';
             const notificationTime = modificationRequest.timestamp
               || modificationRequest.date
               || res.modificationRequestedAt
@@ -502,7 +526,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     
     filteredNotifs.sort((a, b) => b.rawDate - a.rawDate);
     setNotifications(filteredNotifs);
-  }, [reservationsData, historyData, usersData, userData, deletedNotifs]);
+  }, [reservationsData, historyData, usersData, superUsersData, userData, deletedNotifs]);
 
   const handleNotifItemClick = (notif) => {
     if (!readNotifs.includes(notif.id)) {
@@ -795,6 +819,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
                 <div className="modal-content" onClick={(e) => e.stopPropagation()}>
                     <PendingRequest
                       data={selectedRequest}
+                      isSuperAdmin={normalizeApprovalRoleKey(userData.role) === 'super admin'}
                       onEditReservation={(reservationId) => {
                         setSelectedRequest(null);
                         navigate(`/reserve?edit=${encodeURIComponent(reservationId)}`);

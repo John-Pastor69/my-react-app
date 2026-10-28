@@ -775,7 +775,7 @@ const Calendar = ({ currentUserRole }) => {
                       <div><div className="details-label">Air Conditioning</div><div className="details-value">{historySelectedRequest.fullData.aircon === true ? `ON${historySelectedRequest.fullData.airconOnTime || historySelectedRequest.fullData.airconOffTime ? ` (${historySelectedRequest.fullData.airconOnTime || '?'} - ${historySelectedRequest.fullData.airconOffTime || '?'})` : ''}` : (historySelectedRequest.fullData.aircon === false ? 'OFF' : 'N/A')}</div></div>
                       <div className="details-full-width"><div className="details-label">Utility Requested</div><div className="details-value">{[
                         ...(Array.isArray(historySelectedRequest.fullData.selectedUtilities)
-                          ? historySelectedRequest.fullData.selectedUtilities.map((id) => utilitiesMap[id]?.name || id)
+                          ? historySelectedRequest.fullData.selectedUtilities.map((id) => `${Number(historySelectedRequest.fullData.selectedUtilityUnits?.[id]) || 1}x ${utilitiesMap[id]?.name || id}`)
                           : []),
                         ...(typeof historySelectedRequest.fullData.otherUtility === 'string' && historySelectedRequest.fullData.otherUtility.trim()
                           ? [historySelectedRequest.fullData.otherUtility.trim()]

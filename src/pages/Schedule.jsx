@@ -17,6 +17,7 @@ const Schedule = ({ currentUserRole = '' }) => {
   const [cancellationError, setCancellationError] = useState('');
   const [reservationsData, setReservationsData] = useState([]);
   const [usersData, setUsersData] = useState([]);
+  const [superUsersData, setSuperUsersData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const normalizedUserRole = currentUserRole.toLowerCase().trim().replace(/_/g, ' ');
   const canCancelApprovedReservations = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedUserRole);
@@ -35,9 +36,15 @@ const Schedule = ({ currentUserRole = '' }) => {
       setUsersData(usersList);
     }, (error) => console.error('Failed to load users:', error));
 
+    const unsubSuperUsers = onSnapshot(collection(db, 'super_users'), (snapshot) => {
+      const superUsersList = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }));
+      setSuperUsersData(superUsersList);
+    }, (error) => console.error('Failed to load super users:', error));
+
     return () => {
       unsubRes();
       unsubUsers();
+      unsubSuperUsers();
     };
   }, [currentUser]);
 
@@ -55,7 +62,9 @@ const Schedule = ({ currentUserRole = '' }) => {
       && (res.status || '').toLowerCase().trim() !== 'rejected'
     ))
     .map((res, index) => {
-      const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId) || {};
+      const requestor = usersData.find(u => u.email === res.userEmail || u.uid === res.userId || u.id === res.userId)
+        || superUsersData.find(u => u.email === res.userEmail || u.uid === res.userId || u.id === res.userId)
+        || {};
       
       let submitDate = 'Unknown';
       if (res.createdAt) {

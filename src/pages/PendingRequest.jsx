@@ -47,6 +47,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const [equipmentMap, setEquipmentMap] = useState({});
   const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
+  const [showFacilityParticipants, setShowFacilityParticipants] = useState(false);
   
   // States for processing & modals
   const [remarks, setRemarks] = useState('');
@@ -114,12 +115,26 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
       setCurrentUser(user); // Added
       if (user) {
         try {
-          const userRef = doc(db, 'users', user.uid);
+          const userCollection = isSuperAdmin ? 'super_users' : 'users';
+          const userRef = doc(db, userCollection, user.uid);
           const userSnap = await getDoc(userRef);
-          if (userSnap.exists()) {
-            const userData = userSnap.data();
-            
-            const cleanName = formatName(userData.name);
+          let userData = userSnap.exists() ? userSnap.data() : null;
+
+          if (!userData && user.email) {
+            const userQuery = query(collection(db, userCollection), where('email', '==', user.email));
+            const userQuerySnap = await getDocs(userQuery);
+            if (!userQuerySnap.empty) {
+              userData = userQuerySnap.docs[0].data();
+            }
+          }
+
+          if (userData) {
+            const profileName = [userData.firstName, userData.lastName].filter(Boolean).join(' ')
+              || userData.name;
+            const cleanName = formatName(profileName);
+            const approverName = cleanName === 'Unknown User'
+              ? 'Administrator'
+              : cleanName;
             const rawRole = userData.role || 'user';
             
             let displayRole = isSuperAdmin ? 'super admin' : rawRole.replace(/_/g, ' ').toLowerCase().trim();
@@ -130,11 +145,11 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             }
 
             setApprover({
-              name: cleanName,
+              name: approverName,
               role: displayRole,
               roleKey: isSuperAdmin ? 'super admin' : normalizeApprovalRoleKey(rawRole),
               avatarUrl: userData.avatarUrl || '',
-              initials: cleanName.charAt(0).toUpperCase()
+              initials: approverName.charAt(0).toUpperCase()
             });
           }
         } catch (err) {
@@ -247,6 +262,13 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const eventTime = renderDailyTimeDisplay('details');
   const summaryTime = renderDailyTimeDisplay('summary');
   const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
+  const facilityParticipantBreakdown = (currentData.facilities || [])
+    .map((id) => ({
+      id,
+      name: facilitiesMap[id]?.name || id,
+      participants: Number(currentData.facilityParticipants?.[id])
+    }))
+    .filter(({ participants }) => Number.isInteger(participants) && participants > 0);
   const description = currentData.purpose || 'No description provided.';
   
   const facilityNames = (currentData.facilities || []).map(id => facilitiesMap[id]?.name || id);
@@ -279,7 +301,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
   const utilityNames = (Array.isArray(currentData.selectedUtilities) ? currentData.selectedUtilities : [])
-    .map((id) => utilitiesMap[id]?.name || id);
+    .map((id) => `${Number(currentData.selectedUtilityUnits?.[id]) || 1}x ${utilitiesMap[id]?.name || id}`);
   if (typeof currentData.otherUtility === 'string' && currentData.otherUtility.trim()) {
     utilityNames.push(currentData.otherUtility.trim());
   }
@@ -542,7 +564,29 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
               </div>
               <div>
                 <label>EXPECTED ATTENDEES</label>
-                <div className="val">{expectedAttendees}</div>
+                <div className="val attendees-total">
+                  <span>{expectedAttendees}</span>
+                  {facilityParticipantBreakdown.length > 0 && (
+                    <button
+                      type="button"
+                      className="participant-breakdown-toggle"
+                      aria-expanded={showFacilityParticipants}
+                      onClick={() => setShowFacilityParticipants((expanded) => !expanded)}
+                    >
+                      {showFacilityParticipants ? 'View less' : 'View more'}
+                    </button>
+                  )}
+                </div>
+                {showFacilityParticipants && facilityParticipantBreakdown.length > 0 && (
+                  <div className="facility-participant-breakdown">
+                    {facilityParticipantBreakdown.map(({ id, name, participants }) => (
+                      <div className="facility-participant-row" key={id}>
+                        <span>{name}</span>
+                        <strong>{participants} attendees</strong>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
             <div className="full-width-field">

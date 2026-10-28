@@ -155,3 +155,31 @@ test('facility capacity is enforced even when reservation schedules do not overl
   assert.equal(conflict.conflictType, 'capacity');
   assert.equal(conflict.occupiedCapacity, 99);
 });
+
+test('facility capacity uses per-facility participant counts when available', () => {
+  const existing = reservation('existing', {
+    facilities: ['room-a', 'room-b'],
+    expectedParticipants: 80,
+    facilityParticipants: { 'room-a': 30, 'room-b': 50 },
+    schedule: [{ date: '2026-10-03', startTime: '13:00', endTime: '15:00' }]
+  });
+  const selectedRequest = {
+    ...request([{ date: '2026-10-04', startTime: '09:00', endTime: '11:00' }], 20),
+    facilityParticipants: { 'room-a': 15 }
+  };
+
+  assert.equal(findFacilityConflict(
+    [existing],
+    selectedRequest,
+    [{ ...facility, capacity: 50 }]
+  ), null);
+
+  const conflict = findFacilityConflict(
+    [existing],
+    { ...selectedRequest, facilityParticipants: { 'room-a': 21 } },
+    [{ ...facility, capacity: 50 }]
+  );
+  assert.equal(conflict.conflictType, 'capacity');
+  assert.equal(conflict.occupiedCapacity, 30);
+  assert.equal(conflict.requestedCapacity, 21);
+});

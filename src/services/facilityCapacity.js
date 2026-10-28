@@ -1,5 +1,6 @@
 import { collection, doc, getDocs, writeBatch } from 'firebase/firestore';
 import { db } from '../Firebase';
+import { getParticipantsForFacility } from './reservationConflicts';
 import { isReservationActive } from './reservationStatus';
 
 export const isReservationIncludedInFacilityCapacity = isReservationActive;
@@ -21,10 +22,9 @@ export const syncFacilityRemainingCapacities = async () => {
     const reservation = reservationDoc.data();
     if (!isReservationIncludedInFacilityCapacity(reservation)) return;
 
-    const participants = Number(reservation.expectedParticipants);
-    if (!Number.isInteger(participants) || participants <= 0) return;
-
     (reservation.facilities || []).forEach((facilityId) => {
+      const participants = getParticipantsForFacility(reservation, facilityId);
+      if (!Number.isInteger(participants) || participants <= 0) return;
       reservedByFacility.set(
         facilityId,
         (reservedByFacility.get(facilityId) || 0) + participants

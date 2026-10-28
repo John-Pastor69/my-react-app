@@ -8,6 +8,7 @@ import '../styles/Login.scss';
 export default function Login({ error, setError }) {
   const [showForm, setShowForm] = useState(false);
   const [isLogin, setIsLogin] = useState(true); 
+  const [showTerms, setShowTerms] = useState(false);
 
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -106,6 +107,38 @@ export default function Login({ error, setError }) {
     e.preventDefault();
     if (setError) setError('');
     setResetMessage('');
+
+    if (!isLogin) {
+      if (!/^[A-Za-z]+$/.test(firstName) || !/^[A-Za-z]+$/.test(lastName)) {
+        if (setError) setError('First and last names may contain letters only.');
+        return;
+      }
+
+      if (firstName.length > 20 || lastName.length > 20) {
+        if (setError) setError('First and last names must be 20 characters or fewer.');
+        return;
+      }
+
+      if (email.length > 40) {
+        if (setError) setError('Email address must be 40 characters or fewer.');
+        return;
+      }
+
+      if (password.length > 30) {
+        if (setError) setError('Password must be 30 characters or fewer.');
+        return;
+      }
+
+      if ((tag === 'Student' || tag === 'Student Leader') && !/^[0-9]{11}$/.test(studentNumber)) {
+        if (setError) setError('Student number must contain exactly 11 digits.');
+        return;
+      }
+
+      if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/[^A-Za-z0-9\s]/.test(password)) {
+        if (setError) setError('Password must contain an uppercase letter, a lowercase letter, and at least one symbol.');
+        return;
+      }
+    }
 
     try {
       sessionStorage.setItem(NEW_LOGIN_KEY, 'true');
@@ -266,7 +299,10 @@ export default function Login({ error, setError }) {
                             type="text" 
                             placeholder="First Name" 
                             value={firstName}
-                            onChange={(e) => setFirstName(e.target.value)}
+                            onChange={(e) => setFirstName(e.target.value.replace(/[^A-Za-z]/g, ''))}
+                            maxLength={20}
+                            pattern="[A-Za-z]+"
+                            title="Use letters only."
                             required
                             style={inputStyle}
                           />
@@ -277,7 +313,10 @@ export default function Login({ error, setError }) {
                             type="text" 
                             placeholder="Last Name" 
                             value={lastName}
-                            onChange={(e) => setLastName(e.target.value)}
+                            onChange={(e) => setLastName(e.target.value.replace(/[^A-Za-z]/g, ''))}
+                            maxLength={20}
+                            pattern="[A-Za-z]+"
+                            title="Use letters only."
                             required
                             style={inputStyle}
                           />
@@ -309,7 +348,11 @@ export default function Login({ error, setError }) {
                               type="text" 
                               placeholder="e.g 02000212345" 
                               value={studentNumber}
-                              onChange={(e) => setStudentNumber(e.target.value)}
+                              onChange={(e) => setStudentNumber(e.target.value.replace(/[^0-9]/g, '').slice(0, 11))}
+                              inputMode="numeric"
+                              pattern="[0-9]{11}"
+                              maxLength={11}
+                              title="Enter exactly 11 digits."
                               required
                               style={inputStyle}
                             />
@@ -384,6 +427,7 @@ export default function Login({ error, setError }) {
                       placeholder="Email" 
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
+                      maxLength={isLogin ? undefined : 40}
                       required
                       style={inputStyle}
                     />
@@ -396,6 +440,9 @@ export default function Login({ error, setError }) {
                       placeholder="Password" 
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
+                      maxLength={isLogin ? undefined : 30}
+                      pattern={isLogin ? undefined : '(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\\s]).*'}
+                      title={isLogin ? undefined : 'Include an uppercase letter, a lowercase letter, and a symbol.'}
                       required
                       style={inputStyle}
                     />
@@ -432,6 +479,7 @@ export default function Login({ error, setError }) {
                         placeholder="Confirm Password" 
                         value={confirmPassword}
                         onChange={(e) => setConfirmPassword(e.target.value)}
+                        maxLength={30}
                         required
                         style={inputStyle}
                       />
@@ -447,9 +495,24 @@ export default function Login({ error, setError }) {
                         required 
                         style={{ marginTop: '2px', cursor: 'pointer' }} 
                       />
-                      <label htmlFor="terms" style={{ fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
-                        I agree to the <a href="#" style={{ color: themeBlue, textDecoration: 'underline' }}>Terms and Conditions</a> and consent to the collection of my data for the facility reservation system.
-                      </label>
+                      <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                        I agree to the <button
+                          type="button"
+                          onClick={() => setShowTerms(true)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            padding: 0,
+                            width: 'auto',
+                            borderRadius: 0,
+                            display: 'inline',
+                            color: themeBlue,
+                            textDecoration: 'underline',
+                            cursor: 'pointer',
+                            font: 'inherit'
+                          }}
+                        >Terms and Conditions</button> and consent to the collection of my data for the facility reservation system.
+                      </div>
                     </div>
                   )}
                   
@@ -470,6 +533,82 @@ export default function Login({ error, setError }) {
               </div>
 
             </div>
+            {showTerms && (
+              <div
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby="terms-title"
+                onClick={() => setShowTerms(false)}
+                style={{
+                  position: 'fixed',
+                  inset: 0,
+                  zIndex: 1100,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  padding: '16px',
+                  backgroundColor: 'rgba(0, 0, 0, 0.55)'
+                }}
+              >
+                <div
+                  onClick={(e) => e.stopPropagation()}
+                  style={{
+                    width: '100%',
+                    maxWidth: '600px',
+                    maxHeight: '85vh',
+                    overflowY: 'auto',
+                    padding: '24px',
+                    borderTop: `6px solid ${themeBlue}`,
+                    borderRadius: '8px',
+                    backgroundColor: '#FFFFFF',
+                    color: '#334155',
+                    lineHeight: 1.5
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                    <h2 id="terms-title" style={{ margin: 0, color: themeBlue }}>Terms and Conditions</h2>
+                    <button
+                      type="button"
+                      aria-label="Close Terms and Conditions"
+                      onClick={() => setShowTerms(false)}
+                      style={{
+                        border: 'none',
+                        background: 'none',
+                        color: themeBlue,
+                        fontSize: '24px',
+                        cursor: 'pointer'
+                      }}
+                    >
+                      &times;
+                    </button>
+                  </div>
+
+                  <p>By creating an account and using the STI Global City Reservation System, you agree to the following terms.</p>
+
+                  <h3>Information collected</h3>
+                  <p>The system collects information needed to manage your account and facility reservations, including:</p>
+                  <ul>
+                    <li>Your first and last name, email address, account type, and authentication account details. Your password is handled by Firebase Authentication and is not included in the user profile document created by this app.</li>
+                    <li>For students and student leaders: your student number and course or program.</li>
+                    <li>For administrators, staff, and faculty: your department or office.</li>
+                    <li>Account records generated by the system, such as your account ID, assigned role, email-verification status, and account creation time.</li>
+                    <li>When you submit a reservation: contact details, requestor information, endorser name/designation/email, event name and purpose, participant count, event type, requested dates and times, schedule, facilities or room, equipment and utilities, and air-conditioning requirements when applicable.</li>
+                    <li>Reservation records needed to process and track requests, such as reference number, status, timestamps, and approval or modification history.</li>
+                  </ul>
+
+                  <h3>How information is used</h3>
+                  <p>Your information is used to create and manage your account, verify your email, determine system access, prepare reservation requests, check availability, and allow authorized staff and relevant approvers to review, process, and communicate about reservations. The system uses Firebase services for authentication and data storage and sends email for verification and reservation-related communications.</p>
+
+                  <h3>Your responsibilities</h3>
+                  <p>Provide accurate information, keep your sign-in credentials private, and use the system only for legitimate facility reservation purposes. Do not use another person’s account or submit information about others unless it is needed for a reservation and you are authorized to provide it.</p>
+
+                  <h3>Access and retention</h3>
+                  <p>Account and reservation information may be accessed by authorized system personnel and the relevant reviewers or approvers to perform their duties. Records are retained as needed to operate the reservation system and meet applicable institutional recordkeeping requirements. Contact the system administrator for questions or requests about your information.</p>
+
+                  <p>By checking the agreement box, you confirm that you have read these terms and consent to the collection and use of information described above for operating the account and reservation system.</p>
+                </div>
+              </div>
+            )}
           </div>
         )}
       </div>

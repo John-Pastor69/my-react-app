@@ -21,6 +21,7 @@ import { isReservationEndReached } from '../services/reservationExpiration';
 import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import {
   findFacilityConflict,
+  getParticipantsForFacility,
   getActiveFacilityReservations,
   parseDateOrdinal
 } from '../services/reservationConflicts';
@@ -54,6 +55,17 @@ const parseOptionalCapacity = (value) => {
   if (value == null || String(value).trim() === '') return null;
   const capacity = Number(value);
   return Number.isInteger(capacity) && capacity > 0 ? capacity : null;
+};
+
+const normalizeUtilityUnits = (units, selectedUtilities = []) => {
+  if (units && typeof units === 'object' && !Array.isArray(units)) {
+    return Object.fromEntries(
+      Object.entries(units)
+        .filter(([, quantity]) => Number.isSafeInteger(Number(quantity)) && Number(quantity) > 0)
+        .map(([id, quantity]) => [id, Number(quantity)])
+    );
+  }
+  return Object.fromEntries(selectedUtilities.map((id) => [id, 1]));
 };
 
 const getEndorserNameWithoutFacultySuffix = (name) => (
@@ -96,6 +108,8 @@ const getFacilityCapacityLabel = (facility) => {
   if (max) return `Up to ${max} people`;
   return 'Capacity not specified';
 };
+
+const getFacilityParticipantFieldKey = (facilityId) => `participants-${facilityId}`;
 
 // Helper function extracted outside component
 const parseTimeToDecimal = (timeStr) => {
@@ -229,6 +243,8 @@ const Reservation = ({ currentUserRole }) => {
   // DYNAMIC SELECTION CARTS
   const [selectedEquip, setSelectedEquip] = useState({});
   const [selectedUtilities, setSelectedUtilities] = useState([]);
+  const [selectedUtilityUnits, setSelectedUtilityUnits] = useState({});
+  const [facilityParticipants, setFacilityParticipants] = useState({});
 
   const [certified, setCertified] = useState(false);
   const [isDraftSaved, setIsDraftSaved] = useState(false);
@@ -397,6 +413,22 @@ const Reservation = ({ currentUserRole }) => {
           endorserDesignation: reservation.endorserDesignation || '',
           endorserEmail: reservation.endorserEmail || ''
         });
+        setFacilityParticipants(
+          reservation.facilityParticipants
+          && typeof reservation.facilityParticipants === 'object'
+          ? Object.fromEntries(
+            (reservation.facilities || []).map((facilityId) => [
+              facilityId,
+              String(reservation.facilityParticipants[facilityId] ?? reservation.expectedParticipants ?? '')
+            ])
+          )
+          : Object.fromEntries(
+            (reservation.facilities || []).map((facilityId) => [
+              facilityId,
+              String(reservation.expectedParticipants || '')
+            ])
+          )
+        );
         setEventDate(startDate);
         setEndDateInput(endDate);
         setStartTime(formatTimeForPicker(reservation.startTime || ''));
@@ -416,6 +448,10 @@ const Reservation = ({ currentUserRole }) => {
         setAircon(Boolean(reservation.aircon));
         setSelectedEquip(reservation.selectedEquip || {});
         setSelectedUtilities(Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : []);
+        setSelectedUtilityUnits(normalizeUtilityUnits(
+          reservation.selectedUtilityUnits,
+          Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : []
+        ));
       } catch (error) {
         console.error('Failed to load reservation for modification:', error);
         if (isActive) {
@@ -480,6 +516,20 @@ const Reservation = ({ currentUserRole }) => {
         if (Array.isArray(parsed.removedScheduleDates)) setRemovedScheduleDates(parsed.removedScheduleDates);
         if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
         if (Array.isArray(parsed.selectedUtilities)) setSelectedUtilities(parsed.selectedUtilities);
+        setFacilityParticipants(
+          parsed.facilityParticipants && typeof parsed.facilityParticipants === 'object'
+            ? parsed.facilityParticipants
+            : Object.fromEntries(
+              (parsed.formData?.facilities || []).map((facilityId) => [
+                facilityId,
+                String(parsed.formData?.expectedParticipants || '')
+              ])
+            )
+        );
+        setSelectedUtilityUnits(normalizeUtilityUnits(
+          parsed.selectedUtilityUnits,
+          Array.isArray(parsed.selectedUtilities) ? parsed.selectedUtilities : []
+        ));
       } catch (e) {
         console.error("Failed to parse draft", e);
       }
@@ -489,7 +539,7 @@ const Reservation = ({ currentUserRole }) => {
   // Reset Draft toggle when form changes
   useEffect(() => {
     if (isDraftSaved) setIsDraftSaved(false);
-  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, removedScheduleDates, selectedEquip]);
+  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, removedScheduleDates, selectedEquip, selectedUtilities, selectedUtilityUnits, facilityParticipants]);
 
   // Automatically calculate `days` from `eventDate` and `endDateInput`
   useEffect(() => {
@@ -577,7 +627,16 @@ const Reservation = ({ currentUserRole }) => {
     return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
   const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
-  const expectedParticipantCount = Number(formData.expectedParticipants);
+  const selectedFacilityParticipants = Object.fromEntries(
+    formData.facilities.map((facilityId) => [facilityId, Number(facilityParticipants[facilityId])])
+  );
+  const totalFacilityParticipants = formData.facilities.reduce(
+    (total, facilityId) => total + (Number(facilityParticipants[facilityId]) || 0),
+    0
+  );
+  const expectedParticipantCount = formData.facilities.length > 0
+    ? totalFacilityParticipants
+    : Number(formData.expectedParticipants);
   const dailySchedule = getScheduleDates(eventDate, endDateInput)
     .filter((date) => !removedScheduleDates.includes(date))
     .map((date) => ({
@@ -597,7 +656,8 @@ const Reservation = ({ currentUserRole }) => {
       endTime: dayEndTime
     })),
     facilities: formData.facilities,
-    expectedParticipants: formData.expectedParticipants,
+    expectedParticipants: String(expectedParticipantCount || ''),
+    facilityParticipants: selectedFacilityParticipants,
     excludeReservationId: editReservationId
   };
   const getFacilityRemainingCapacity = (facility) => {
@@ -610,13 +670,13 @@ const Reservation = ({ currentUserRole }) => {
       facility.id
     );
     const hasUnknownCapacity = activeReservations.some((reservation) => {
-      const participants = Number(reservation.expectedParticipants);
+      const participants = getParticipantsForFacility(reservation, facility.id);
       return !Number.isInteger(participants) || participants <= 0;
     });
     if (hasUnknownCapacity) return 0;
 
     const occupiedCapacity = activeReservations.reduce(
-      (total, reservation) => total + Number(reservation.expectedParticipants),
+      (total, reservation) => total + getParticipantsForFacility(reservation, facility.id),
       0
     );
     return Math.max(0, maxCapacity - occupiedCapacity);
@@ -628,22 +688,25 @@ const Reservation = ({ currentUserRole }) => {
       limits: getFacilityCapacityLimits(facility),
       available: getFacilityRemainingCapacity(facility)
     }));
-  const selectedFacilityMinimum = selectedFacilityCapacities.reduce(
-    (minimum, { limits }) => limits.min === null ? minimum : Math.max(minimum, limits.min),
-    1
+  const participantCountOutOfRange = formData.facilities.length === 0
+    && Boolean(formData.expectedParticipants && (
+      !Number.isInteger(expectedParticipantCount)
+      || expectedParticipantCount <= 0
+    ));
+  const facilityParticipantErrors = Object.fromEntries(
+    selectedFacilityCapacities.map(({ facility, limits, available }) => {
+      const participants = Number(facilityParticipants[facility.id]);
+      const hasParticipantValue = String(facilityParticipants[facility.id] ?? '') !== '';
+      return [
+        facility.id,
+        hasParticipantValue
+        && Number.isInteger(participants)
+        && participants > 0
+        && ((limits.min !== null && participants < limits.min)
+          || (available !== null && participants > available))
+      ];
+    })
   );
-  const selectedFacilityMaximum = selectedFacilityCapacities.reduce(
-    (maximum, { available }) => available === null ? maximum : Math.min(maximum, available),
-    Number.POSITIVE_INFINITY
-  );
-  const availableFacilityMaximum = Number.isFinite(selectedFacilityMaximum)
-    ? selectedFacilityMaximum
-    : null;
-  const participantCountOutOfRange = Boolean(formData.expectedParticipants && (
-    !Number.isInteger(expectedParticipantCount)
-    || expectedParticipantCount < selectedFacilityMinimum
-    || (availableFacilityMaximum !== null && expectedParticipantCount > availableFacilityMaximum)
-  ));
   const requestStartDate = parseDateOrdinal(eventDate);
   const requestEndDate = parseDateOrdinal(endDateInput);
   const invalidDateRange = requestStartDate !== null
@@ -748,15 +811,22 @@ const Reservation = ({ currentUserRole }) => {
   };
 
   const handleCheckboxArrayChange = (field, value) => {
+    if (field === 'facilities') {
+      const updatedFacilities = formData.facilities.includes(value)
+        ? formData.facilities.filter((item) => item !== value)
+        : [...formData.facilities, value];
+      setFormData((prev) => ({ ...prev, facilities: updatedFacilities }));
+      setFacilityParticipants((prev) => Object.fromEntries(
+        Object.entries(prev).filter(([facilityId]) => updatedFacilities.includes(facilityId))
+      ));
+      clearMissingField(getFacilityParticipantFieldKey(value));
+      clearMissingField('expectedParticipants');
+      clearMissingField(field);
+      return;
+    }
+
     setFormData(prev => {
-      if (field === 'facilities') {
-        clearMissingField('expectedParticipants');
-        const updated = prev[field].includes(value)
-          ? prev[field].filter(item => item !== value)
-          : [...prev[field], value];
-        if (updated.length > 0) clearMissingField(field);
-        return { ...prev, [field]: updated };
-      } else if (field === 'eventType') {
+      if (field === 'eventType') {
         const updated = prev[field].includes(value) ? [] : [value];
         if (updated.length > 0) clearMissingField(field);
         return { ...prev, [field]: updated };
@@ -770,6 +840,12 @@ const Reservation = ({ currentUserRole }) => {
         return { ...prev, [field]: updated };
       }
     });
+  };
+
+  const handleFacilityParticipantsChange = (facilityId, value) => {
+    if (value !== '' && (!/^\d+$/.test(value) || Number(value) <= 0)) return;
+    setFacilityParticipants((prev) => ({ ...prev, [facilityId]: value }));
+    if (value !== '') clearMissingField(getFacilityParticipantFieldKey(facilityId));
   };
 
   const updateEquip = (item, delta) => {
@@ -790,6 +866,24 @@ const Reservation = ({ currentUserRole }) => {
     if (isNaN(num) || num < 0) return;
     const capped = Math.min(num, item.computedAvailable);
     setSelectedEquip(prev => ({ ...prev, [item.id]: capped }));
+  };
+
+  const handleUtilityUnitsChange = (item, value) => {
+    if (!hasFacility || (item.status || '').toLowerCase() === 'unavailable' || !/^\d*$/.test(value)) return;
+    const quantity = value === '' ? 0 : Number(value);
+    if (!Number.isSafeInteger(quantity)) return;
+
+    setSelectedUtilityUnits(prev => {
+      const updated = { ...prev };
+      if (quantity > 0) updated[item.id] = quantity;
+      else delete updated[item.id];
+      return updated;
+    });
+    setSelectedUtilities(prev => (
+      quantity > 0
+        ? prev.includes(item.id) ? prev : [...prev, item.id]
+        : prev.filter(id => id !== item.id)
+    ));
   };
 
   const handleDateChange = (e) => {
@@ -1013,6 +1107,8 @@ const Reservation = ({ currentUserRole }) => {
     setAircon(false);
     setSelectedEquip({});
     setSelectedUtilities([]);
+    setSelectedUtilityUnits({});
+    setFacilityParticipants({});
     setCertified(false);
     setIsDraftSaved(false);
     setMissingFields({});
@@ -1031,7 +1127,9 @@ const Reservation = ({ currentUserRole }) => {
       dailyScheduleOverrides,
       removedScheduleDates,
       selectedEquip,
-      selectedUtilities
+      selectedUtilities,
+      selectedUtilityUnits,
+      facilityParticipants
     };
     localStorage.setItem('reservationDraft', JSON.stringify(draftData));
     setIsDraftSaved(true);
@@ -1072,7 +1170,13 @@ const Reservation = ({ currentUserRole }) => {
         { key: 'endorserEmail', missing: !formData.endorserEmail.trim() }
       ] : []),
       { key: 'eventName', missing: !formData.eventName.trim() },
-      { key: 'expectedParticipants', missing: !formData.expectedParticipants.trim() },
+      ...(selectedFacilityCapacities.length > 0
+        ? selectedFacilityCapacities.map(({ facility }) => ({
+          key: getFacilityParticipantFieldKey(facility.id),
+          missing: !Number.isInteger(Number(facilityParticipants[facility.id]))
+            || Number(facilityParticipants[facility.id]) <= 0
+        }))
+        : [{ key: 'expectedParticipants', missing: !formData.expectedParticipants.trim() }]),
       { key: 'eventType', missing: formData.eventType.length === 0 },
       { key: 'eventDate', missing: !eventDate.trim() || !!dateError },
       { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
@@ -1112,20 +1216,36 @@ const Reservation = ({ currentUserRole }) => {
       return;
     }
 
-    if (
+    if (selectedFacilityCapacities.length > 0) {
+      const invalidFacility = selectedFacilityCapacities.find(({ facility, limits, available }) => {
+        const participants = Number(facilityParticipants[facility.id]);
+        return (limits.min !== null && participants < limits.min)
+          || (available !== null && participants > available);
+      });
+
+      if (invalidFacility) {
+        const { facility, limits, available } = invalidFacility;
+        const key = getFacilityParticipantFieldKey(facility.id);
+        const participants = Number(facilityParticipants[facility.id]);
+        setMissingFields({ [key]: true });
+        setCustomAlert({
+          title: 'Participant Limit',
+          message: limits.min !== null && participants < limits.min
+            ? `${facility.name} requires at least ${limits.min} participants.`
+            : `${facility.name} has capacity for up to ${available} more participants across active reservations.`,
+          isSuccess: false
+        });
+        fieldRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        return;
+      }
+    } else if (
       !Number.isInteger(expectedParticipantCount)
       || expectedParticipantCount <= 0
-      || expectedParticipantCount < selectedFacilityMinimum
-      || (availableFacilityMaximum !== null && expectedParticipantCount > availableFacilityMaximum)
     ) {
       setMissingFields({ expectedParticipants: true });
       setCustomAlert({
         title: 'Participant Limit',
-        message: !Number.isInteger(expectedParticipantCount) || expectedParticipantCount <= 0
-          ? 'Enter a positive whole number of participants.'
-          : expectedParticipantCount < selectedFacilityMinimum
-            ? `The selected facility requires at least ${selectedFacilityMinimum} participants.`
-            : `The selected facility has capacity for up to ${selectedFacilityMaximum} more participants across active reservations.`,
+        message: 'Enter a positive whole number of participants.',
         isSuccess: false
       });
       fieldRefs.current.expectedParticipants?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1232,6 +1352,9 @@ const Reservation = ({ currentUserRole }) => {
         aircon,
         selectedEquip,
         selectedUtilities,
+        selectedUtilityUnits,
+        expectedParticipants: expectedParticipantCount,
+        facilityParticipants: selectedFacilityParticipants,
         status: isAdminEditMode ? editingReservation?.status || 'Approved' : 'Pending',
         updatedAt: new Date().toISOString()
       };
@@ -1607,42 +1730,79 @@ const Reservation = ({ currentUserRole }) => {
             ) : (
               inventoryFacilities.map((item) => {
                 const isSelected = formData.facilities.includes(item.id);
-                const maxCapacity = getFacilityCapacityLimits(item).max;
+                const limits = getFacilityCapacityLimits(item);
+                const maxCapacity = limits.max;
                 const displayCapacityLeft = getFacilityRemainingCapacity(item);
                 const isLocked = item.status === 'Unavailable' || displayCapacityLeft === 0;
+                const participantFieldKey = getFacilityParticipantFieldKey(item.id);
 
                 return (
-                  <label
+                  <div
                     key={item.id}
-                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isLocked ? 'is-locked' : ''}`}
+                    className={`facility-option reservation-facility-option ${isSelected ? 'is-selected' : ''} ${isLocked ? 'is-locked' : ''}`}
                   >
                     <input
                       type="checkbox"
                       className="facility-checkbox"
+                      id={`facility-${item.id}`}
                       checked={isSelected}
                       onChange={() => handleCheckboxArrayChange('facilities', item.id)}
                       disabled={isLocked}
                     />
-                    <div className="facility-icon">
-                      <i className="ph ph-buildings"></i>
-                    </div>
-                    <div>
-                      <strong>{item.name}</strong>
-                      <span className="facility-meta">
-                        {[item.location, getFacilityCapacityLabel(item)].filter(Boolean).join(' | ')}
-                      </span>
-                      <span className="facility-availability">
-                        <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
-                          ● {item.status}
+                    <label className="facility-info" htmlFor={`facility-${item.id}`}>
+                      <div className="facility-icon">
+                        <i className="ph ph-buildings"></i>
+                      </div>
+                      <div>
+                        <strong>{item.name}</strong>
+                        <span className="facility-meta">
+                          {[item.location, getFacilityCapacityLabel(item)].filter(Boolean).join(' | ')}
                         </span>
-                        {maxCapacity !== null && item.status?.toLowerCase() === 'available' && (
-                          <span className="facility-capacity-left">
-                            {displayCapacityLeft} / {maxCapacity} capacity left
+                        <span className="facility-availability">
+                          <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
+                            ● {item.status}
+                          </span>
+                          {maxCapacity !== null && item.status?.toLowerCase() === 'available' && (
+                            <span className="facility-capacity-left">
+                              {displayCapacityLeft} / {maxCapacity} capacity left
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </label>
+                    {isSelected && (
+                      <div
+                        className={`facility-participants ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'field-missing' : ''}`}
+                        ref={(element) => { fieldRefs.current[participantFieldKey] = element; }}
+                      >
+                        <label htmlFor={`participants-${item.id}`}>
+                          Number of Participants <span className="req">*</span>
+                        </label>
+                        <input
+                          id={`participants-${item.id}`}
+                          type="number"
+                          inputMode="numeric"
+                          min={limits.min ?? 1}
+                          max={displayCapacityLeft ?? undefined}
+                          step="1"
+                          value={facilityParticipants[item.id] ?? ''}
+                          onChange={(event) => handleFacilityParticipantsChange(item.id, event.target.value)}
+                          placeholder="Enter whole number"
+                          className={missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'input-error' : ''}
+                        />
+                        {facilityParticipantErrors[item.id] && (
+                          <span className="field-error">
+                            {limits.min !== null && Number(facilityParticipants[item.id]) < limits.min
+                              ? `Enter at least ${limits.min} participants.`
+                              : `Enter no more than ${displayCapacityLeft} participants.`}
                           </span>
                         )}
-                      </span>
-                    </div>
-                  </label>
+                        {missingFields[participantFieldKey] && (
+                          <span className="field-error">Enter a positive whole number of participants.</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 );
               })
             )}
@@ -1737,32 +1897,29 @@ const Reservation = ({ currentUserRole }) => {
               <div className="empty-list">No utilities currently listed.</div>
             ) : (
               inventoryUtilities.map((item) => {
-                const isSelected = (selectedUtilities || []).includes(item.id);
+                const quantity = selectedUtilityUnits[item.id] || 0;
+                const isSelected = quantity > 0;
                 const isUnavailable = (item.status || '').toLowerCase() === 'unavailable';
+                const isLocked = isUnavailable || !hasFacility;
                 const status = isUnavailable ? 'Unavailable' : 'Available';
 
                 return (
-                  <label
+                  <div
                     key={item.id}
-                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isUnavailable ? 'is-locked' : ''}`}
+                    className={`facility-option ${isSelected ? 'is-selected' : ''} ${isLocked ? 'is-locked' : ''}`}
+                    title={!hasFacility ? 'Select a facility to choose utilities.' : undefined}
                   >
                     <input
                       type="checkbox"
                       className="facility-checkbox"
                       checked={isSelected}
-                      onChange={() => {
-                        setSelectedUtilities(prev =>
-                          (prev || []).includes(item.id)
-                            ? prev.filter(id => id !== item.id)
-                            : [...(prev || []), item.id]
-                        );
-                      }}
-                      disabled={isUnavailable}
+                      onChange={(e) => handleUtilityUnitsChange(item, e.target.checked ? String(quantity || 1) : '')}
+                      disabled={isLocked}
                     />
                     <div className="facility-icon">
                       <i className="ph ph-lightning"></i>
                     </div>
-                    <div>
+                    <div className="utility-info">
                       <strong>{item.name || 'Untitled Utility'}</strong>
                       <span className="facility-meta">{item.sku || 'Utility'}</span>
                       <span className="facility-availability">
@@ -1771,7 +1928,33 @@ const Reservation = ({ currentUserRole }) => {
                         </span>
                       </span>
                     </div>
-                  </label>
+                    <div className="utility-quantity">
+                      <div className="counter utility-counter">
+                        <button
+                          type="button"
+                          aria-label={`Decrease ${item.name || 'utility'} units`}
+                          onClick={() => handleUtilityUnitsChange(item, String(Math.max(0, quantity - 1)))}
+                          disabled={isLocked || quantity === 0}
+                        >-</button>
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          pattern="[0-9]*"
+                          aria-label={`${item.name || 'Utility'} units`}
+                          value={quantity}
+                          onChange={(e) => handleUtilityUnitsChange(item, e.target.value)}
+                          disabled={isLocked}
+                        />
+                        <button
+                          type="button"
+                          aria-label={`Increase ${item.name || 'utility'} units`}
+                          onClick={() => handleUtilityUnitsChange(item, String(quantity + 1))}
+                          disabled={isLocked}
+                        >+</button>
+                      </div>
+                      <span className="utility-quantity-label">units</span>
+                    </div>
+                  </div>
                 );
               })
             )}
@@ -1882,31 +2065,31 @@ const Reservation = ({ currentUserRole }) => {
             />
           </div>
           
-          {/* Row 1 Right: Expected Number of Participants */}
-          <div 
-            className={`input-group ${missingFields.expectedParticipants || participantCountOutOfRange ? 'field-missing' : ''}`}
-            ref={el => fieldRefs.current.expectedParticipants = el}
-          >
-            <label>Expected Number of Participants <span className="req">*</span></label>
-            <div className="input-with-icon left-icon">
-              <i className="ph ph-users"></i>
-              <input 
-              type="number"
-              min={selectedFacilityMinimum}
-              step="1"
-              max={availableFacilityMaximum ?? undefined}
-              value={formData.expectedParticipants}
-              onChange={(e) => {
-                const value = e.target.value;
-                if (value === '' || (/^\d+$/.test(value) && Number(value) > 0)) {
-                  handleInputChange('expectedParticipants', value);
-                }
-              }}
-              placeholder="e.g. 150"
-              className={missingFields.expectedParticipants || participantCountOutOfRange ? 'input-error' : ''}
-            />
+          {formData.facilities.length === 0 && (
+            <div
+              className={`input-group ${missingFields.expectedParticipants || participantCountOutOfRange ? 'field-missing' : ''}`}
+              ref={el => fieldRefs.current.expectedParticipants = el}
+            >
+              <label>Expected Number of Participants <span className="req">*</span></label>
+              <div className="input-with-icon left-icon">
+                <i className="ph ph-users"></i>
+                <input
+                  type="number"
+                  min={1}
+                  step="1"
+                  value={formData.expectedParticipants}
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    if (value === '' || (/^\d+$/.test(value) && Number(value) > 0)) {
+                      handleInputChange('expectedParticipants', value);
+                    }
+                  }}
+                  placeholder="e.g. 150"
+                  className={missingFields.expectedParticipants || participantCountOutOfRange ? 'input-error' : ''}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           {/* Row 2 Left: Event Type & Taken Schedules */}
           <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>

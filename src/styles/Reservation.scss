@@ -851,6 +851,121 @@ $orange-main: #F59E0B;
       color: $green-main;
       font-size: var(--font-body);
     }
+
+    .utility-info {
+      flex: 1;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+    }
+
+    .utility-quantity {
+      display: flex;
+      align-items: center;
+      gap: 0.375rem;
+      flex: 0 0 auto;
+    }
+
+    > .utility-quantity {
+      flex-direction: row;
+    }
+
+    .utility-counter {
+      display: flex;
+      align-items: center;
+      flex-direction: row;
+      border: 1px solid $border-color;
+      border-radius: 7px;
+      background: #F8FAFC;
+      overflow: hidden;
+
+      button {
+        width: 2rem;
+        height: 2rem;
+        border: 0;
+        background: transparent;
+        color: $text-muted;
+        font-size: var(--font-h3);
+        font-weight: 700;
+        cursor: pointer;
+
+        &:hover:not(:disabled) {
+          background: #E2E8F0;
+          color: $text-dark;
+        }
+
+        &:disabled {
+          opacity: .4;
+          cursor: not-allowed;
+        }
+      }
+
+      input {
+        width: 2rem;
+        height: 2rem;
+        padding: 0;
+        border: 0;
+        background: transparent;
+        text-align: center;
+        font-size: var(--font-body);
+        font-weight: 700;
+        outline: none;
+      }
+    }
+
+    .utility-quantity-label {
+      color: $text-muted;
+      font-size: var(--font-body);
+    }
+  }
+
+  .reservation-facility-option {
+    display: grid;
+    grid-template-columns: 1.2rem minmax(0, 1fr);
+    align-items: center;
+    column-gap: 0.6875rem;
+    row-gap: 0.75rem;
+    cursor: default;
+
+    .facility-info {
+      display: flex;
+      align-items: center;
+      gap: 0.6875rem;
+      min-width: 0;
+      cursor: pointer;
+
+      > div:last-child {
+        display: flex;
+        flex-direction: column;
+        min-width: 0;
+      }
+    }
+
+    .facility-participants {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.375rem;
+      min-width: 0;
+      cursor: default;
+
+      label {
+        color: $text-dark;
+        font-size: var(--font-body);
+        font-weight: 600;
+      }
+
+      input {
+        box-sizing: border-box;
+        width: 100%;
+        min-height: 2.5rem;
+        padding: 0.625rem 0.75rem;
+        border: 1px solid $border-color;
+        border-radius: 6px;
+        background: #fff;
+        color: $text-dark;
+      }
+    }
   }
 
   .empty-list { 
