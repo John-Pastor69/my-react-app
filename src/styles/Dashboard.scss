@@ -327,9 +327,19 @@ main,
 
   &.staff-dashboard .dashboard-operations {
     grid-template-areas:
+      "dashboard-filters"
+      "dashboard-kpis"
       "approval"
       "upcoming";
 
+    .dashboard-filters {
+      grid-area: dashboard-filters;
+      margin-bottom: 0;
+    }
+    .dashboard-kpis {
+      grid-area: dashboard-kpis;
+      margin-bottom: 0;
+    }
     .approval-panel { grid-area: approval; }
     .upcoming-panel { grid-area: upcoming; }
   }
@@ -1470,7 +1480,20 @@ main,
   }
 
   .mis-dashboard-content.staff-dashboard .dashboard-operations {
-    grid-template-areas: "approval upcoming";
+    grid-template-areas:
+      "dashboard-filters dashboard-filters"
+      "dashboard-kpis dashboard-kpis"
+      "approval upcoming";
+
+    .dashboard-filters {
+      grid-area: dashboard-filters;
+      margin-bottom: 0;
+    }
+
+    .dashboard-kpis {
+      grid-area: dashboard-kpis;
+      margin-bottom: 0;
+    }
 
     .approval-panel {
       grid-area: approval;

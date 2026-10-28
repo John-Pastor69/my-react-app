@@ -45,7 +45,7 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
         
         const userRef = doc(db, targetCollection, auth.currentUser.uid);
         await updateDoc(userRef, {
-          status: 'Inactive',
+          status: 'Offline',
           lastActive: new Date().toISOString()
         });
       }

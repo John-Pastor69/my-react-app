@@ -173,23 +173,32 @@ export default function App() {
               return;
             }
 
-            // --- ADDED EMAIL VERIFICATION CHECK ---
-            if (!user.emailVerified) {
-              // Check if they are in the middle of creating an account
-              if (sessionStorage.getItem('is_registering') === 'true') {
-                return; // Let Login.jsx finish saving the profile to Firestore first
-              }
-
-              await signOut(auth);
-              setLoginError("Please check your inbox and verify your email before logging in.");
-              setIsAuthenticated(false);
-              setIsAuthLoading(false);
-              return;
-            }
-
             // 3. Check the normal users collection
             userRef = doc(db, 'users', user.uid);
             userDocSnap = await getDoc(userRef);
+          }
+
+          if (userDocSnap.exists() && (userDocSnap.data().status || '').toLowerCase().trim() === 'blocked') {
+            tabAccess.current?.release();
+            tabAccess.current = null;
+            setLoginError('Your Account is Blocked. Contact MIS personally for support.');
+            setIsAuthenticated(false);
+            setTwoFactorMode(null);
+            setTwoFactorSecret(null);   
+            await signOut(auth);
+            return;
+          }
+
+          if (!isSuperAdmin && !user.emailVerified) {
+            if (sessionStorage.getItem('is_registering') === 'true') {
+              return;
+            }
+
+            await signOut(auth);
+            setLoginError("Please check your inbox and verify your email before logging in.");
+            setIsAuthenticated(false);
+            setIsAuthLoading(false);
+            return;
           }
           
           const localSessionId = await getBrowserSessionId(user.uid);
@@ -212,7 +221,7 @@ export default function App() {
             needsTwoFactor = is2FAPolicyActive && !isVerifiedThisSession;
             
             updateDoc(userRef, {
-              status: 'Active',
+              status: 'Online',
               lastActive: nowIso,
               activeSessionId: localSessionId,
               emailVerified: true // Set field to true once they log in successfully after verifying
@@ -260,7 +269,7 @@ export default function App() {
               dateJoined: liveDate,
               officeLocation: '',
               phone: '',
-              status: 'Active',
+              status: 'Online',
               lastActive: nowIso,
               twoFactorEnabled: false, 
               activeSessionId: localSessionId 
@@ -277,7 +286,19 @@ export default function App() {
           
           sessionUnsubscribe = onSnapshot(userRef, (docSnap) => {
             if (docSnap.exists()) {
-              const dbSessionId = docSnap.data().activeSessionId;
+              const profileData = docSnap.data();
+              if ((profileData.status || '').toLowerCase().trim() === 'blocked') {
+                setLoginError('Your Account is Blocked. Appeal to MIS personally for more details.');
+                setIsAuthenticated(false);
+                setTwoFactorMode(null);
+                setTwoFactorSecret(null);
+                void signOut(auth).catch((error) => {
+                  console.error('Failed to sign out blocked user:', error);
+                });
+                return;
+              }
+
+              const dbSessionId = profileData.activeSessionId;
               const currentLocalSession = localStorage.getItem(`active_session_${user.uid}`);
               
               if (dbSessionId && currentLocalSession && dbSessionId !== currentLocalSession) {
@@ -344,7 +365,7 @@ export default function App() {
         const userRef = doc(db, profileCollection.current, auth.currentUser.uid);
             
         updateDoc(userRef, {
-          status: 'Inactive',
+          status: 'Offline',
           lastActive: new Date().toISOString()
         }).catch(err => console.error("Failed to set inactive status:", err));
       }
@@ -356,7 +377,7 @@ export default function App() {
           const userRef = doc(db, profileCollection.current, auth.currentUser.uid);
 
           updateDoc(userRef, {
-            status: 'Active',
+            status: 'Online',
             lastActive: new Date().toISOString()
           }).catch(err => console.error("Failed to set active status:", err));
         }

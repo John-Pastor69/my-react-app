@@ -474,6 +474,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
         ? res.cancelledAt || res.updatedAt || res.createdAt
         : res.expiredAt || res.updatedAt || res.createdAt;
       const isRequestorCancellation = isCancelled && (
+        normalizeApprovalRoleKey(res.cancelledByRole) === 'requestor'
+        ||
         (res.cancelledBy && res.userId && res.cancelledBy === res.userId)
         || (res.cancelledByEmail && res.userEmail
           && res.cancelledByEmail.toLowerCase() === res.userEmail.toLowerCase())
@@ -510,7 +512,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           resolveUserName(res.userId, res.userEmail, res.fullName)
         );
         newNotifs.push({
-          id: `${res.id}-cancelled-admin-${res.cancelledAt || res.updatedAt || ''}`,
+          id: `${res.id}-cancelled-admin-${uid}-${res.cancelledAt || res.updatedAt || ''}`,
           type: 'cancelled',
           title: 'Reservation Cancelled',
           message: `${res.eventName || 'A reservation'} was cancelled by ${cancelledBy}.${cancellationRemark ? ` Remark: ${cancellationRemark}` : ''}`,

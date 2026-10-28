@@ -120,6 +120,246 @@ main,
     }
   }
 
+  .signup-options-container {
+    margin-top: 1.6rem;
+    padding: 1.2rem;
+    border: 0.0667rem solid $border-color;
+    border-radius: 0.8rem;
+    background: $card-bg;
+
+    @media (min-width: $bp-tablet) {
+      padding: 1.6rem;
+    }
+
+    .signup-options-heading {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1.2rem;
+
+      @media (min-width: $bp-tablet) {
+        flex-direction: row;
+        align-items: center;
+      }
+
+      h2 {
+        margin: 0 0 0.3rem;
+        font-size: var(--font-h3);
+      }
+
+      p {
+        margin: 0;
+        color: $text-muted;
+        font-size: var(--font-body);
+      }
+    }
+
+    .save-signup-options-btn,
+    .add-signup-option-row button {
+      border: 0;
+      border-radius: 0.4rem;
+      padding: 0.55rem 0.85rem;
+      background: $accent-purple;
+      color: #ffffff;
+      font-size: var(--font-body);
+      font-weight: 600;
+      cursor: pointer;
+
+      &:hover:not(:disabled) {
+        background: color.adjust($accent-purple, $lightness: -8%);
+      }
+
+      &:disabled {
+        cursor: not-allowed;
+        opacity: 0.55;
+      }
+    }
+
+    .signup-option-group-heading {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      gap: 0.55rem;
+      align-items: end;
+      margin-bottom: 0.75rem;
+
+      label {
+        display: grid;
+        min-width: 0;
+        gap: 0.25rem;
+
+        span {
+          color: $text-muted;
+          font-size: 0.72rem;
+        }
+
+        input {
+          width: 100%;
+          min-width: 0;
+          padding: 0.45rem 0.55rem;
+          border: 1px solid $border-color;
+          border-radius: 0.35rem;
+          color: $text-main;
+          font: inherit;
+        }
+      }
+
+      .remove-signup-group-btn {
+        padding: 0.45rem 0.55rem;
+        border: 1px solid #fecaca;
+        border-radius: 0.35rem;
+        background: #fef2f2;
+        color: $danger-color;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+      }
+    }
+
+    .signup-option-category {
+      margin-top: 1.3rem;
+      padding: 1rem;
+      border: 1px solid $border-color;
+      border-radius: 0.7rem;
+      background: #f8fafc;
+
+      > h3 {
+        margin: 0 0 0.9rem;
+        font-size: var(--font-body);
+        font-weight: 700;
+      }
+    }
+
+    .signup-option-groups {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(min(100%, 28rem), 1fr));
+      gap: 0.75rem;
+    }
+
+    .signup-option-group {
+      min-width: 0;
+      padding: 0.85rem;
+      border: 1px solid $border-color;
+      border-radius: 0.65rem;
+      background: #ffffff;
+      box-shadow: 0 1px 2px rgb(15 23 42 / 4%);
+    }
+
+    .signup-option-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .signup-option-row {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.4fr) auto;
+      gap: 0.65rem;
+      align-items: end;
+
+      label {
+        display: grid;
+        min-width: 0;
+        gap: 0.25rem;
+
+        span {
+          color: $text-muted;
+          font-size: 0.72rem;
+        }
+
+        input {
+          width: 100%;
+          min-width: 0;
+          padding: 0.5rem 0.6rem;
+          border: 1px solid $border-color;
+          border-radius: 0.45rem;
+          color: $text-main;
+          font: inherit;
+          background: #ffffff;
+
+          &:focus {
+            outline: 2px solid color.adjust($accent-purple, $alpha: -0.65);
+            outline-offset: 1px;
+          }
+        }
+      }
+
+      .remove-signup-option-btn {
+        padding: 0.5rem 0.65rem;
+        border: 1px solid #fecaca;
+        border-radius: 0.45rem;
+        background: #fef2f2;
+        color: $danger-color;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+      }
+    }
+
+    .add-signup-option-row {
+      display: flex;
+      gap: 0.6rem;
+      margin-top: 0.85rem;
+      align-items: stretch;
+
+      input {
+        width: 100%;
+        min-width: 0;
+        padding: 0.55rem 0.7rem;
+        border: 1px solid $border-color;
+        border-radius: 0.45rem;
+        font: inherit;
+        background: #ffffff;
+      }
+
+      button {
+        white-space: nowrap;
+      }
+    }
+
+    .add-signup-group-row {
+      max-width: 32rem;
+      margin-top: 1rem;
+    }
+
+    @media (max-width: 600px) {
+      .signup-option-category {
+        padding: 0.75rem;
+      }
+
+      .signup-option-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+
+        .remove-signup-option-btn {
+          grid-column: 1 / -1;
+          justify-self: end;
+        }
+      }
+
+      .signup-option-group-heading {
+        grid-template-columns: minmax(0, 1fr);
+
+        .remove-signup-group-btn {
+          justify-self: start;
+        }
+      }
+
+      .add-signup-option-row button {
+        white-space: normal;
+      }
+    }
+  }
+
   /* Table Container Card */
   .table-container {
     background: $card-bg;
@@ -224,6 +464,22 @@ main,
           }
         }
 
+        .user-filter-select {
+          width: 100%;
+          padding: 0.5333rem 0.8rem;
+          border: 0.0667rem solid $border-color;
+          border-radius: 0.5333rem;
+          background: #ffffff;
+          color: $text-main;
+          font-size: var(--font-body);
+          cursor: pointer;
+
+          @media (min-width: $bp-tablet) {
+            width: auto;
+            min-width: 9rem;
+          }
+        }
+
         .btn-secondary {
           background: #ffffff;
           border: 0.0667rem solid $border-color;
@@ -260,16 +516,19 @@ main,
     .table-scroll-wrapper {
       width: 100%;
       max-width: 100%;
-      height: 100%;
-      overflow-x: auto;
-      overflow-y: auto;
+      min-width: 0;
+      overflow-x: scroll;
+      overflow-y: hidden;
       -webkit-overflow-scrolling: touch;
       box-sizing: border-box;
       margin-bottom: 0.8rem;
+      scrollbar-width: thin;
+      scrollbar-color: #94a3b8 #f1f5f9;
 
       /* Custom Horizontal Scrollbar Styling */
       &::-webkit-scrollbar {
         height: 0.5333rem;
+        display: block;
       }
 
       &::-webkit-scrollbar-track {
@@ -418,9 +677,28 @@ main,
         color: $text-muted;
       }
 
+      .delete-unverified-btn {
+        padding: 0.4rem 0.55rem;
+        border: 1px solid #fca5a5;
+        border-radius: 0.4rem;
+        background: #fef2f2;
+        color: $danger-color;
+        font-weight: 600;
+
+        &:hover:not(:disabled) {
+          background: #fee2e2;
+        }
+
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+      }
+
       .action-buttons {
         display: flex;
-        gap: 0.6667rem;
+        flex-wrap: wrap;
+        gap: 0.4rem;
         align-items: center;
 
         .action-btn {
@@ -446,6 +724,36 @@ main,
           &:hover {
             background: color.adjust($accent-purple-bg, $lightness: -5%);
             color: $accent-purple;
+          }
+        }
+
+        .block-user-btn {
+          padding: 0.4rem 0.55rem;
+          border: 1px solid #fcd34d;
+          border-radius: 0.4rem;
+          background: $accent-orange-bg;
+          color: #92400e;
+          font-weight: 600;
+
+          &:hover:not(:disabled) {
+            background: color.adjust($accent-orange-bg, $lightness: -5%);
+            color: #78350f;
+          }
+
+          &:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+          }
+        }
+
+        .unblock-user-btn {
+          border-color: #86efac;
+          background: #f0fdf4;
+          color: $success-color;
+
+          &:hover:not(:disabled) {
+            background: #dcfce7;
+            color: #15803d;
           }
         }
       }

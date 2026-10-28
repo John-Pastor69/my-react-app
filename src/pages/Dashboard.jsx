@@ -790,7 +790,7 @@ const Dashboard = ({ currentUserRole }) => {
       </header>
 
       <section className="dashboard-operations" aria-label="Dashboard operations">
-        {isAdminDashboard && hasAnalyticsDashboard && (
+        {hasAnalyticsDashboard && (
           <DashboardFilters
             filters={filters}
             setFilters={setFilters}
@@ -798,7 +798,7 @@ const Dashboard = ({ currentUserRole }) => {
             isAdminDashboard={isAdminDashboard}
           />
         )}
-        {isAdminDashboard && hasAnalyticsDashboard && (
+        {hasAnalyticsDashboard && (
           <DashboardKpis
             metrics={metrics}
             pendingApprovals={pendingApprovals}
@@ -1166,22 +1166,6 @@ const Dashboard = ({ currentUserRole }) => {
 
       {hasAnalyticsDashboard ? (
         <>
-          {!isAdminDashboard && (
-            <DashboardFilters
-              filters={filters}
-              setFilters={setFilters}
-              setDatePreset={setDatePreset}
-              isAdminDashboard={isAdminDashboard}
-            />
-          )}
-          {!isAdminDashboard && (
-            <DashboardKpis
-              metrics={metrics}
-              pendingApprovals={pendingApprovals}
-              isAdminDashboard={isAdminDashboard}
-            />
-          )}
-
           <section className="dashboard-charts">
             <article className="dashboard-panel reservations-trend-panel">
               <div className="panel-heading">

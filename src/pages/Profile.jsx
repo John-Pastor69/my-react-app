@@ -65,7 +65,7 @@ const Profile = ({ currentUserRole }) => {
     department: '',
     phone: '',
     role: '',
-    status: 'Active',
+    status: 'Offline',
     dateJoined: '',
     avatarUrl: '',
     bannerUrl: ''
@@ -82,7 +82,7 @@ const Profile = ({ currentUserRole }) => {
           localStorage.removeItem('pendingAccountDeletion'); 
           try {
             const userDocRef = doc(db, myCollection, user.uid);
-            await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
+            await updateDoc(userDocRef, { status: 'Offline', lastActive: new Date().toISOString() });
             await deleteDoc(userDocRef);
             await deleteUser(user);
             localStorage.setItem(LOGOUT_EVENT_KEY, crypto.randomUUID());
@@ -415,7 +415,7 @@ const Profile = ({ currentUserRole }) => {
         
         const userDocRef = doc(db, myCollection, user.uid);
         
-        await updateDoc(userDocRef, { status: 'Inactive', lastActive: new Date().toISOString() });
+        await updateDoc(userDocRef, { status: 'Offline', lastActive: new Date().toISOString() });
         
         await deleteDoc(userDocRef);
         await deleteUser(user);
@@ -490,7 +490,7 @@ const Profile = ({ currentUserRole }) => {
                 </label>
               )}
               <div 
-                className={`status-indicator ${formData.status === 'Active' ? 'status-active' : 'status-inactive'}`}
+                className={`status-indicator ${['online', 'active'].includes(formData.status.toLowerCase()) ? 'status-active' : 'status-inactive'}`}
                 title={formData.status}
               ></div> 
             </div>

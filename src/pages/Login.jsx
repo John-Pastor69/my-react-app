@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
-import { doc, setDoc } from 'firebase/firestore';
+import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '../Firebase'; 
 import { NEW_LOGIN_KEY } from '../services/browserSession';
+import { DEFAULT_COURSE_OPTIONS, DEFAULT_DEPARTMENT_OPTIONS } from '../services/signupOptions';
 import '../styles/Login.scss';
 
 export default function Login({ error, setError }) {
@@ -23,9 +24,34 @@ export default function Login({ error, setError }) {
 
   const [resetMessage, setResetMessage] = useState(''); 
   const [resetCooldown, setResetCooldown] = useState(0);
+  const [signupOptions, setSignupOptions] = useState({
+    courses: DEFAULT_COURSE_OPTIONS,
+    departments: DEFAULT_DEPARTMENT_OPTIONS
+  });
+  const [signupOptionsError, setSignupOptionsError] = useState('');
 
   const themeBlue = '#0033A0';
   const lightBlueBorder = '#93C5FD';
+
+  useEffect(() => {
+    const unsubscribe = onSnapshot(
+      doc(db, 'app_settings', 'signupOptions'),
+      (snapshot) => {
+        const data = snapshot.data() || {};
+        setSignupOptions({
+          courses: Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS,
+          departments: Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS
+        });
+        setSignupOptionsError('');
+      },
+      (optionsError) => {
+        console.error('Failed to load signup options:', optionsError);
+        setSignupOptionsError('Signup options could not be loaded. Please try again later.');
+      }
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   // --- 60 SECOND BUTTON COOLDOWN TIMER ---
   useEffect(() => {
@@ -185,7 +211,7 @@ export default function Login({ error, setError }) {
           role: tag === 'Faculty' ? 'endorser' : 'requestor',
           studentNumber: tag === 'Student' || tag === 'Student Leader' ? studentNumber.trim() : '',
           course: tag === 'Student' || tag === 'Student Leader' ? course : '',
-          department: ['Admin', 'Staff', 'Admin and Staff', 'Faculty'].includes(tag) ? department : '',
+          department: ['Admin Staff', 'Admin and Staff', 'Faculty'].includes(tag) ? department : '',
           emailVerified: false, // Default to false upon creation
           timeCreated: now.toISOString() // Record exactly when account was made
         }, { merge: true });
@@ -282,7 +308,7 @@ export default function Login({ error, setError }) {
               </div>
 
               <div className="modal-body" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-                {error && <div style={{color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{error}</div>}
+                {error && <div role="alert" aria-live="assertive" style={{color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{error}</div>}
                 {resetMessage && <div style={{color: '#16a34a', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{resetMessage}</div>}
                 
                 <h2 style={{ textAlign: 'center', marginBottom: '1rem', color: themeBlue }}>
@@ -334,8 +360,7 @@ export default function Login({ error, setError }) {
                           <option value="" disabled>e.g. Student</option>
                           <option value="Student">Student</option>
                           <option value="Student Leader">Student Leader</option>
-                          <option value="Admin">Admin</option>
-                          <option value="Staff">Staff</option>
+                          <option value="Admin Staff">Admin Staff</option>
                           <option value="Faculty">Faculty</option>
                         </select>
                       </div>
@@ -365,32 +390,22 @@ export default function Login({ error, setError }) {
                               onChange={(e) => setCourse(e.target.value)} 
                               required 
                               style={inputStyle}
+                              disabled={Boolean(signupOptionsError)}
                             >
                               <option value="" disabled>Select Course</option>
-                              <optgroup label="Senior High School">
-                                <option value="STEM">STEM - Science Technology Engineering Math</option>
-                                <option value="HUMSS">HUMSS - Humanities Social Sciences</option>
-                                <option value="ABM">ABM - Accountancy Business Management</option>
-                                <option value="TVL-ICT">TVL - Information Communications Technology</option>
-                                <option value="TVL-HE">TVL - Home Economics</option>
-                                <option value="TVL-IA">TVL - Industrial Arts</option>
-                              </optgroup>
-                              <optgroup label="College">
-                                <option value="BSIT">BSIT - Bachelor of Science in Information Technology</option>
-                                <option value="BSCS">BSCS - Bachelor of Science in Computer Science</option>
-                                <option value="BSBA">BSBA - Bachelor of Science in Business Administration</option>
-                                <option value="BSA">BSA - Bachelor of Science in Accountancy</option>
-                                <option value="BACOMM">BACOMM - Bachelor of Arts in Communication</option>
-                                <option value="BSEDUC">BSEDUC - Bachelor of Elementary Education</option>
-                                <option value="BSHM">BSHM - Hospitality Management</option>
-                                <option value="BSTM">BSTM - Tourism Management</option>
-                              </optgroup>
+                              {signupOptions.courses.map((group) => (
+                                <optgroup label={group.group} key={group.group}>
+                                  {group.options.map((option) => (
+                                    <option key={option.value} value={option.value}>{option.label}</option>
+                                  ))}
+                                </optgroup>
+                              ))}
                             </select>
                           </div>
                         </>
                       )}
 
-                      {(['Admin', 'Staff', 'Admin and Staff', 'Faculty'].includes(tag)) && (
+                      {(['Admin Staff', 'Admin and Staff', 'Faculty'].includes(tag)) && (
                         <div style={{ display: 'flex', flexDirection: 'column' }}>
                           <label style={labelStyle}>Department / Office</label>
                           <select 
@@ -398,26 +413,25 @@ export default function Login({ error, setError }) {
                             onChange={(e) => setDepartment(e.target.value)} 
                             required 
                             style={inputStyle}
+                            disabled={Boolean(signupOptionsError)}
                           >
                             <option value="" disabled>Select Department</option>
-                            <optgroup label="Academic Departments">
-                              <option value="SHS Department">Senior High School (SHS) Department</option>
-                              <option value="College Department">College Department</option>
-                            </optgroup>
-                            <optgroup label="Offices & Administration">
-                              <option value="MIS">Management Information System (MIS)</option>
-                              <option value="Registrar">Registrar's Office</option>
-                              <option value="Cashier">Cashier</option>
-                              <option value="Student Affairs">Office of Student Affairs</option>
-                              <option value="Guidance">Guidance Office</option>
-                              <option value="HR">Human Resources</option>
-                              <option value="General Services">General Services / Building Admin</option>
-                              <option value="Other">Other</option>
-                            </optgroup>
+                            {signupOptions.departments.map((group) => (
+                              <optgroup label={group.group} key={group.group}>
+                                {group.options.map((option) => (
+                                  <option key={option.value} value={option.value}>{option.label}</option>
+                                ))}
+                              </optgroup>
+                            ))}
                           </select>
                         </div>
                       )}
                     </>
+                  )}
+                  {!isLogin && signupOptionsError && (
+                    <p role="alert" style={{ color: '#dc2626', fontSize: '13px', fontWeight: 'bold' }}>
+                      {signupOptionsError}
+                    </p>
                   )}
 
                   <div style={{ display: 'flex', flexDirection: 'column' }}>

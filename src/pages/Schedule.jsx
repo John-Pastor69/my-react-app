@@ -174,6 +174,7 @@ const Schedule = ({ currentUserRole = '' }) => {
         cancelledAt,
         cancelledBy: currentUser?.uid || '',
         cancelledByEmail: currentUser?.email || '',
+        cancelledByRole: 'requestor',
         historyLogs: [
           ...(Array.isArray(reservationData.historyLogs) ? reservationData.historyLogs : []),
           cancellationLog
