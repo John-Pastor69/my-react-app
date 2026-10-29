@@ -1349,7 +1349,11 @@ $orange-main: #F59E0B;
       &.disabled {
         color: #CBD5E1;
         cursor: not-allowed;
-        pointer-events: none;
+      }
+
+      &.unavailable {
+        color: $red-main;
+        text-decoration: line-through;
       }
     }
   }

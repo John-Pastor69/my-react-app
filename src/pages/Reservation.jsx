@@ -25,6 +25,11 @@ import {
   getActiveFacilityReservations,
   parseDateOrdinal
 } from '../services/reservationConflicts';
+import {
+  getAvailableDatesInRange,
+  findUnavailableDateInRange,
+  getUnavailableDatesInRange
+} from '../services/unavailableDates';
 import ReservationDetails from './ReservationDetails';
 import { sanitizeEventName } from '../services/eventName';
 import '../styles/Reservation.scss';
@@ -203,6 +208,11 @@ const getScheduleDates = (startDate, endDate) => {
   ));
 };
 
+const getUnavailableDateMessage = (unavailableDate) => {
+  const date = unavailableDate.date || unavailableDate.id;
+  return `This reservation includes unavailable date ${date}${unavailableDate.remark ? `: ${unavailableDate.remark}` : '.'}`;
+};
+
 const formatScheduleDate = (date) => {
   const dateOrdinal = parseDateOrdinal(date);
   if (dateOrdinal === null) return date;
@@ -261,6 +271,9 @@ const Reservation = ({ currentUserRole }) => {
   const [inventoryFacilities, setInventoryFacilities] = useState([]);
   const [reservationsData, setReservationsData] = useState([]);
   const [reservationsLoaded, setReservationsLoaded] = useState(false);
+  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [unavailableDatesLoaded, setUnavailableDatesLoaded] = useState(false);
+  const [unavailableDatesError, setUnavailableDatesError] = useState('');
   const [editingReservation, setEditingReservation] = useState(null);
   const [dateError, setDateError] = useState('');
   const [daysDateError, setDaysDateError] = useState('');
@@ -583,6 +596,16 @@ const Reservation = ({ currentUserRole }) => {
       setReservationsLoaded(true);
     }, (error) => console.error('Failed to load reservations:', error));
 
+    const unsubUnavailableDates = onSnapshot(collection(db, 'unavailableDates'), (snapshot) => {
+      setUnavailableDates(snapshot.docs.map((d) => ({ id: d.id, ...d.data() })));
+      setUnavailableDatesLoaded(true);
+      setUnavailableDatesError('');
+    }, (error) => {
+      console.error('Failed to load unavailable dates:', error);
+      setUnavailableDatesLoaded(false);
+      setUnavailableDatesError('Calendar availability could not be loaded. Please try again later.');
+    });
+
     const unsubUsers = onSnapshot(collection(db, 'users'), (snapshot) => {
       const users = snapshot.docs.map((d) => ({ id: d.id, ...d.data() }));
       const endorsers = users
@@ -608,6 +631,7 @@ const Reservation = ({ currentUserRole }) => {
       unsubUtilities();
       unsubFacilities();
       unsubReservations();
+      unsubUnavailableDates();
       unsubUsers();
     };
   }, [currentUser]);
@@ -637,7 +661,18 @@ const Reservation = ({ currentUserRole }) => {
   const expectedParticipantCount = formData.facilities.length > 0
     ? totalFacilityParticipants
     : Number(formData.expectedParticipants || 0);
+  const unavailableDatesInRange = getUnavailableDatesInRange(
+    eventDate,
+    endDateInput || eventDate,
+    unavailableDates
+  );
+  const availableDateIds = new Set(getAvailableDatesInRange(
+    eventDate,
+    endDateInput,
+    unavailableDates
+  ));
   const dailySchedule = getScheduleDates(eventDate, endDateInput)
+    .filter((date) => availableDateIds.has(date))
     .filter((date) => !removedScheduleDates.includes(date))
     .map((date) => ({
       date,
@@ -707,6 +742,7 @@ const Reservation = ({ currentUserRole }) => {
   const invalidDateRange = requestStartDate !== null
     && requestEndDate !== null
     && requestEndDate < requestStartDate;
+  const blockedStartDate = findUnavailableDateInRange(eventDate, eventDate, unavailableDates);
   const isDailyScheduleValid = dailySchedule.length > 0 && dailySchedule.every((entry) => {
     const start = parseTimeToMinutes(entry.startTime);
     const end = parseTimeToMinutes(entry.endTime);
@@ -994,7 +1030,15 @@ const Reservation = ({ currentUserRole }) => {
   const selectDate = (day) => {
     const month = String(calendarView.getMonth() + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
-    setEventDate(`${month}/${formattedDay}/${calendarView.getFullYear()}`);
+    const selectedDate = `${month}/${formattedDay}/${calendarView.getFullYear()}`;
+    const unavailableDate = findUnavailableDateInRange(selectedDate, selectedDate, unavailableDates);
+    if (!unavailableDatesLoaded) {
+      setDateError('Calendar availability is still loading. Please try again.');
+      return;
+    }
+    if (unavailableDate) return;
+
+    setEventDate(selectedDate);
     setRemovedScheduleDates([]);
     setDateError('');
     clearMissingField('eventDate');
@@ -1016,11 +1060,16 @@ const Reservation = ({ currentUserRole }) => {
     const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
       const cellDate = new Date(year, month, day);
       const isPast = cellDate < minDate;
+      const dateString = `${String(month + 1).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`;
+      const unavailableDate = findUnavailableDateInRange(dateString, dateString, unavailableDates);
+      const isDisabled = isPast || Boolean(unavailableDate) || !unavailableDatesLoaded;
       return (
         <div
           key={day} 
-          className={`calendar-day ${isPast ? 'disabled' : ''}`} 
-          onClick={() => !isPast && selectDate(day)}
+          className={`calendar-day ${isDisabled ? 'disabled' : ''} ${unavailableDate ? 'unavailable' : ''}`}
+          title={unavailableDate ? getUnavailableDateMessage(unavailableDate) : undefined}
+          aria-disabled={isDisabled}
+          onClick={() => !isDisabled && selectDate(day)}
         >
           {day}
         </div>
@@ -1036,7 +1085,15 @@ const Reservation = ({ currentUserRole }) => {
   const selectDaysDate = (day) => {
     const month = String(daysCalendarView.getMonth() + 1).padStart(2, '0');
     const formattedDay = String(day).padStart(2, '0');
-    setEndDateInput(`${month}/${formattedDay}/${daysCalendarView.getFullYear()}`);
+    const selectedDate = `${month}/${formattedDay}/${daysCalendarView.getFullYear()}`;
+    const unavailableDate = findUnavailableDateInRange(selectedDate, selectedDate, unavailableDates);
+    if (!unavailableDatesLoaded) {
+      setDaysDateError('Calendar availability is still loading. Please try again.');
+      return;
+    }
+    if (unavailableDate) return;
+
+    setEndDateInput(selectedDate);
     setRemovedScheduleDates([]);
     setDaysDateError('');
     clearMissingField('endDateInput');
@@ -1058,11 +1115,16 @@ const Reservation = ({ currentUserRole }) => {
     const renderDays = Array.from({ length: daysInMonth }, (_, i) => i + 1).map(day => {
       const cellDate = new Date(year, month, day);
       const isPast = cellDate < minDate;
+      const dateString = `${String(month + 1).padStart(2, '0')}/${String(day).padStart(2, '0')}/${year}`;
+      const unavailableDate = findUnavailableDateInRange(dateString, dateString, unavailableDates);
+      const isDisabled = isPast || Boolean(unavailableDate) || !unavailableDatesLoaded;
       return (
         <div 
           key={day} 
-          className={`calendar-day ${isPast ? 'disabled' : ''}`} 
-          onClick={() => !isPast && selectDaysDate(day)}
+          className={`calendar-day ${isDisabled ? 'disabled' : ''} ${unavailableDate ? 'unavailable' : ''}`}
+          title={unavailableDate ? getUnavailableDateMessage(unavailableDate) : undefined}
+          aria-disabled={isDisabled}
+          onClick={() => !isDisabled && selectDaysDate(day)}
         >
           {day}
         </div>
@@ -1142,6 +1204,15 @@ const Reservation = ({ currentUserRole }) => {
       return;
     }
 
+    if (!unavailableDatesLoaded) {
+      setCustomAlert({
+        title: 'Calendar Availability Unavailable',
+        message: unavailableDatesError || 'Calendar availability is still loading. Please try again.',
+        isSuccess: false
+      });
+      return;
+    }
+
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0)
       || Boolean(formData.otherEquipment.trim());
     // Validate all required fields in top-to-bottom order
@@ -1172,7 +1243,7 @@ const Reservation = ({ currentUserRole }) => {
         }))
         : []),
       { key: 'eventType', missing: formData.eventType.length === 0 },
-      { key: 'eventDate', missing: !eventDate.trim() || !!dateError },
+      { key: 'eventDate', missing: !eventDate.trim() || !!dateError || Boolean(blockedStartDate) },
       { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
       { key: 'startTime', missing: !startTime.trim() },
       { key: 'endTime', missing: !endTime.trim() },
@@ -1274,6 +1345,28 @@ const Reservation = ({ currentUserRole }) => {
     setIsSubmitting(true);
 
     try {
+      const unavailableDateSnapshot = await getDocs(collection(db, 'unavailableDates'));
+      const latestUnavailableDates = unavailableDateSnapshot.docs.map((d) => ({
+        id: d.id,
+        ...d.data()
+      }));
+      const latestAvailableDateIds = new Set(getAvailableDatesInRange(
+        eventDate,
+        endDateInput || eventDate,
+        latestUnavailableDates
+      ));
+      const latestDailySchedule = dailySchedule.filter((entry) => (
+        latestAvailableDateIds.has(entry.date)
+      ));
+      if (latestDailySchedule.length === 0) {
+        setCustomAlert({
+          title: 'Date Unavailable',
+          message: 'Every date in this reservation range is unavailable. Choose a different date range.',
+          isSuccess: false
+        });
+        return;
+      }
+
       // Recheck against Firestore at submit time in case the live list is stale.
       if (hasFacility) {
         const snap = await getDocs(collection(db, 'reservations'));
@@ -1283,7 +1376,7 @@ const Reservation = ({ currentUserRole }) => {
         }));
         const conflictingReservation = findFacilityConflict(
           reservations,
-          conflictRequest,
+          { ...conflictRequest, schedule: latestDailySchedule },
           inventoryFacilities
         );
 
@@ -1324,7 +1417,7 @@ const Reservation = ({ currentUserRole }) => {
         endDate: calculatedEndDate,
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(endTime),
-        schedule: dailySchedule.map((entry) => ({
+        schedule: latestDailySchedule.map((entry) => ({
           date: entry.date,
           startTime: formatTimeForStorage(entry.startTime),
           endTime: formatTimeForStorage(entry.endTime)
@@ -2120,10 +2213,13 @@ const Reservation = ({ currentUserRole }) => {
                     maxLength={10}
                     placeholder="MM/DD/YYYY" 
                     onClick={() => setShowCalendar(true)} 
-                    className={(dateError || missingFields.eventDate) ? 'input-error' : ''}
+                    className={(dateError || blockedStartDate || missingFields.eventDate) ? 'input-error' : ''}
                   />
                 </div>
-                {dateError && <span className="field-error">{dateError}</span>}
+                {(dateError || blockedStartDate) && (
+                  <span className="field-error">{dateError || getUnavailableDateMessage(blockedStartDate)}</span>
+                )}
+                {unavailableDatesError && <span className="field-error">{unavailableDatesError}</span>}
                 
                 {showCalendar && (
                   <>
@@ -2172,6 +2268,13 @@ const Reservation = ({ currentUserRole }) => {
                 {(daysDateError || invalidDateRange) && (
                   <span className="field-error">
                     {daysDateError || 'End date must be on or after start date'}
+                  </span>
+                )}
+                {unavailableDatesInRange.length > 0 && !daysDateError && !invalidDateRange && (
+                  <span className="helper-text">
+                    Unavailable dates will be excluded from this reservation: {unavailableDatesInRange
+                      .map((date) => formatScheduleDate(date.date || date.id))
+                      .join(', ')}
                   </span>
                 )}
                 

@@ -482,7 +482,7 @@ const MisUserManagement = ({ currentUserRole }) => {
             </div>
             <div className="add-signup-option-row">
               <input
-                aria-label={`Add option to ${group.group}`}
+                aria-label={`     option to ${group.group}`}
                 placeholder="Add Value"
                 value={newSignupOption[type][groupIndex] || ''}
                 onChange={(event) => setNewSignupOption((current) => ({

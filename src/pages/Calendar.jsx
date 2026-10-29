@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { db, auth } from "../Firebase";
-import { collection, onSnapshot, doc, getDoc, writeBatch } from "firebase/firestore";
+import { collection, onSnapshot, doc, getDoc, writeBatch, setDoc, deleteDoc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import "../styles/Calendar.scss";
 import ReservationDetails from './ReservationDetails';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationEndReached } from '../services/reservationExpiration';
+import { getUnavailableDateId } from '../services/unavailableDates';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -78,6 +79,7 @@ const Calendar = ({ currentUserRole }) => {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDate, setSelectedDate] = useState("");
   const [reservationsData, setReservationsData] = useState([]);
+  const [unavailableDates, setUnavailableDates] = useState([]);
   const [historyData, setHistoryData] = useState([]); 
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
@@ -96,11 +98,17 @@ const Calendar = ({ currentUserRole }) => {
   const [archiveSort, setArchiveSort] = useState('Latest');
   const [itemToDelete, setItemToDelete] = useState(null);
   const [deleteError, setDeleteError] = useState('');
+  const [unavailableRemarkDraft, setUnavailableRemarkDraft] = useState({ dateId: '', value: '' });
+  const [unavailableDateError, setUnavailableDateError] = useState('');
+  const [unavailableDateMessage, setUnavailableDateMessage] = useState('');
+  const [isSavingUnavailableDate, setIsSavingUnavailableDate] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(null);
 
   const handleDateClick = (dateStr) => {
     setSelectedDate(dateStr);
+    setUnavailableDateError('');
+    setUnavailableDateMessage('');
     if (!window.matchMedia('(min-width: 51.2rem)').matches && sidebarRef.current) {
       setTimeout(() => {
         sidebarRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -145,6 +153,13 @@ const Calendar = ({ currentUserRole }) => {
       setReservationsData(resData);
     }, (error) => console.error('Failed to load reservations:', error));
 
+    const unsubUnavailableDates = onSnapshot(collection(db, 'unavailableDates'), (snapshot) => {
+      setUnavailableDates(snapshot.docs.map((dateDoc) => ({
+        id: dateDoc.id,
+        ...dateDoc.data()
+      })));
+    }, (error) => console.error('Failed to load unavailable dates:', error));
+
     const unsubHistory = onSnapshot(collection(db, 'archive'), (snapshot) => {
       setHistoryData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     }, (error) => console.error('Failed to load archive:', error));
@@ -167,7 +182,14 @@ const Calendar = ({ currentUserRole }) => {
       setUtilitiesMap(uMap);
     }, (error) => console.error('Failed to load utilities:', error));
 
-    return () => { unsubRes(); unsubHistory(); unsubFac(); unsubEq(); unsubUtilities(); };
+    return () => {
+      unsubRes();
+      unsubUnavailableDates();
+      unsubHistory();
+      unsubFac();
+      unsubEq();
+      unsubUtilities();
+    };
   }, [currentUser]);
 
   // 3. REUSABLE MAPPING FUNCTION WITH RANGE EXPANSION
@@ -247,6 +269,14 @@ const Calendar = ({ currentUserRole }) => {
     return Boolean(reservationEmail && reservationEmail === (currentUser.email || '').trim().toLowerCase());
   };
   const canModifyReservations = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRoleKey);
+  const canManageUnavailableDates = canModifyReservations;
+  const selectedUnavailableDateId = getUnavailableDateId(selectedDate);
+  const selectedUnavailableDate = unavailableDates.find((date) => (
+    getUnavailableDateId(date.date || date.id) === selectedUnavailableDateId
+  ));
+  const unavailableRemark = unavailableRemarkDraft.dateId === selectedUnavailableDateId
+    ? unavailableRemarkDraft.value
+    : selectedUnavailableDate?.remark || '';
   const canModifySelectedRequest = Boolean(
     selectedRequest
     && (selectedRequest.status || '').toLowerCase().trim() === 'approved'
@@ -352,6 +382,51 @@ const Calendar = ({ currentUserRole }) => {
   // 4. NAVIGATION CONTROLLERS
   const handlePrevMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
   const handleNextMonth = () => setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 1));
+
+  const handleSaveUnavailableDate = async () => {
+    if (!canManageUnavailableDates || !selectedUnavailableDateId) return;
+    const remark = unavailableRemark.trim();
+    if (!remark) {
+      setUnavailableDateError('Add a remark explaining why this date is unavailable.');
+      setUnavailableDateMessage('');
+      return;
+    }
+
+    setIsSavingUnavailableDate(true);
+    setUnavailableDateError('');
+    setUnavailableDateMessage('');
+    try {
+      await setDoc(doc(db, 'unavailableDates', selectedUnavailableDateId), {
+        date: selectedUnavailableDateId,
+        remark,
+        updatedAt: new Date().toISOString(),
+        updatedBy: currentUser?.uid || ''
+      }, { merge: true });
+      setUnavailableDateMessage('Unavailable date saved.');
+    } catch (error) {
+      console.error('Failed to save unavailable date:', error);
+      setUnavailableDateError('Unable to save this unavailable date. Please try again.');
+    } finally {
+      setIsSavingUnavailableDate(false);
+    }
+  };
+
+  const handleMakeDateAvailable = async () => {
+    if (!canManageUnavailableDates || !selectedUnavailableDateId || !selectedUnavailableDate) return;
+    setIsSavingUnavailableDate(true);
+    setUnavailableDateError('');
+    setUnavailableDateMessage('');
+    try {
+      await deleteDoc(doc(db, 'unavailableDates', selectedUnavailableDateId));
+      setUnavailableRemarkDraft({ dateId: selectedUnavailableDateId, value: '' });
+      setUnavailableDateMessage('Date is available again.');
+    } catch (error) {
+      console.error('Failed to make date available:', error);
+      setUnavailableDateError('Unable to make this date available. Please try again.');
+    } finally {
+      setIsSavingUnavailableDate(false);
+    }
+  };
 
   // 5. DYNAMIC CALENDAR GENERATOR
   const generateCalendar = () => {
@@ -569,15 +644,24 @@ const Calendar = ({ currentUserRole }) => {
             ))}
             {calendarDays.map((day, index) => {
               const daysEvents = events.filter(e => e.date === day.date);
-              const isEmpty = daysEvents.length === 0;
+              const dateId = getUnavailableDateId(day.date);
+              const unavailableDate = unavailableDates.find((date) => (
+                getUnavailableDateId(date.date || date.id) === dateId
+              ));
+              const isEmpty = daysEvents.length === 0 && !unavailableDate;
 
               return (
                 <div 
                   key={index} 
                   onClick={() => handleDateClick(day.date)}
-                  className={`day-cell ${isEmpty ? 'empty-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
+                  className={`day-cell ${isEmpty ? 'empty-day' : ''} ${unavailableDate ? 'unavailable-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
                 >
                   <span className="date"><span>{day.name}</span> {day.num}</span>
+                  {unavailableDate && (
+                    <span className="calendar-unavailable-label" title={unavailableDate.remark || 'Unavailable'}>
+                      Unavailable
+                    </span>
+                  )}
                   {daysEvents.map(event => (
                     <div 
                       key={event.id} 
@@ -621,6 +705,56 @@ const Calendar = ({ currentUserRole }) => {
                     <div className="stat-box"><span className="stat-num text-green">{approvedCount}</span><span className="stat-label">Approved</span></div>
                     <div className="stat-divider"></div>
                     <div className="stat-box"><span className="stat-num text-yellow">{pendingCount}</span><span className="stat-label">Pending</span></div>
+                  </div>
+                )}
+
+                {!isArchiveVisible && selectedUnavailableDate && (
+                  <div className="calendar-unavailable-note">
+                    <strong>Unavailable</strong>
+                    <p>{selectedUnavailableDate.remark || 'No reason provided.'}</p>
+                  </div>
+                )}
+
+                {!isArchiveVisible && canManageUnavailableDates && (
+                  <div className="calendar-unavailable-controls">
+                    <label htmlFor="unavailable-date-remark">
+                      {selectedDate ? 'Reason this date is unavailable' : 'Select a date to manage availability'}
+                    </label>
+                    <textarea
+                      id="unavailable-date-remark"
+                      value={unavailableRemark}
+                      onChange={(event) => {
+                        setUnavailableRemarkDraft({
+                          dateId: selectedUnavailableDateId,
+                          value: event.target.value
+                        });
+                        setUnavailableDateError('');
+                        setUnavailableDateMessage('');
+                      }}
+                      maxLength={500}
+                      disabled={!selectedDate || isSavingUnavailableDate}
+                      placeholder="Add a remark"
+                    />
+                    {unavailableDateError && <p className="calendar-unavailable-error" role="alert">{unavailableDateError}</p>}
+                    {unavailableDateMessage && <p className="calendar-unavailable-message" role="status">{unavailableDateMessage}</p>}
+                    <button
+                      type="button"
+                      className="calendar-unavailable-button"
+                      onClick={handleSaveUnavailableDate}
+                      disabled={!selectedDate || !unavailableRemark.trim() || isSavingUnavailableDate}
+                    >
+                      {isSavingUnavailableDate ? 'Saving...' : selectedUnavailableDate ? 'Save remark' : 'Mark unavailable'}
+                    </button>
+                    {selectedUnavailableDate && (
+                      <button
+                        type="button"
+                        className="calendar-available-button"
+                        onClick={handleMakeDateAvailable}
+                        disabled={isSavingUnavailableDate}
+                      >
+                        Make available
+                      </button>
+                    )}
                   </div>
                 )}
 
