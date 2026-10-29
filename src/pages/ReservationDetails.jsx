@@ -77,9 +77,20 @@ const ReservationDetails = ({
       }
 
       try {
-        const userSnap = await getDoc(doc(db, 'users', currentUser.uid));
-        if (isCurrent && userSnap.exists()) {
-          setCurrentUserRole((userSnap.data().role || '').toLowerCase().trim());
+        let userSnap = await getDoc(doc(db, 'users', currentUser.uid));
+        let role = '';
+
+        if (userSnap.exists()) {
+          role = userSnap.data().role || '';
+        } else {
+          userSnap = await getDoc(doc(db, 'super_users', currentUser.uid));
+          if (userSnap.exists()) {
+            role = userSnap.data().role || 'super admin';
+          }
+        }
+
+        if (isCurrent) {
+          setCurrentUserRole(role.toLowerCase().trim().replace(/_/g, ' '));
         }
       } catch (error) {
         console.error('Failed to load current user role for PDF access:', error);
@@ -685,18 +696,18 @@ const ReservationDetails = ({
           {showRequestorInfo && (
             <div className="card">
               <h3><span className="card-icon">👤</span> Requestor Information</h3>
-              <div className="info-grid">
+              <div className="info-grid people-info-grid">
                 <div>
                   <label>FULL NAME</label>
                   <div className="val font-bold word-break">{requestorName}</div>
-                  <div className="requestor-type-field">
-                    <label>REQUESTOR TYPE</label>
-                    <div className="val word-break">{requestorTypeDisplay}</div>
-                  </div>
                 </div>
                 <div>
                   <label>CONTACT NUMBER</label>
                   <div className="val word-break">{contactNumber}</div>
+                </div>
+                <div>
+                  <label>REQUESTOR TYPE</label>
+                  <div className="val word-break">{requestorTypeDisplay}</div>
                 </div>
                 <div>
                   <label>EMAIL ADDRESS</label>
@@ -707,7 +718,7 @@ const ReservationDetails = ({
                   <div className="val">{dateSubmitted}</div>
                 </div>
                 {requestorDynamicAttributes.map(({ key, label, value }) => (
-                  <div className="full-width-field" key={`requestor-${key}`}>
+                  <div className="info-field" key={`requestor-${key}`}>
                     <label>{label.toUpperCase()}</label>
                     <div className="val word-break">{value}</div>
                   </div>
@@ -723,21 +734,17 @@ const ReservationDetails = ({
                 <h3><span className="card-icon">🤵</span> Endorser Information</h3>
                 <span className="endorser-badge">Student Role Only</span>
               </div>
-              <div className="info-grid col-2">
+              <div className="info-grid people-info-grid">
                 <div>
                   <label>ENDORSER'S FULL NAME</label>
                   <div className="val font-bold word-break">{endorserName}</div>
                 </div>
-                <div>
-                  <label>DESIGNATION</label>
-                  <div className="val word-break">{endorserDesignation}</div>
-                </div>
-                <div className="full-width-field endorser-full-width">
+                <div className="info-field">
                   <label>CONTACT EMAIL</label>
                   <div className="val word-break">{endorserEmail}</div>
                 </div>
                 {endorserDynamicAttributes.map(({ key, label, value }) => (
-                  <div className="full-width-field" key={`endorser-${key}`}>
+                  <div className="info-field" key={`endorser-${key}`}>
                     <label>{label.toUpperCase()}</label>
                     <div className="val word-break">{value}</div>
                   </div>

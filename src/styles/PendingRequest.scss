@@ -373,8 +373,24 @@ $danger-red: #ef4444;
         }
       }
 
-      .requestor-type-field {
-        margin-top: 0.75rem;
+    }
+
+    .info-grid.people-info-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.9333rem 1.0667rem;
+
+      > div {
+        min-width: 0;
+      }
+
+      .info-field {
+        margin-top: 0;
+      }
+
+      @media (max-width: 34rem) {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 0.8rem;
       }
     }
 
@@ -403,10 +419,6 @@ $danger-red: #ef4444;
         overflow-wrap: anywhere;
       }
 
-      &.endorser-full-width {
-        grid-column: 1 / -1;
-        margin-top: 0;
-      }
     }
 
     .equipment-grid-col {

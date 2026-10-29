@@ -669,25 +669,25 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
           {/* Card 3: Requestor Information */}
           <div className="card">
             <h3><span className="card-icon">👤</span> Requestor Information</h3>
-            <div className="info-grid">
+            <div className="info-grid people-info-grid">
               <div>
                 <label>FULL NAME</label>
                 <div className="val font-bold">{requestorName}</div>
-                <div className="requestor-type-field">
-                  <label>REQUESTOR TYPE</label>
-                  <div className="val">{requestorTypeDisplay}</div>
-                </div>
               </div>
               <div>
                 <label>CONTACT NUMBER</label>
                 <div className="val">{contactNumber}</div>
               </div>
               <div>
+                <label>REQUESTOR TYPE</label>
+                <div className="val">{requestorTypeDisplay}</div>
+              </div>
+              <div>
                 <label>EMAIL ADDRESS</label>
                 <div className="val">{email}</div>
               </div>
               {requestorDynamicAttributes.map(({ key, label, value }) => (
-                <div className="full-width-field" key={`requestor-${key}`}>
+                <div className="info-field" key={`requestor-${key}`}>
                   <label>{label.toUpperCase()}</label>
                   <div className="val word-break">{value}</div>
                 </div>
@@ -706,21 +706,17 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                 <h3><span className="card-icon">🤵</span> Endorser Information</h3>
                 <span className="endorser-badge">Student Role Only</span>
               </div>
-              <div className="info-grid col-2">
+              <div className="info-grid people-info-grid">
                 <div>
                   <label>ENDORSER'S FULL NAME</label>
                   <div className="val font-bold">{endorserName}</div>
                 </div>
-                <div>
-                  <label>DESIGNATION</label>
-                  <div className="val">{endorserDesignation}</div>
-                </div>
-                <div className="full-width-field endorser-full-width">
+                <div className="info-field">
                   <label>CONTACT EMAIL</label>
                   <div className="val">{endorserEmail}</div>
                 </div>
                 {endorserDynamicAttributes.map(({ key, label, value }) => (
-                  <div className="full-width-field" key={`endorser-${key}`}>
+                  <div className="info-field" key={`endorser-${key}`}>
                     <label>{label.toUpperCase()}</label>
                     <div className="val word-break">{value}</div>
                   </div>
