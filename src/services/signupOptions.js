@@ -47,3 +47,97 @@ export const DEFAULT_DEPARTMENT_OPTIONS = [
     ]
   }
 ];
+
+export const DEFAULT_SIGNUP_DROPDOWNS = [
+  { value: 'courses', label: 'Course / Program' },
+  { value: 'departments', label: 'Department / Office' }
+];
+
+export const SIGNUP_TEXT_CHARACTER_TYPES = [
+  { value: 'all', label: 'All' },
+  { value: 'text', label: 'Text Only' },
+  { value: 'number', label: 'Number Only' },
+  { value: 'symbols', label: 'Symbols Only' }
+];
+
+export const normalizeSignupTextCharacterTypes = (types) => {
+  const validTypes = new Set(SIGNUP_TEXT_CHARACTER_TYPES.map(({ value }) => value));
+  const selectedTypes = Array.isArray(types)
+    ? types.filter((type) => validTypes.has(type))
+    : [];
+  if (!selectedTypes.length || selectedTypes.includes('all')) return ['all'];
+  return [...new Set(selectedTypes)];
+};
+
+export const filterSignupTextValue = (value, characterTypes) => {
+  const selectedTypes = normalizeSignupTextCharacterTypes(characterTypes);
+  if (selectedTypes.includes('all')) return value;
+
+  return Array.from(value).filter((character) => (
+    (selectedTypes.includes('text') && /[\p{L} ]/u.test(character))
+    || (selectedTypes.includes('number') && /[0-9]/.test(character))
+    || (selectedTypes.includes('symbols') && /[\p{P}\p{S}]/u.test(character))
+  )).join('');
+};
+
+export const normalizeSignupDropdowns = (dropdowns, accountTypes = []) => {
+  const normalizedDropdowns = (Array.isArray(dropdowns) ? dropdowns : DEFAULT_SIGNUP_DROPDOWNS)
+    .map((dropdown) => ({
+      ...dropdown,
+      editableOnProfile: dropdown.editableOnProfile !== false
+    }));
+
+  accountTypes.forEach((accountType) => {
+    if (accountType.dropdown && !normalizedDropdowns.some((dropdown) => dropdown.value === accountType.dropdown)) {
+      normalizedDropdowns.push({
+        value: accountType.dropdown,
+        label: accountType.dropdown,
+        editableOnProfile: true
+      });
+    }
+  });
+
+  return normalizedDropdowns;
+};
+
+export const getSignupDropdownOptions = (
+  dropdown,
+  courses = DEFAULT_COURSE_OPTIONS,
+  departments = DEFAULT_DEPARTMENT_OPTIONS
+) => {
+  const groups = dropdown === 'courses'
+    ? courses
+    : dropdown === 'departments' ? departments : [];
+
+  return groups.flatMap((group) => group.options.map((option) => ({
+    ...option,
+    group: group.group
+  })));
+};
+
+export const normalizeAccountTypes = (
+  accountTypes,
+  courses = DEFAULT_COURSE_OPTIONS,
+  departments = DEFAULT_DEPARTMENT_OPTIONS
+) => accountTypes.map((accountType) => ({
+  ...accountType,
+  role: accountType.role || (accountType.value === 'Faculty' ? 'endorser' : 'requestor'),
+  options: Array.isArray(accountType.options)
+    ? accountType.options.map((option) => ({ ...option }))
+    : getSignupDropdownOptions(accountType.dropdown, courses, departments),
+  customFields: Array.isArray(accountType.customFields)
+    ? accountType.customFields.map((field) => ({
+      ...field,
+      type: field.type || 'text',
+      editableOnProfile: field.editableOnProfile !== false,
+      characterTypes: normalizeSignupTextCharacterTypes(field.characterTypes)
+    }))
+    : []
+}));
+
+export const DEFAULT_ACCOUNT_TYPES = normalizeAccountTypes([
+  { value: 'Student', label: 'Student', dropdown: 'courses', role: 'requestor' },
+  { value: 'Student Leader', label: 'Student Leader', dropdown: 'courses', role: 'requestor' },
+  { value: 'Admin Staff', label: 'Admin Staff', dropdown: 'departments', role: 'requestor' },
+  { value: 'Faculty', label: 'Faculty', dropdown: 'departments', role: 'endorser' }
+]);

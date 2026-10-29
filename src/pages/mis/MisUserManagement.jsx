@@ -2,7 +2,16 @@ import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
 import { Link } from 'react-router-dom';
 import { db, auth } from '../../Firebase';
-import { DEFAULT_COURSE_OPTIONS, DEFAULT_DEPARTMENT_OPTIONS } from '../../services/signupOptions';
+import {
+  DEFAULT_ACCOUNT_TYPES,
+  DEFAULT_COURSE_OPTIONS,
+  DEFAULT_DEPARTMENT_OPTIONS,
+  DEFAULT_SIGNUP_DROPDOWNS,
+  normalizeSignupTextCharacterTypes,
+  SIGNUP_TEXT_CHARACTER_TYPES,
+  normalizeAccountTypes,
+  normalizeSignupDropdowns
+} from '../../services/signupOptions';
 import "../../styles/mis/MisUserManagement.scss";
   
 const ROLE_OPTIONS = [
@@ -30,6 +39,21 @@ const ROLE_LABELS = {
 };
 
 const ADMIN_ROLES = ['mis', 'mis admin'];
+const SIGNUP_FIELD_TYPES = ['text', 'number', 'email', 'tel'];
+
+const isValidCustomFieldLimit = (value, type) => {
+  if (value === '' || value === undefined || value === null) return true;
+  const parsedValue = Number(value);
+  return Number.isFinite(parsedValue)
+    && (type !== 'text' || (Number.isInteger(parsedValue) && parsedValue >= 0));
+};
+
+const hasInvalidCustomFieldLimits = (field) => {
+  if (!['text', 'number'].includes(field.type)) return false;
+  if (!isValidCustomFieldLimit(field.min, field.type) || !isValidCustomFieldLimit(field.max, field.type)) return true;
+  if (field.min === '' || field.min === undefined || field.max === '' || field.max === undefined) return false;
+  return Number(field.min) > Number(field.max);
+};
 
 const formatRole = (role) => {
   if (!role) return 'Requestor';
@@ -82,11 +106,6 @@ const getCreatedDate = (user) => {
   return Number.isNaN(date.getTime()) ? null : date;
 };
 
-const cloneOptionGroups = (groups) => groups.map((group) => ({
-  ...group,
-  options: group.options.map((option) => ({ ...option }))
-}));
-
 const MisUserManagement = ({ currentUserRole }) => {
   const [usersData, setUsersData] = useState([]);
   const [searchQuery, setSearchQuery] = useState(''); // Added search state
@@ -97,12 +116,15 @@ const MisUserManagement = ({ currentUserRole }) => {
   const [loadError, setLoadError] = useState('');
   const [actionError, setActionError] = useState('');
   const [deletingUserId, setDeletingUserId] = useState(null);
-  const [courseOptions, setCourseOptions] = useState(() => cloneOptionGroups(DEFAULT_COURSE_OPTIONS));
-  const [departmentOptions, setDepartmentOptions] = useState(() => cloneOptionGroups(DEFAULT_DEPARTMENT_OPTIONS));
-  const [newSignupOption, setNewSignupOption] = useState({ courses: {}, departments: {} });
-  const [newSignupGroup, setNewSignupGroup] = useState({ courses: '', departments: '' });
+  const [accountTypes, setAccountTypes] = useState(() => normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES));
+  const [signupDropdowns, setSignupDropdowns] = useState(() => DEFAULT_SIGNUP_DROPDOWNS.map((dropdown) => ({ ...dropdown })));
+  const [newSignupDropdown, setNewSignupDropdown] = useState('');
+  const [newAccountType, setNewAccountType] = useState({ value: '', label: '', dropdown: '' });
+  const [newAccountTypeOptions, setNewAccountTypeOptions] = useState({});
+  const [newAccountTypeFields, setNewAccountTypeFields] = useState({});
   const [isSavingSignupOptions, setIsSavingSignupOptions] = useState(false);
   const [signupOptionsError, setSignupOptionsError] = useState('');
+  const [signupOptionsSuccess, setSignupOptionsSuccess] = useState('');
 
   const [roleModalUser, setRoleModalUser] = useState(null);
   const [selectedRole, setSelectedRole] = useState('requestor');
@@ -125,11 +147,13 @@ const MisUserManagement = ({ currentUserRole }) => {
       doc(db, 'app_settings', 'signupOptions'),
       (snapshot) => {
         const data = snapshot.data() || {};
+        const nextAccountTypes = Array.isArray(data.accountTypes) ? data.accountTypes : DEFAULT_ACCOUNT_TYPES;
         const nextCourses = Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS;
         const nextDepartments = Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS;
-        setCourseOptions(cloneOptionGroups(nextCourses));
-        setDepartmentOptions(cloneOptionGroups(nextDepartments));
+        setSignupDropdowns(normalizeSignupDropdowns(data.dropdownTypes, nextAccountTypes));
+        setAccountTypes(normalizeAccountTypes(nextAccountTypes, nextCourses, nextDepartments));
         setSignupOptionsError('');
+        setSignupOptionsSuccess('');
       },
       (error) => {
         console.error('Failed to load signup options:', error);
@@ -288,100 +312,275 @@ const MisUserManagement = ({ currentUserRole }) => {
     }
   };
 
-  const handleUpdateSignupOption = (type, groupIndex, optionIndex, field, value) => {
-    const setOptions = type === 'courses' ? setCourseOptions : setDepartmentOptions;
-    setOptions((groups) => groups.map((group, currentGroupIndex) => (
-      currentGroupIndex !== groupIndex
-        ? group
-        : {
-          ...group,
-          options: group.options.map((option, currentOptionIndex) => (
+  const handleUpdateAccountTypeOption = (accountTypeIndex, optionIndex, field, value) => {
+    setSignupOptionsSuccess('');
+    setAccountTypes((current) => current.map((accountType, currentAccountTypeIndex) => (
+      currentAccountTypeIndex === accountTypeIndex
+        ? {
+          ...accountType,
+          options: accountType.options.map((option, currentOptionIndex) => (
             currentOptionIndex === optionIndex ? { ...option, [field]: value } : option
           ))
         }
+        : accountType
     )));
   };
 
-  const handleUpdateSignupGroup = (type, groupIndex, value) => {
-    const setOptions = type === 'courses' ? setCourseOptions : setDepartmentOptions;
-    setOptions((groups) => groups.map((group, currentGroupIndex) => (
-      currentGroupIndex === groupIndex ? { ...group, group: value } : group
-    )));
-  };
-
-  const handleAddSignupGroup = (type) => {
-    const groupName = newSignupGroup[type].trim();
-    if (!groupName) return;
-
-    const groups = type === 'courses' ? courseOptions : departmentOptions;
-    if (groups.some((group) => group.group.trim().toLowerCase() === groupName.toLowerCase())) {
-      setSignupOptionsError('Group names must be unique within each category.');
+  const handleAddAccountTypeOption = (accountTypeIndex) => {
+    const value = (newAccountTypeOptions[accountTypeIndex] || '').trim();
+    if (!value) return;
+    const accountType = accountTypes[accountTypeIndex];
+    if (accountType.options.some((option) => option.value.trim().toLowerCase() === value.toLowerCase())) {
+      setSignupOptionsError('Dropdown values must be unique within each account type.');
       return;
     }
 
-    const setOptions = type === 'courses' ? setCourseOptions : setDepartmentOptions;
-    setOptions((currentGroups) => [...currentGroups, { group: groupName, options: [] }]);
-    setNewSignupGroup((current) => ({ ...current, [type]: '' }));
-    setNewSignupOption((current) => ({ ...current, [type]: {} }));
+    setAccountTypes((current) => current.map((item, index) => (
+      index === accountTypeIndex
+        ? { ...item, options: [...item.options, { value, label: value }] }
+        : item
+    )));
+    setNewAccountTypeOptions((current) => ({ ...current, [accountTypeIndex]: '' }));
     setSignupOptionsError('');
+    setSignupOptionsSuccess('');
   };
 
-  const handleRemoveSignupGroup = (type, groupIndex) => {
-    const setOptions = type === 'courses' ? setCourseOptions : setDepartmentOptions;
-    setOptions((groups) => groups.filter((_, currentGroupIndex) => currentGroupIndex !== groupIndex));
-    setNewSignupOption((current) => ({ ...current, [type]: {} }));
-  };
-
-  const handleAddSignupOption = (type, groupIndex) => {
-    const value = newSignupOption[type][groupIndex]?.trim();
-    if (!value) return;
-
-    const setOptions = type === 'courses' ? setCourseOptions : setDepartmentOptions;
-    setOptions((groups) => groups.map((group, currentGroupIndex) => (
-      currentGroupIndex === groupIndex
-        ? { ...group, options: [...group.options, { value, label: value }] }
-        : group
+  const handleRemoveAccountTypeOption = (accountTypeIndex, optionIndex) => {
+    setSignupOptionsSuccess('');
+    setAccountTypes((current) => current.map((accountType, currentAccountTypeIndex) => (
+      currentAccountTypeIndex === accountTypeIndex
+        ? { ...accountType, options: accountType.options.filter((_, index) => index !== optionIndex) }
+        : accountType
     )));
-    setNewSignupOption((current) => ({
+  };
+
+  const handleUpdateAccountTypeField = (accountTypeIndex, fieldIndex, field, value) => {
+    setSignupOptionsSuccess('');
+    setAccountTypes((current) => current.map((accountType, currentAccountTypeIndex) => (
+      currentAccountTypeIndex === accountTypeIndex
+        ? {
+          ...accountType,
+          customFields: accountType.customFields.map((customField, currentFieldIndex) => (
+            currentFieldIndex === fieldIndex ? { ...customField, [field]: value } : customField
+          ))
+        }
+        : accountType
+    )));
+  };
+
+  const handleUpdateAccountTypeFieldCharacterType = (accountTypeIndex, fieldIndex, characterType, checked) => {
+    const accountType = accountTypes[accountTypeIndex];
+    const field = accountType.customFields[fieldIndex];
+    const selectedTypes = normalizeSignupTextCharacterTypes(field.characterTypes);
+    const nextTypes = characterType === 'all'
+      ? ['all']
+      : [
+        ...selectedTypes.filter((type) => type !== 'all' && (type !== characterType || checked)),
+        ...(checked && !selectedTypes.includes(characterType) ? [characterType] : [])
+      ];
+
+    handleUpdateAccountTypeField(
+      accountTypeIndex,
+      fieldIndex,
+      'characterTypes',
+      normalizeSignupTextCharacterTypes(nextTypes)
+    );
+  };
+
+  const handleAddAccountTypeField = (accountTypeIndex) => {
+    const draft = newAccountTypeFields[accountTypeIndex] || { label: '', type: 'text', min: '', max: '' };
+    const label = draft.label.trim();
+    if (!label) return;
+    if (hasInvalidCustomFieldLimits(draft)) {
+      setSignupOptionsError('Set valid minimum and maximum values. The minimum cannot exceed the maximum.');
+      return;
+    }
+
+    const accountType = accountTypes[accountTypeIndex];
+    if (accountType.customFields.some((field) => field.label.trim().toLowerCase() === label.toLowerCase())) {
+      setSignupOptionsError('Custom input field names must be unique within each account type.');
+      return;
+    }
+
+    const idBase = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'custom-field';
+    const existingIds = new Set(accountType.customFields.map((field) => field.id));
+    let id = idBase;
+    let suffix = 2;
+    while (existingIds.has(id)) {
+      id = `${idBase}-${suffix}`;
+      suffix += 1;
+    }
+
+    setAccountTypes((current) => current.map((item, index) => (
+      index === accountTypeIndex
+        ? {
+          ...item,
+          customFields: [...item.customFields, {
+            id,
+            label,
+            type: draft.type || 'text',
+            editableOnProfile: true,
+            characterTypes: ['all'],
+            ...(draft.min !== '' ? { min: draft.min } : {}),
+            ...(draft.max !== '' ? { max: draft.max } : {})
+          }]
+        }
+        : item
+    )));
+    setNewAccountTypeFields((current) => ({
       ...current,
-      [type]: { ...current[type], [groupIndex]: '' }
+      [accountTypeIndex]: { label: '', type: 'text', min: '', max: '' }
     }));
+    setSignupOptionsError('');
+    setSignupOptionsSuccess('');
   };
 
-  const handleRemoveSignupOption = (type, groupIndex, optionIndex) => {
-    const setOptions = type === 'courses' ? setCourseOptions : setDepartmentOptions;
-    setOptions((groups) => groups.map((group, currentGroupIndex) => (
-      currentGroupIndex === groupIndex
-        ? { ...group, options: group.options.filter((_, currentOptionIndex) => currentOptionIndex !== optionIndex) }
-        : group
+  const handleRemoveAccountTypeField = (accountTypeIndex, fieldIndex) => {
+    setSignupOptionsSuccess('');
+    setAccountTypes((current) => current.map((accountType, currentAccountTypeIndex) => (
+      currentAccountTypeIndex === accountTypeIndex
+        ? { ...accountType, customFields: accountType.customFields.filter((_, index) => index !== fieldIndex) }
+        : accountType
     )));
+  };
+
+  const handleUpdateAccountType = (index, field, value) => {
+    setSignupOptionsSuccess('');
+    setAccountTypes((current) => current.map((accountType, accountTypeIndex) => (
+      accountTypeIndex === index ? { ...accountType, [field]: value } : accountType
+    )));
+  };
+
+  const handleUpdateSignupDropdown = (index, field, value) => {
+    setSignupOptionsSuccess('');
+    setSignupDropdowns((current) => current.map((dropdown, dropdownIndex) => (
+      dropdownIndex === index ? { ...dropdown, [field]: value } : dropdown
+    )));
+  };
+
+  const handleAddSignupDropdown = () => {
+    const label = newSignupDropdown.trim();
+    if (!label) return;
+    if (signupDropdowns.some((dropdown) => dropdown.label.trim().toLowerCase() === label.toLowerCase())) {
+      setSignupOptionsError('Signup dropdown names must be unique.');
+      return;
+    }
+
+    const valueBase = label.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'dropdown';
+    const existingValues = new Set(signupDropdowns.map((dropdown) => dropdown.value));
+    let value = valueBase;
+    let suffix = 2;
+    while (existingValues.has(value)) {
+      value = `${valueBase}-${suffix}`;
+      suffix += 1;
+    }
+
+    setSignupDropdowns((current) => [...current, { value, label, editableOnProfile: true }]);
+    setNewSignupDropdown('');
+    setSignupOptionsError('');
+    setSignupOptionsSuccess('');
+  };
+
+  const handleRemoveSignupDropdown = (dropdown) => {
+    const assignedTypes = accountTypes.filter((accountType) => accountType.dropdown === dropdown.value);
+    if (assignedTypes.length > 0 && !window.confirm(
+      `Remove "${dropdown.label}"? It will also remove this dropdown and its values from ${assignedTypes.length} account type${assignedTypes.length === 1 ? '' : 's'}.`
+    )) return;
+
+    setSignupDropdowns((current) => current.filter((item) => item.value !== dropdown.value));
+    setAccountTypes((current) => current.map((accountType) => (
+      accountType.dropdown === dropdown.value
+        ? { ...accountType, dropdown: '' }
+        : accountType
+    )));
+    setNewAccountType((current) => (
+      current.dropdown === dropdown.value ? { ...current, dropdown: '' } : current
+    ));
+    setSignupOptionsSuccess('');
+  };
+
+  const handleAddAccountType = () => {
+    const value = newAccountType.value.trim();
+    const label = newAccountType.label.trim();
+    if (!value || !label) {
+      setSignupOptionsError('Each account type needs both a value and a display name.');
+      return;
+    }
+    if (accountTypes.some((accountType) => accountType.value.trim().toLowerCase() === value.toLowerCase())) {
+      setSignupOptionsError('Account type values must be unique.');
+      return;
+    }
+    const dropdownOptions = newAccountType.dropdown
+      ? accountTypes.find((accountType) => accountType.dropdown === newAccountType.dropdown)?.options || []
+      : [];
+
+    setAccountTypes((current) => [...current, {
+      value,
+      label,
+      dropdown: newAccountType.dropdown,
+      role: 'requestor',
+      options: dropdownOptions.map((option) => ({ ...option })),
+      customFields: []
+    }]);
+    setNewAccountType({ value: '', label: '', dropdown: '' });
+    setSignupOptionsError('');
+    setSignupOptionsSuccess('');
   };
 
   const handleSaveSignupOptions = async () => {
-    const optionGroups = [...courseOptions, ...departmentOptions];
-    const hasEmptyOrDuplicateGroupNames = [courseOptions, departmentOptions].some((groups) => {
-      const names = groups.map((group) => group.group.trim().toLowerCase());
-      return names.some((name) => !name) || new Set(names).size !== names.length;
+    const dropdownValues = signupDropdowns.map((dropdown) => dropdown.value.trim().toLowerCase());
+    const dropdownLabels = signupDropdowns.map((dropdown) => dropdown.label.trim().toLowerCase());
+    const hasInvalidDropdowns = signupDropdowns.some((dropdown) => (
+      !dropdown.value.trim() || !dropdown.label.trim()
+    )) || new Set(dropdownValues).size !== dropdownValues.length
+      || new Set(dropdownLabels).size !== dropdownLabels.length;
+    const accountTypeValues = accountTypes.map((accountType) => accountType.value.trim().toLowerCase());
+    const hasInvalidAccountTypes = accountTypes.some((accountType) => (
+      !accountType.value.trim()
+      || !accountType.label.trim()
+      || !['', ...signupDropdowns.map((dropdown) => dropdown.value)].includes(accountType.dropdown || '')
+    )) || new Set(accountTypeValues).size !== accountTypeValues.length;
+    const hasInvalidDropdownOptions = accountTypes.some((accountType) => {
+      if (!accountType.dropdown) return false;
+      const optionValues = accountType.options.map((option) => option.value.trim().toLowerCase());
+      return (accountType.dropdown && accountType.options.length === 0)
+        || accountType.options.some((option) => !option.value.trim() || !option.label.trim())
+        || new Set(optionValues).size !== optionValues.length;
     });
-    const hasEmptyOptions = optionGroups.some((group) => (
-      group.options.some((option) => !option.value.trim() || !option.label.trim())
-    ));
-    if (hasEmptyOrDuplicateGroupNames) {
-      setSignupOptionsError('Each group needs a unique name within its category.');
+    const hasInvalidCustomFields = accountTypes.some((accountType) => {
+      const fieldIds = accountType.customFields.map((field) => field.id.trim().toLowerCase());
+      const fieldLabels = accountType.customFields.map((field) => field.label.trim().toLowerCase());
+      return accountType.customFields.some((field) => (
+        !field.id.trim() || !field.label.trim() || !SIGNUP_FIELD_TYPES.includes(field.type)
+      ) || hasInvalidCustomFieldLimits(field)) || new Set(fieldIds).size !== fieldIds.length
+        || new Set(fieldLabels).size !== fieldLabels.length;
+    });
+    if (hasInvalidDropdowns) {
+      setSignupOptionsError('Each signup dropdown needs a unique value and display name.');
       return;
     }
-    if (hasEmptyOptions) {
-      setSignupOptionsError('Each course and department option needs both a value and a display name.');
+    if (hasInvalidAccountTypes) {
+      setSignupOptionsError('Each account type needs a unique value, display name, and valid dropdown selection.');
+      return;
+    }
+    if (hasInvalidDropdownOptions) {
+      setSignupOptionsError('Each signup dropdown needs at least one value, and its values need unique values and display names.');
+      return;
+    }
+    if (hasInvalidCustomFields) {
+      setSignupOptionsError('Optional input fields need unique names, valid types, and valid min/max limits.');
       return;
     }
 
     try {
       setIsSavingSignupOptions(true);
       setSignupOptionsError('');
+      setSignupOptionsSuccess('');
       await setDoc(doc(db, 'app_settings', 'signupOptions'), {
-        courses: courseOptions,
-        departments: departmentOptions
+        accountTypes,
+        dropdownTypes: signupDropdowns
       }, { merge: true });
+      setSignupOptionsSuccess('Successfully changed.');
     } catch (error) {
       console.error('Failed to save signup options:', error);
       setSignupOptionsError('Could not save signup options. Please try again.');
@@ -424,102 +623,321 @@ const MisUserManagement = ({ currentUserRole }) => {
     );
   }
 
-  const renderSignupOptionGroups = (type, groups) => (
+  const renderAccountTypes = () => (
     <>
-      <div className="signup-option-groups">
-        {groups.map((group, groupIndex) => (
-          <section className="signup-option-group" key={`${type}-${groupIndex}`}>
-            <div className="signup-option-group-heading">
+      <div className="signup-account-type-list">
+        {accountTypes.map((accountType, index) => (
+          <div className="signup-account-type-editor" key={`account-type-${index}`}>
+            <div className="signup-account-type-row">
               <label>
-                <span>Group name</span>
+                <span>Value</span>
                 <input
-                  value={group.group}
-                  onChange={(event) => handleUpdateSignupGroup(type, groupIndex, event.target.value)}
+                  value={accountType.value}
+                  onChange={(event) => handleUpdateAccountType(index, 'value', event.target.value)}
                   disabled={isSavingSignupOptions}
-                  aria-label={`Group ${groupIndex + 1} name`}
                 />
+              </label>
+              <label>
+                <span>Display name</span>
+                <input
+                  value={accountType.label}
+                  onChange={(event) => handleUpdateAccountType(index, 'label', event.target.value)}
+                  disabled={isSavingSignupOptions}
+                />
+              </label>
+              <label>
+                <span>Signup dropdown</span>
+                <select
+                  value={accountType.dropdown || ''}
+                  onChange={(event) => handleUpdateAccountType(index, 'dropdown', event.target.value)}
+                  disabled={isSavingSignupOptions}
+                >
+                  <option value="">No dropdown</option>
+                  {signupDropdowns.map((dropdown) => (
+                    <option key={dropdown.value} value={dropdown.value}>{dropdown.label}</option>
+                  ))}
+                </select>
               </label>
               <button
                 type="button"
-                className="remove-signup-option-btn remove-signup-group-btn"
-                onClick={() => handleRemoveSignupGroup(type, groupIndex)}
+                className="remove-signup-option-btn"
+                onClick={() => {
+                  setAccountTypes((current) => current.filter((_, accountTypeIndex) => accountTypeIndex !== index));
+                  setNewAccountTypeOptions({});
+                  setNewAccountTypeFields({});
+                  setSignupOptionsSuccess('');
+                }}
                 disabled={isSavingSignupOptions}
-                aria-label={`Remove ${group.group || `group ${groupIndex + 1}`}`}
+                aria-label={`Remove ${accountType.label}`}
               >
-                Remove group
+                Remove
               </button>
             </div>
-            <div className="signup-option-list">
-              {group.options.map((option, optionIndex) => (
-                <div className="signup-option-row" key={`${groupIndex}-${optionIndex}`}>
-                  <label>
-                    <span>Value</span>
-                    <input
-                      value={option.value}
-                      onChange={(event) => handleUpdateSignupOption(type, groupIndex, optionIndex, 'value', event.target.value)}
+            <div className="signup-account-dropdown-options">
+              <h4>
+                {accountType.dropdown
+                  ? `${signupDropdowns.find((dropdown) => dropdown.value === accountType.dropdown)?.label || accountType.dropdown} values`
+                  : 'Dropdown values (select a signup dropdown above to use these on signup)'}
+              </h4>
+              <div className="signup-option-list">
+                {accountType.options.map((option, optionIndex) => (
+                  <div className="signup-option-row" key={`${index}-${optionIndex}`}>
+                    <label>
+                      <span>Value</span>
+                      <input
+                        value={option.value}
+                        onChange={(event) => handleUpdateAccountTypeOption(index, optionIndex, 'value', event.target.value)}
+                        disabled={isSavingSignupOptions}
+                      />
+                    </label>
+                    <label>
+                      <span>Display name</span>
+                      <input
+                        value={option.label}
+                        onChange={(event) => handleUpdateAccountTypeOption(index, optionIndex, 'label', event.target.value)}
+                        disabled={isSavingSignupOptions}
+                      />
+                    </label>
+                    <button
+                      type="button"
+                      className="remove-signup-option-btn"
+                      onClick={() => handleRemoveAccountTypeOption(index, optionIndex)}
                       disabled={isSavingSignupOptions}
-                    />
-                  </label>
-                  <label>
-                    <span>Display name</span>
-                    <input
-                      value={option.label}
-                      onChange={(event) => handleUpdateSignupOption(type, groupIndex, optionIndex, 'label', event.target.value)}
-                      disabled={isSavingSignupOptions}
-                    />
-                  </label>
-                  <button
-                    type="button"
-                    className="remove-signup-option-btn"
-                    onClick={() => handleRemoveSignupOption(type, groupIndex, optionIndex)}
-                    disabled={isSavingSignupOptions}
-                    aria-label={`Remove ${option.label}`}
+                      aria-label={`Remove ${option.label}`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="add-signup-option-row">
+                <input
+                  aria-label={`Add a value for ${accountType.label}`}
+                  placeholder="Add dropdown value"
+                  value={newAccountTypeOptions[index] || ''}
+                  onChange={(event) => setNewAccountTypeOptions((current) => ({
+                    ...current,
+                    [index]: event.target.value
+                  }))}
+                  disabled={isSavingSignupOptions}
+                />
+                <button
+                  type="button"
+                  className="add-signup-value-btn"
+                  onClick={() => handleAddAccountTypeOption(index)}
+                  disabled={isSavingSignupOptions || !newAccountTypeOptions[index]?.trim()}
+                >
+                  Add Value
+                </button>
+              </div>
+            </div>
+            <div className="signup-account-custom-fields">
+              <h4>Optional signup input fields</h4>
+              <div className="signup-custom-field-list">
+                {accountType.customFields.map((field, fieldIndex) => (
+                  <div
+                    className={`signup-custom-field-row${['text', 'number'].includes(field.type) ? ' has-limits' : ''}`}
+                    key={field.id}
                   >
-                    Remove
-                  </button>
-                </div>
-              ))}
+                    <label>
+                      <span>Field label</span>
+                      <input
+                        value={field.label}
+                        onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'label', event.target.value)}
+                        disabled={isSavingSignupOptions}
+                      />
+                    </label>
+                    <label>
+                      <span>Input type</span>
+                      <select
+                        value={field.type}
+                        onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'type', event.target.value)}
+                        disabled={isSavingSignupOptions}
+                      >
+                        {SIGNUP_FIELD_TYPES.map((type) => (
+                          <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>
+                        ))}
+                      </select>
+                    </label>
+                    {['text', 'number'].includes(field.type) && (
+                      <>
+                        <label>
+                          <span>{field.type === 'text' ? 'Min characters' : 'Min value'}</span>
+                          <input
+                            type="number"
+                            min={field.type === 'text' ? 0 : undefined}
+                            step={field.type === 'text' ? 1 : 'any'}
+                            value={field.min ?? ''}
+                            onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'min', event.target.value)}
+                            disabled={isSavingSignupOptions}
+                          />
+                        </label>
+                        <label>
+                          <span>{field.type === 'text' ? 'Max characters' : 'Max value'}</span>
+                          <input
+                            type="number"
+                            min={field.type === 'text' ? 0 : undefined}
+                            step={field.type === 'text' ? 1 : 'any'}
+                            value={field.max ?? ''}
+                            onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'max', event.target.value)}
+                            disabled={isSavingSignupOptions}
+                          />
+                        </label>
+                      </>
+                    )}
+                    <button
+                      type="button"
+                      className="remove-signup-option-btn"
+                      onClick={() => handleRemoveAccountTypeField(index, fieldIndex)}
+                      disabled={isSavingSignupOptions}
+                      aria-label={`Remove ${field.label} input field`}
+                    >
+                      Remove
+                    </button>
+                    {field.type === 'text' && (
+                      <fieldset className="signup-character-type-options">
+                        <legend>Allowed characters</legend>
+                        {SIGNUP_TEXT_CHARACTER_TYPES.map(({ value, label }) => (
+                          <label key={value}>
+                            <input
+                              type="checkbox"
+                              checked={normalizeSignupTextCharacterTypes(field.characterTypes).includes(value)}
+                              onChange={(event) => handleUpdateAccountTypeFieldCharacterType(
+                                index,
+                                fieldIndex,
+                                value,
+                                event.target.checked
+                              )}
+                              disabled={isSavingSignupOptions}
+                            />
+                            <span>{label}</span>
+                          </label>
+                        ))}
+                      </fieldset>
+                    )}
+                    <label className="signup-profile-editable-option">
+                      <input
+                        type="checkbox"
+                        checked={field.editableOnProfile !== false}
+                        onChange={(event) => handleUpdateAccountTypeField(
+                          index,
+                          fieldIndex,
+                          'editableOnProfile',
+                          event.target.checked
+                        )}
+                        disabled={isSavingSignupOptions}
+                      />
+                      <span>Editable on profile</span>
+                    </label>
+                  </div>
+                ))}
+              </div>
+              <div className="add-signup-option-row">
+                <input
+                  aria-label={`New optional input field label for ${accountType.label}`}
+                  placeholder="New input field (e.g., Student Number)"
+                  value={newAccountTypeFields[index]?.label || ''}
+                  onChange={(event) => setNewAccountTypeFields((current) => ({
+                    ...current,
+                    [index]: { ...(current[index] || { type: 'text', min: '', max: '' }), label: event.target.value }
+                  }))}
+                  disabled={isSavingSignupOptions}
+                />
+                <select
+                  aria-label={`New input field type for ${accountType.label}`}
+                  value={newAccountTypeFields[index]?.type || 'text'}
+                  onChange={(event) => setNewAccountTypeFields((current) => ({
+                    ...current,
+                    [index]: { ...(current[index] || { label: '', min: '', max: '' }), type: event.target.value }
+                  }))}
+                  disabled={isSavingSignupOptions}
+                >
+                  {SIGNUP_FIELD_TYPES.map((type) => (
+                    <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>
+                  ))}
+                </select>
+                {['text', 'number'].includes(newAccountTypeFields[index]?.type || 'text') && (
+                  <>
+                    <input
+                      type="number"
+                      min={newAccountTypeFields[index]?.type !== 'number' ? 0 : undefined}
+                      step={newAccountTypeFields[index]?.type !== 'number' ? 1 : 'any'}
+                      aria-label={`Minimum ${newAccountTypeFields[index]?.type === 'number' ? 'value' : 'characters'} for ${accountType.label}`}
+                      placeholder={newAccountTypeFields[index]?.type === 'number' ? 'Min value (optional)' : 'Min characters (optional)'}
+                      value={newAccountTypeFields[index]?.min || ''}
+                      onChange={(event) => setNewAccountTypeFields((current) => ({
+                        ...current,
+                        [index]: { ...(current[index] || { label: '', type: 'text', max: '' }), min: event.target.value }
+                      }))}
+                      disabled={isSavingSignupOptions}
+                    />
+                    <input
+                      type="number"
+                      min={newAccountTypeFields[index]?.type !== 'number' ? 0 : undefined}
+                      step={newAccountTypeFields[index]?.type !== 'number' ? 1 : 'any'}
+                      aria-label={`Maximum ${newAccountTypeFields[index]?.type === 'number' ? 'value' : 'characters'} for ${accountType.label}`}
+                      placeholder={newAccountTypeFields[index]?.type === 'number' ? 'Max value (optional)' : 'Max characters (optional)'}
+                      value={newAccountTypeFields[index]?.max || ''}
+                      onChange={(event) => setNewAccountTypeFields((current) => ({
+                        ...current,
+                        [index]: { ...(current[index] || { label: '', type: 'text', min: '' }), max: event.target.value }
+                      }))}
+                      disabled={isSavingSignupOptions}
+                    />
+                  </>
+                )}
+                <button
+                  type="button"
+                  className="add-signup-value-btn"
+                  onClick={() => handleAddAccountTypeField(index)}
+                  disabled={isSavingSignupOptions || !newAccountTypeFields[index]?.label?.trim()}
+                >
+                  Add Input
+                </button>
+              </div>
             </div>
-            <div className="add-signup-option-row">
-              <input
-                aria-label={`     option to ${group.group}`}
-                placeholder="Add Value"
-                value={newSignupOption[type][groupIndex] || ''}
-                onChange={(event) => setNewSignupOption((current) => ({
-                  ...current,
-                  [type]: { ...current[type], [groupIndex]: event.target.value }
-                }))}
-                disabled={isSavingSignupOptions}
-              />
-              <button
-                type="button"
-                className="add-signup-value-btn"
-                onClick={() => handleAddSignupOption(type, groupIndex)}
-                disabled={isSavingSignupOptions || !newSignupOption[type][groupIndex]?.trim()}
-              >
-                Add Value
-              </button>
-            </div>
-          </section>
+          </div>
         ))}
       </div>
-      <div className="add-signup-option-row add-signup-group-row">
-        <input
-          aria-label={`Add ${type === 'courses' ? 'course' : 'department'} group`}
-          placeholder="Add group"
-          value={newSignupGroup[type]}
-          onChange={(event) => setNewSignupGroup((current) => ({
-            ...current,
-            [type]: event.target.value
-          }))}
-          disabled={isSavingSignupOptions}
-        />
+      <div className="signup-account-type-row add-signup-account-type-row">
+        <label>
+          <span>Value</span>
+          <input
+            value={newAccountType.value}
+            onChange={(event) => setNewAccountType((current) => ({ ...current, value: event.target.value }))}
+            placeholder="Account type value"
+            disabled={isSavingSignupOptions}
+          />
+        </label>
+        <label>
+          <span>Display name</span>
+          <input
+            value={newAccountType.label}
+            onChange={(event) => setNewAccountType((current) => ({ ...current, label: event.target.value }))}
+            placeholder="Account type name"
+            disabled={isSavingSignupOptions}
+          />
+        </label>
+        <label>
+          <span>Signup dropdown</span>
+          <select
+            value={newAccountType.dropdown}
+            onChange={(event) => setNewAccountType((current) => ({ ...current, dropdown: event.target.value }))}
+            disabled={isSavingSignupOptions}
+          >
+            <option value="">No dropdown</option>
+            {signupDropdowns.map((dropdown) => (
+              <option key={dropdown.value} value={dropdown.value}>{dropdown.label}</option>
+            ))}
+          </select>
+        </label>
         <button
           type="button"
-          onClick={() => handleAddSignupGroup(type)}
-          disabled={isSavingSignupOptions || !newSignupGroup[type].trim()}
+          className="add-signup-value-btn"
+          onClick={handleAddAccountType}
+          disabled={isSavingSignupOptions || !newAccountType.value.trim() || !newAccountType.label.trim()}
         >
-          Add group
+          Add account type
         </button>
       </div>
     </>
@@ -561,6 +979,13 @@ const MisUserManagement = ({ currentUserRole }) => {
           <div className="controls-left">
             <h2>User Directory</h2>
             <p>Search and manage all system users</p>
+            <div className="table-pagination">
+              <span className="pagination-text">
+                {filteredUsers.length === 0
+                  ? 'No users to show'
+                  : `Showing all ${filteredUsers.length} users`}
+              </span>
+            </div>
           </div>
 
           <div className="controls-right">
@@ -604,119 +1029,113 @@ const MisUserManagement = ({ currentUserRole }) => {
 
         {actionError && <div className="error-banner">{actionError}</div>}
 
-        <div className="table-scroll-wrapper">
-          <table className="user-table">
-            <thead>
-              <tr>
-                <th>USER</th>
-                <th>ROLE</th>
-                <th>DEPARTMENT</th>
-                <th>COURSE</th>
-                {!isSuperAdmin || userFilter === 'all' ? <th>STATUS</th> : <th>TIME CREATED</th>}
-                <th>ACTIONS</th>
-              </tr>
-            </thead>
-            <tbody>
-              {isLoading || loadError || filteredUsers.length === 0 ? (
+        <div className="table-content-scroll">
+          <div className="table-scroll-wrapper">
+            <table className="user-table">
+              <thead>
                 <tr>
-                  <td colSpan={6} className="empty-state-cell">
-                    <div className="empty-state">
-                      <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
-                      <p className="empty-state-title">
-                        {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users found'}
-                      </p>
-                      <p className="empty-state-subtitle">
-                        {isLoading
-                          ? 'Fetching the latest users from the database.'
-                          : loadError || (searchQuery ? 'Try adjusting your search filters.' : 'Users will appear here once they are registered.')}
-                      </p>
-                    </div>
-                  </td>
+                  <th>USER</th>
+                  <th>ROLE</th>
+                  <th>DEPARTMENT</th>
+                  <th>COURSE</th>
+                  {!isSuperAdmin || userFilter === 'all' ? <th>STATUS</th> : <th>TIME CREATED</th>}
+                  <th>ACTIONS</th>
                 </tr>
-              ) : (
-                filteredUsers.map((user) => {
-                  const status = getDynamicStatus(user);
-                  const isActive = status === 'Online';
-                  const isBlocked = status === 'Blocked';
-                  
-                  return (
-                    <tr key={user.id}>
-                      <td>
-                        <Link
-                          className="user-name-cell user-profile-link"
-                          to={`/account?userId=${encodeURIComponent(user.id)}`}
-                        >
-                          {user.avatarUrl ? (
-                            <img className="avatar-img" src={user.avatarUrl} alt="" />
-                          ) : (
-                            <span className="avatar-placeholder">{(user.name || '?').charAt(0)}</span>
-                          )}
-                          <span className="user-name-copy">
-                            <span className="user-title">{user.name || 'Unnamed User'}</span>
-                            <span className="user-email">{user.email}</span>
-                          </span>
-                        </Link>
-                      </td>
-                      <td>
-                        <span className={`role-badge ${roleBadgeClass(user.role)}`}>
-                          {formatRole(user.role)}
-                        </span>
-                      </td>
-                      <td>{user.department || '—'}</td>
-                      <td>{user.course || '—'}</td>
-                      {isSuperAdmin && userFilter === 'unverified' ? (
-                        <td>{formatTimeCreated(user.timeCreated || user.createdAt)}</td>
-                      ) : (
+              </thead>
+              <tbody>
+                {isLoading || loadError || filteredUsers.length === 0 ? (
+                  <tr>
+                    <td colSpan={6} className="empty-state-cell">
+                      <div className="empty-state">
+                        <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
+                        <p className="empty-state-title">
+                          {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users found'}
+                        </p>
+                        <p className="empty-state-subtitle">
+                          {isLoading
+                            ? 'Fetching the latest users from the database.'
+                            : loadError || (searchQuery ? 'Try adjusting your search filters.' : 'Users will appear here once they are registered.')}
+                        </p>
+                      </div>
+                    </td>
+                  </tr>
+                ) : (
+                  filteredUsers.map((user) => {
+                    const status = getDynamicStatus(user);
+                    const isActive = status === 'Online';
+                    const isBlocked = status === 'Blocked';
+
+                    return (
+                      <tr key={user.id}>
                         <td>
-                          <span className={`status-dot ${isActive ? 'status-active' : 'status-inactive'}`}>
-                            {status}
+                          <Link
+                            className="user-name-cell user-profile-link"
+                            to={`/account?userId=${encodeURIComponent(user.id)}`}
+                          >
+                            {user.avatarUrl ? (
+                              <img className="avatar-img" src={user.avatarUrl} alt="" />
+                            ) : (
+                              <span className="avatar-placeholder">{(user.name || '?').charAt(0)}</span>
+                            )}
+                            <span className="user-name-copy">
+                              <span className="user-title">{user.name || 'Unnamed User'}</span>
+                              <span className="user-email">{user.email}</span>
+                            </span>
+                          </Link>
+                        </td>
+                        <td>
+                          <span className={`role-badge ${roleBadgeClass(user.role)}`}>
+                            {formatRole(user.role)}
                           </span>
                         </td>
-                      )}
-                      <td>
+                        <td>{user.department || '—'}</td>
+                        <td>{user.course || '—'}</td>
                         {isSuperAdmin && userFilter === 'unverified' ? (
-                          <button
-                            className="action-btn delete-unverified-btn"
-                            type="button"
-                            onClick={() => handleDeleteUnverifiedUser(user)}
-                            disabled={deletingUserId === user.id}
-                          >
-                            {deletingUserId === user.id ? 'Deleting…' : '⚠ Delete profile'}
-                          </button>
+                          <td>{formatTimeCreated(user.timeCreated || user.createdAt)}</td>
                         ) : (
-                          <div className="action-buttons">
-                            <button
-                              className="action-btn assign-role-btn"
-                              onClick={() => handleOpenRoleModal(user)}
-                            >
-                              👤 Assign Role
-                            </button>
-                            <button
-                              className={`action-btn block-user-btn${isBlocked ? ' unblock-user-btn' : ''}`}
-                              type="button"
-                              onClick={() => handleToggleBlock(user)}
-                              disabled={user.id === currentUser?.uid || updatingBlockUserId === user.id}
-                              title={user.id === currentUser?.uid ? 'You cannot block your own account.' : undefined}
-                            >
-                              {updatingBlockUserId === user.id ? 'Updating…' : isBlocked ? 'Unblock' : '⚠ Block'}
-                            </button>
-                          </div>
+                          <td>
+                            <span className={`status-dot ${isActive ? 'status-active' : 'status-inactive'}`}>
+                              {status}
+                            </span>
+                          </td>
                         )}
-                      </td>
-                    </tr>
-                  );
-                })
-              )}
-            </tbody>
-          </table>
-        </div>
-
-        <div className="table-pagination">
-          <span className="pagination-text">
-            {filteredUsers.length === 0
-              ? 'No users to show'
-              : `Showing all ${filteredUsers.length} users`}
-          </span>
+                        <td>
+                          {isSuperAdmin && userFilter === 'unverified' ? (
+                            <button
+                              className="action-btn delete-unverified-btn"
+                              type="button"
+                              onClick={() => handleDeleteUnverifiedUser(user)}
+                              disabled={deletingUserId === user.id}
+                            >
+                              {deletingUserId === user.id ? 'Deleting…' : '⚠ Delete profile'}
+                            </button>
+                          ) : (
+                            <div className="action-buttons">
+                              <button
+                                className="action-btn assign-role-btn"
+                                onClick={() => handleOpenRoleModal(user)}
+                              >
+                                👤 Assign Role
+                              </button>
+                              <button
+                                className={`action-btn block-user-btn${isBlocked ? ' unblock-user-btn' : ''}`}
+                                type="button"
+                                onClick={() => handleToggleBlock(user)}
+                                disabled={user.id === currentUser?.uid || updatingBlockUserId === user.id}
+                                title={user.id === currentUser?.uid ? 'You cannot block your own account.' : undefined}
+                              >
+                                {updatingBlockUserId === user.id ? 'Updating…' : isBlocked ? 'Unblock' : '⚠ Block'}
+                              </button>
+                            </div>
+                          )}
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
       </div>
 
@@ -724,8 +1143,8 @@ const MisUserManagement = ({ currentUserRole }) => {
         <section className="signup-options-container" aria-labelledby="signup-options-title">
           <div className="signup-options-heading">
             <div>
-              <h2 id="signup-options-title">Signup Courses and Departments</h2>
-              <p>Manage the options shown during Student, Student Leader, Admin Staff, and Faculty signup.</p>
+              <h2 id="signup-options-title">Signup Account Types</h2>
+              <p>Manage each account type and its signup dropdown values.</p>
             </div>
             <button
               type="button"
@@ -737,13 +1156,66 @@ const MisUserManagement = ({ currentUserRole }) => {
             </button>
           </div>
           {signupOptionsError && <div className="error-banner" role="alert">{signupOptionsError}</div>}
+          {signupOptionsSuccess && <div className="success-banner" role="status">{signupOptionsSuccess}</div>}
           <section className="signup-option-category">
-            <h3>Courses (Student and Student Leader)</h3>
-            {renderSignupOptionGroups('courses', courseOptions)}
+            <h3>Signup Dropdowns</h3>
+            <div className="signup-dropdown-list">
+              {signupDropdowns.map((dropdown, index) => (
+                <div className="signup-dropdown-row" key={dropdown.value}>
+                  <label>
+                    <span>Dropdown name</span>
+                    <input
+                      value={dropdown.label}
+                      onChange={(event) => handleUpdateSignupDropdown(index, 'label', event.target.value)}
+                      disabled={isSavingSignupOptions}
+                    />
+                  </label>
+                   <label className="signup-profile-editable-option">
+                     <input
+                       type="checkbox"
+                       checked={dropdown.editableOnProfile !== false}
+                       onChange={(event) => handleUpdateSignupDropdown(
+                         index,
+                         'editableOnProfile',
+                         event.target.checked
+                       )}
+                       disabled={isSavingSignupOptions}
+                     />
+                     <span>Editable on profile</span>
+                   </label>
+                   <button
+                    type="button"
+                    className="remove-signup-option-btn"
+                    onClick={() => handleRemoveSignupDropdown(dropdown)}
+                    disabled={isSavingSignupOptions}
+                    aria-label={`Remove ${dropdown.label} signup dropdown`}
+                  >
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+            <div className="add-signup-option-row">
+              <input
+                aria-label="New signup dropdown name"
+                placeholder="New dropdown name (e.g., Course / Program)"
+                value={newSignupDropdown}
+                onChange={(event) => setNewSignupDropdown(event.target.value)}
+                disabled={isSavingSignupOptions}
+              />
+              <button
+                type="button"
+                className="add-signup-value-btn"
+                onClick={handleAddSignupDropdown}
+                disabled={isSavingSignupOptions || !newSignupDropdown.trim()}
+              >
+                Add Dropdown
+              </button>
+            </div>
           </section>
           <section className="signup-option-category">
-            <h3>Departments (Admin Staff and Faculty)</h3>
-            {renderSignupOptionGroups('departments', departmentOptions)}
+            <h3>Account Types</h3>
+            {renderAccountTypes()}
           </section>
         </section>
       )}

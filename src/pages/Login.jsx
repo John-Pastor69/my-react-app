@@ -3,7 +3,15 @@ import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfi
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '../Firebase'; 
 import { NEW_LOGIN_KEY } from '../services/browserSession';
-import { DEFAULT_COURSE_OPTIONS, DEFAULT_DEPARTMENT_OPTIONS } from '../services/signupOptions';
+import {
+  DEFAULT_ACCOUNT_TYPES,
+  DEFAULT_COURSE_OPTIONS,
+  DEFAULT_DEPARTMENT_OPTIONS,
+  DEFAULT_SIGNUP_DROPDOWNS,
+  filterSignupTextValue,
+  normalizeAccountTypes,
+  normalizeSignupDropdowns
+} from '../services/signupOptions';
 import '../styles/Login.scss';
 
 export default function Login({ error, setError }) {
@@ -12,21 +20,24 @@ export default function Login({ error, setError }) {
   const [showTerms, setShowTerms] = useState(false);
 
   const [firstName, setFirstName] = useState('');
+  const [middleInitial, setMiddleInitial] = useState('');
   const [lastName, setLastName] = useState('');
   const [tag, setTag] = useState('');
   const [studentNumber, setStudentNumber] = useState('');
-  const [course, setCourse] = useState('');
-  const [department, setDepartment] = useState(''); 
+  const [signupDropdownValue, setSignupDropdownValue] = useState('');
+  const [customFieldValues, setCustomFieldValues] = useState({});
   
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [resetMessage, setResetMessage] = useState(''); 
   const [resetCooldown, setResetCooldown] = useState(0);
   const [signupOptions, setSignupOptions] = useState({
-    courses: DEFAULT_COURSE_OPTIONS,
-    departments: DEFAULT_DEPARTMENT_OPTIONS
+    accountTypes: normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES),
+    dropdownTypes: DEFAULT_SIGNUP_DROPDOWNS
   });
   const [signupOptionsError, setSignupOptionsError] = useState('');
 
@@ -38,9 +49,16 @@ export default function Login({ error, setError }) {
       doc(db, 'app_settings', 'signupOptions'),
       (snapshot) => {
         const data = snapshot.data() || {};
+        const courses = Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS;
+        const departments = Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS;
+        const accountTypes = Array.isArray(data.accountTypes) ? data.accountTypes : DEFAULT_ACCOUNT_TYPES;
         setSignupOptions({
-          courses: Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS,
-          departments: Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS
+          accountTypes: normalizeAccountTypes(
+            accountTypes,
+            courses,
+            departments
+          ),
+          dropdownTypes: normalizeSignupDropdowns(data.dropdownTypes, accountTypes)
         });
         setSignupOptionsError('');
       },
@@ -86,14 +104,17 @@ export default function Login({ error, setError }) {
     setShowForm(false);
     setIsLogin(true);
     setFirstName('');
+    setMiddleInitial('');
     setLastName('');
     setTag('');
     setStudentNumber('');
-    setCourse('');
-    setDepartment('');
+    setSignupDropdownValue('');
+    setCustomFieldValues({});
     setEmail('');
     setPassword('');
     setConfirmPassword('');
+    setShowPassword(false);
+    setShowConfirmPassword(false);
     if (setError) setError('');
     setResetMessage('');
   };
@@ -135,12 +156,14 @@ export default function Login({ error, setError }) {
     setResetMessage('');
 
     if (!isLogin) {
-      if (!/^[A-Za-z]+$/.test(firstName) || !/^[A-Za-z]+$/.test(lastName)) {
-        if (setError) setError('First and last names may contain letters only.');
+      if (!/^[A-Za-z]+(?:\s+[A-Za-z]+)*$/.test(firstName.trim())
+        || !/^[A-Za-z]+$/.test(middleInitial)
+        || !/^[A-Za-z]+$/.test(lastName)) {
+        if (setError) setError('Enter a valid first name, middle initial, and last name.');
         return;
       }
 
-      if (firstName.length > 20 || lastName.length > 20) {
+      if (firstName.trim().length > 20 || lastName.length > 20) {
         if (setError) setError('First and last names must be 20 characters or fewer.');
         return;
       }
@@ -150,13 +173,46 @@ export default function Login({ error, setError }) {
         return;
       }
 
+      if (!signupOptions.accountTypes.some((accountType) => accountType.value === tag)) {
+        if (setError) setError('Select a valid account type.');
+        return;
+      }
+
       if (password.length > 30) {
         if (setError) setError('Password must be 30 characters or fewer.');
         return;
       }
 
-      if ((tag === 'Student' || tag === 'Student Leader') && !/^[0-9]{11}$/.test(studentNumber)) {
+      if (selectedSignupAccountType?.dropdown === 'courses' && !/^[0-9]{11}$/.test(studentNumber)) {
         if (setError) setError('Student number must contain exactly 11 digits.');
+        return;
+      }
+      if (selectedSignupAccountType?.dropdown && !signupDropdownValue) {
+        if (setError) setError('Select a value for the signup dropdown.');
+        return;
+      }
+
+      const invalidCustomField = (selectedSignupAccountType?.customFields || []).find((field) => {
+        const value = customFieldValues[field.id] || '';
+        if (!value.trim()) return true;
+
+        if (field.type === 'text') {
+          return filterSignupTextValue(value, field.characterTypes) !== value
+            || (field.min !== '' && field.min != null && value.length < Number(field.min))
+            || (field.max !== '' && field.max != null && value.length > Number(field.max));
+        }
+
+        if (field.type === 'number') {
+          const numericValue = Number(value);
+          return !Number.isFinite(numericValue)
+            || (field.min !== '' && field.min != null && numericValue < Number(field.min))
+            || (field.max !== '' && field.max != null && numericValue > Number(field.max));
+        }
+
+        return false;
+      });
+      if (invalidCustomField) {
+        if (setError) setError(`Complete "${invalidCustomField.label}" with a valid value before signing up.`);
         return;
       }
 
@@ -193,7 +249,9 @@ export default function Login({ error, setError }) {
 
         const userCredential = await createUserWithEmailAndPassword(auth, email, password);
         
-        const fullName = `${firstName} ${lastName}`;
+        const normalizedFirstName = firstName.trim().replace(/\s+/g, ' ');
+        const normalizedMiddleInitial = middleInitial.trim().toUpperCase();
+        const fullName = `${normalizedFirstName} ${normalizedMiddleInitial}. ${lastName.trim()}`;
         await updateProfile(userCredential.user, {
           displayName: fullName
         });
@@ -205,13 +263,34 @@ export default function Login({ error, setError }) {
           uid: userCredential.user.uid,
           email: userCredential.user.email,
           name: fullName,
-          firstName: firstName.trim(),
+          firstName: normalizedFirstName,
+          middleInitial: normalizedMiddleInitial,
           lastName: lastName.trim(),
           accountType: tag,
-          role: tag === 'Faculty' ? 'endorser' : 'requestor',
-          studentNumber: tag === 'Student' || tag === 'Student Leader' ? studentNumber.trim() : '',
-          course: tag === 'Student' || tag === 'Student Leader' ? course : '',
-          department: ['Admin Staff', 'Admin and Staff', 'Faculty'].includes(tag) ? department : '',
+          role: selectedSignupAccountType?.role || 'requestor',
+          studentNumber: selectedSignupAccountType?.dropdown === 'courses' ? studentNumber.trim() : '',
+          course: selectedSignupAccountType?.dropdown === 'courses' ? signupDropdownValue : '',
+          department: selectedSignupAccountType?.dropdown === 'departments' ? signupDropdownValue : '',
+          signupDropdown: selectedSignupAccountType?.dropdown ? {
+            id: selectedSignupAccountType.dropdown,
+            label: selectedSignupDropdownType?.label || selectedSignupAccountType.dropdown,
+            value: signupDropdownValue
+          } : null,
+          customAttributes: Object.fromEntries([
+            ...(selectedSignupAccountType?.dropdown
+              ? [[`dropdown:${selectedSignupAccountType.dropdown}`, signupDropdownValue]]
+              : []),
+            ...(selectedSignupAccountType?.customFields || [])
+              .filter((field) => (customFieldValues[field.id] || '').trim())
+              .map((field) => [`field:${field.id}`, customFieldValues[field.id].trim()])
+          ]),
+          customFields: (selectedSignupAccountType?.customFields || [])
+            .filter((field) => (customFieldValues[field.id] || '').trim())
+            .map((field) => ({
+              id: field.id,
+              label: field.label,
+              value: customFieldValues[field.id].trim()
+            })),
           emailVerified: false, // Default to false upon creation
           timeCreated: now.toISOString() // Record exactly when account was made
         }, { merge: true });
@@ -229,14 +308,17 @@ export default function Login({ error, setError }) {
         
         // Clean up local fields
         setFirstName('');
+        setMiddleInitial('');
         setLastName('');
         setTag('');
         setStudentNumber('');
-        setCourse('');
-        setDepartment('');
+        setSignupDropdownValue('');
+        setCustomFieldValues({});
         setEmail('');
         setPassword('');
         setConfirmPassword('');
+        setShowPassword(false);
+        setShowConfirmPassword(false);
       }
     } catch (err) {
       sessionStorage.removeItem(NEW_LOGIN_KEY);
@@ -282,6 +364,20 @@ export default function Login({ error, setError }) {
     textAlign: 'left',
     display: 'block'
   };
+  const selectedSignupAccountType = signupOptions.accountTypes.find((accountType) => accountType.value === tag);
+  const selectedSignupDropdownType = signupOptions.dropdownTypes.find(
+    (dropdown) => dropdown.value === selectedSignupAccountType?.dropdown
+  );
+  const signupOptionGroups = (selectedSignupAccountType?.options || []).reduce((groups, option) => {
+    const groupName = option.group || '';
+    let group = groups.find((item) => item.group === groupName);
+    if (!group) {
+      group = { group: groupName, options: [] };
+      groups.push(group);
+    }
+    group.options.push(option);
+    return groups;
+  }, []);
 
   return (
     <div className="landing-page">
@@ -325,47 +421,90 @@ export default function Login({ error, setError }) {
                             type="text" 
                             placeholder="First Name" 
                             value={firstName}
-                            onChange={(e) => setFirstName(e.target.value.replace(/[^A-Za-z]/g, ''))}
+                            onChange={(e) => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
                             maxLength={20}
-                            pattern="[A-Za-z]+"
-                            title="Use letters only."
+                            pattern="[A-Za-z ]+"
+                            title="Use letters and spaces only."
                             required
                             style={inputStyle}
                           />
                         </div>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                          <label style={labelStyle}>Last Name</label>
-                          <input 
+                        <div style={{ width: '4.5rem', display: 'flex', flexDirection: 'column' }}>
+                          <label style={labelStyle}>MI</label>
+                          <input
                             type="text" 
-                            placeholder="Last Name" 
-                            value={lastName}
-                            onChange={(e) => setLastName(e.target.value.replace(/[^A-Za-z]/g, ''))}
-                            maxLength={20}
-                            pattern="[A-Za-z]+"
-                            title="Use letters only."
+                            placeholder="MI"
+                            value={middleInitial}
+                            onChange={(e) => setMiddleInitial(e.target.value.replace(/[^A-Za-z]/g, '').slice(0, 1))}
+                            maxLength={1}
+                            pattern="[A-Za-z]"
+                            title="Enter one letter."
                             required
                             style={inputStyle}
                           />
                         </div>
+                      </div>
+                      <div style={{ display: 'flex', flexDirection: 'column' }}>
+                        <label style={labelStyle}>Last Name</label>
+                        <input
+                          type="text"
+                          placeholder="Last Name"
+                          value={lastName}
+                          onChange={(e) => setLastName(e.target.value.replace(/[^A-Za-z]/g, ''))}
+                          maxLength={20}
+                          pattern="[A-Za-z]+"
+                          title="Use letters only."
+                          required
+                          style={inputStyle}
+                        />
                       </div>
 
                       <div style={{ display: 'flex', flexDirection: 'column' }}>
                         <label style={labelStyle}>Account Type</label>
                         <select 
                           value={tag} 
-                          onChange={(e) => setTag(e.target.value)} 
+                          onChange={(e) => {
+                            setTag(e.target.value);
+                            setSignupDropdownValue('');
+                            setStudentNumber('');
+                            setCustomFieldValues({});
+                          }}
                           required 
                           style={inputStyle}
                         >
                           <option value="" disabled>e.g. Student</option>
-                          <option value="Student">Student</option>
-                          <option value="Student Leader">Student Leader</option>
-                          <option value="Admin Staff">Admin Staff</option>
-                          <option value="Faculty">Faculty</option>
+                          {signupOptions.accountTypes.map((accountType) => (
+                            <option key={accountType.value} value={accountType.value}>{accountType.label}</option>
+                          ))}
                         </select>
                       </div>
 
-                      {(tag === 'Student' || tag === 'Student Leader') && (
+                      {(selectedSignupAccountType?.customFields || []).map((field) => (
+                        <div key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
+                          <label style={labelStyle}>{field.label}</label>
+                          <input
+                            type={field.type || 'text'}
+                            className={field.type === 'number' ? 'signup-number-input' : undefined}
+                            placeholder={`Enter ${field.label}`}
+                            min={field.type === 'number' && field.min != null && field.min !== '' ? field.min : undefined}
+                            max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
+                            minLength={field.type === 'text' && field.min != null && field.min !== '' ? Number(field.min) : undefined}
+                            maxLength={field.type === 'text' && field.max != null && field.max !== '' ? Number(field.max) : undefined}
+                            step={field.type === 'number' ? 'any' : undefined}
+                            required
+                            value={customFieldValues[field.id] || ''}
+                            onChange={(event) => setCustomFieldValues((current) => ({
+                              ...current,
+                              [field.id]: field.type === 'text'
+                                ? filterSignupTextValue(event.target.value, field.characterTypes)
+                                : event.target.value
+                            }))}
+                            style={inputStyle}
+                          />
+                        </div>
+                      ))}
+
+                      {selectedSignupAccountType?.dropdown === 'courses' && (
                         <>
                           <div style={{ display: 'flex', flexDirection: 'column' }}>
                             <label style={labelStyle}>Student Number</label>
@@ -382,46 +521,30 @@ export default function Login({ error, setError }) {
                               style={inputStyle}
                             />
                           </div>
-                          
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <label style={labelStyle}>Course / Program</label>
-                            <select 
-                              value={course} 
-                              onChange={(e) => setCourse(e.target.value)} 
-                              required 
-                              style={inputStyle}
-                              disabled={Boolean(signupOptionsError)}
-                            >
-                              <option value="" disabled>Select Course</option>
-                              {signupOptions.courses.map((group) => (
+                        </>
+                      )}
+
+                      {selectedSignupDropdownType && (
+                        <div style={{ display: 'flex', flexDirection: 'column' }}>
+                          <label style={labelStyle}>{selectedSignupDropdownType.label}</label>
+                          <select 
+                            value={signupDropdownValue}
+                            onChange={(e) => setSignupDropdownValue(e.target.value)}
+                            required 
+                            style={inputStyle}
+                            disabled={Boolean(signupOptionsError)}
+                          >
+                            <option value="" disabled>Select {selectedSignupDropdownType.label}</option>
+                            {signupOptionGroups.map((group) => (
+                              group.group ? (
                                 <optgroup label={group.group} key={group.group}>
                                   {group.options.map((option) => (
                                     <option key={option.value} value={option.value}>{option.label}</option>
                                   ))}
                                 </optgroup>
-                              ))}
-                            </select>
-                          </div>
-                        </>
-                      )}
-
-                      {(['Admin Staff', 'Admin and Staff', 'Faculty'].includes(tag)) && (
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <label style={labelStyle}>Department / Office</label>
-                          <select 
-                            value={department} 
-                            onChange={(e) => setDepartment(e.target.value)} 
-                            required 
-                            style={inputStyle}
-                            disabled={Boolean(signupOptionsError)}
-                          >
-                            <option value="" disabled>Select Department</option>
-                            {signupOptions.departments.map((group) => (
-                              <optgroup label={group.group} key={group.group}>
-                                {group.options.map((option) => (
-                                  <option key={option.value} value={option.value}>{option.label}</option>
-                                ))}
-                              </optgroup>
+                              ) : group.options.map((option) => (
+                                <option key={option.value} value={option.value}>{option.label}</option>
+                              ))
                             ))}
                           </select>
                         </div>
@@ -447,19 +570,30 @@ export default function Login({ error, setError }) {
                     />
                   </div>
                   
-                  <div style={{ display: 'flex', flexDirection: 'column', position: 'relative' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column' }}>
                     <label style={labelStyle}>Password</label>
-                    <input 
-                      type="password" 
-                      placeholder="Password" 
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      maxLength={isLogin ? undefined : 30}
-                      pattern={isLogin ? undefined : '(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\\s]).*'}
-                      title={isLogin ? undefined : 'Include an uppercase letter, a lowercase letter, and a symbol.'}
-                      required
-                      style={inputStyle}
-                    />
+                    <div className="password-input-wrap">
+                      <input 
+                        type={showPassword ? 'text' : 'password'}
+                        placeholder="Password" 
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        maxLength={isLogin ? undefined : 30}
+                        pattern={isLogin ? undefined : '(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\\s]).*'}
+                        title={isLogin ? undefined : 'Include an uppercase letter, a lowercase letter, and a symbol.'}
+                        required
+                        style={{ ...inputStyle, paddingRight: '42px' }}
+                      />
+                      <button
+                        type="button"
+                        className="password-visibility-toggle"
+                        onClick={() => setShowPassword((visible) => !visible)}
+                        aria-label={showPassword ? 'Hide password' : 'Show password'}
+                        aria-pressed={showPassword}
+                      >
+                        <i className={`ph ${showPassword ? 'ph-eye-slash' : 'ph-eye'}`} aria-hidden="true"></i>
+                      </button>
+                    </div>
                     {isLogin && (
                       <div style={{ textAlign: 'right', marginTop: '6px' }}>
                         <button 
@@ -488,15 +622,26 @@ export default function Login({ error, setError }) {
                   {!isLogin && (
                     <div style={{ display: 'flex', flexDirection: 'column' }}>
                       <label style={labelStyle}>Confirm Password</label>
-                      <input 
-                        type="password" 
-                        placeholder="Confirm Password" 
-                        value={confirmPassword}
-                        onChange={(e) => setConfirmPassword(e.target.value)}
-                        maxLength={30}
-                        required
-                        style={inputStyle}
-                      />
+                      <div className="password-input-wrap">
+                        <input 
+                          type={showConfirmPassword ? 'text' : 'password'}
+                          placeholder="Confirm Password" 
+                          value={confirmPassword}
+                          onChange={(e) => setConfirmPassword(e.target.value)}
+                          maxLength={30}
+                          required
+                          style={{ ...inputStyle, paddingRight: '42px' }}
+                        />
+                        <button
+                          type="button"
+                          className="password-visibility-toggle"
+                          onClick={() => setShowConfirmPassword((visible) => !visible)}
+                          aria-label={showConfirmPassword ? 'Hide confirm password' : 'Show confirm password'}
+                          aria-pressed={showConfirmPassword}
+                        >
+                          <i className={`ph ${showConfirmPassword ? 'ph-eye-slash' : 'ph-eye'}`} aria-hidden="true"></i>
+                        </button>
+                      </div>
                     </div>
                   )}
 
@@ -597,21 +742,22 @@ export default function Login({ error, setError }) {
                     </button>
                   </div>
 
-                  <p>By creating an account and using the STI Global City Reservation System, you agree to the following terms.</p>
+                  <p>By creating an account and using the STI Global City Reservation System, you agree to the following terms and consent to the processing of your personal data in accordance with Republic Act No. 10173 (Data Privacy Act of 2012).</p>
 
                   <h3>Information collected</h3>
                   <p>The system collects information needed to manage your account and facility reservations, including:</p>
-                  <ul>
-                    <li>Your first and last name, email address, account type, and authentication account details. Your password is handled by Firebase Authentication and is not included in the user profile document created by this app.</li>
-                    <li>For students and student leaders: your student number and course or program.</li>
-                    <li>For administrators, staff, and faculty: your department or office.</li>
+                  <ul style={{ paddingLeft: '24px', margin: '0 0 16px' }}>
+                    <li>Your first name, middle initial, last name, email address, account type, and phone number. Your password is handled by Firebase Authentication and is not included in the user profile document created by this app.</li>
+                    <li>The account-type-specific dropdown selections and signup fields configured by system administrators. These may include course or program, department or office, student number, or other fields. Configured fields may have input limits or character restrictions.</li>
+                    <li>Profile images or banners you choose to upload, and two-factor authentication settings and secret if you choose to enable two-factor authentication.</li>
                     <li>Account records generated by the system, such as your account ID, assigned role, email-verification status, and account creation time.</li>
                     <li>When you submit a reservation: contact details, requestor information, endorser name/designation/email, event name and purpose, participant count, event type, requested dates and times, schedule, facilities or room, equipment and utilities, and air-conditioning requirements when applicable.</li>
                     <li>Reservation records needed to process and track requests, such as reference number, status, timestamps, and approval or modification history.</li>
+                    <li>Calendar availability information, including unavailable dates and any administrator-provided remarks used to explain those dates.</li>
                   </ul>
 
                   <h3>How information is used</h3>
-                  <p>Your information is used to create and manage your account, verify your email, determine system access, prepare reservation requests, check availability, and allow authorized staff and relevant approvers to review, process, and communicate about reservations. The system uses Firebase services for authentication and data storage and sends email for verification and reservation-related communications.</p>
+                  <p>Your information is used to create and manage your account, verify your email, determine system access, display and manage your profile, prepare reservation requests, check calendar availability, and allow authorized staff and relevant approvers to review, process, and communicate about reservations. Account-type-specific fields may change as administrators update the signup configuration. Some profile fields can be edited by you; others may be read-only based on their configuration. The system uses Firebase services for authentication and data storage, Cloudinary for profile images or banners you upload, and email for verification and reservation-related communications.</p>
 
                   <h3>Your responsibilities</h3>
                   <p>Provide accurate information, keep your sign-in credentials private, and use the system only for legitimate facility reservation purposes. Do not use another person’s account or submit information about others unless it is needed for a reservation and you are authorized to provide it.</p>
@@ -619,7 +765,7 @@ export default function Login({ error, setError }) {
                   <h3>Access and retention</h3>
                   <p>Account and reservation information may be accessed by authorized system personnel and the relevant reviewers or approvers to perform their duties. Records are retained as needed to operate the reservation system and meet applicable institutional recordkeeping requirements. Contact the system administrator for questions or requests about your information.</p>
 
-                  <p>By checking the agreement box, you confirm that you have read these terms and consent to the collection and use of information described above for operating the account and reservation system.</p>
+                  <p>By checking the agreement box, you confirm that you have read these terms and consent to the collection, processing, and use of your personal information as described above, in compliance with Republic Act No. 10173, for operating the account and reservation system.</p>
                 </div>
               </div>
             )}

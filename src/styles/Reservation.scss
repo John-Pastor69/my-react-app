@@ -143,6 +143,49 @@ $orange-main: #F59E0B;
     &.col-2, &.col-3 { 
       grid-template-columns: 1fr; 
     }
+
+    &.requestor-information-grid {
+      grid-template-areas:
+        "requestor-name"
+        "requestor-contact"
+        "requestor-email";
+
+      > .requestor-type-field {
+        display: contents;
+      }
+
+      > .requestor-name-group { grid-area: requestor-name; }
+      > .requestor-contact-group { grid-area: requestor-contact; }
+      > .requestor-email-group { grid-area: requestor-email; }
+    }
+
+    &.event-information-grid > .event-information-field-group {
+      display: contents;
+    }
+
+    &.event-information-grid {
+      grid-template-areas:
+        "event-name"
+        "event-type"
+        "taken-schedules"
+        "start-date"
+        "end-date"
+        "event-times"
+        "daily-schedule";
+
+      > .event-name-field { grid-area: event-name; }
+      .event-type-field { grid-area: event-type; }
+      .taken-schedules-field { grid-area: taken-schedules; }
+      .start-date-field { grid-area: start-date; }
+      .end-date-field { grid-area: end-date; }
+      > .event-time-fields {
+        grid-area: event-times;
+        display: flex;
+        flex-direction: column;
+        gap: 1rem;
+      }
+      > .event-daily-schedule { grid-area: daily-schedule; }
+    }
   }
 
   .schedule-conflict-notice {
@@ -298,11 +341,209 @@ $orange-main: #F59E0B;
     }
   }
 
+  .reservation-time-picker {
+    position: relative;
+    width: 100%;
+    min-width: 0;
+  }
+
+  .reservation-time-trigger {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    width: 100%;
+    min-height: 2.75rem;
+    padding: 0.625rem 0.75rem;
+    border: 1px solid $border-color;
+    border-radius: 7px;
+    background: #F8FAFC;
+    color: $text-dark;
+    font: inherit;
+    font-size: var(--font-body);
+    text-align: left;
+    cursor: pointer;
+    transition: border-color .2s, box-shadow .2s, background .2s;
+
+    > i:first-child {
+      color: $text-muted;
+      font-size: 1.125rem;
+    }
+
+    > span {
+      flex: 1;
+    }
+
+    .is-placeholder {
+      color: #94A3B8;
+    }
+
+    .reservation-time-chevron {
+      color: $text-muted;
+      transition: transform .15s ease;
+
+      &.is-open {
+        transform: rotate(180deg);
+      }
+    }
+
+    &:hover,
+    &[aria-expanded='true'] {
+      border-color: $blue-main;
+      background: #fff;
+    }
+
+    &:focus-visible {
+      outline: none;
+      border-color: $blue-main;
+      box-shadow: 0 0 0 3px rgba(59,130,246,.12);
+    }
+
+    &:disabled {
+      border-color: $border-color;
+      background: #F1F5F9;
+      color: $text-muted;
+      cursor: not-allowed;
+      opacity: 0.75;
+    }
+
+    &.input-error {
+      border-color: $red-main;
+      background: #FEF2F2;
+      box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.12);
+    }
+  }
+
+  .reservation-time-popover {
+    position: absolute;
+    z-index: 20;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    width: min(22rem, calc(100vw - 2rem));
+    padding: 0.875rem;
+    border: 1px solid $border-color;
+    border-radius: 10px;
+    background: #fff;
+    box-shadow: 0 16px 36px rgba(15, 23, 42, .16), 0 2px 6px rgba(15, 23, 42, .06);
+
+    .reservation-time-popover-header {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+
+      strong {
+        color: $text-dark;
+        font-size: var(--font-body);
+      }
+
+      span {
+        color: $text-muted;
+        font-size: var(--font-small);
+        white-space: nowrap;
+      }
+    }
+
+    .reservation-time-selects {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.5rem;
+
+      label {
+        display: flex;
+        flex-direction: column;
+        gap: 0.35rem;
+        min-width: 0;
+
+        > span {
+          color: $text-muted;
+          font-size: var(--font-small);
+          font-weight: 600;
+        }
+      }
+
+      select {
+        width: 100%;
+        min-height: 2.75rem;
+        padding: 0.5rem 1.65rem 0.5rem 0.625rem;
+        border: 1px solid $border-color;
+        border-radius: 7px;
+        appearance: none;
+        background-color: #F8FAFC;
+        background-image: linear-gradient(45deg, transparent 50%, #64748B 50%), linear-gradient(135deg, #64748B 50%, transparent 50%);
+        background-position: calc(100% - 0.75rem) 50%, calc(100% - 0.5rem) 50%;
+        background-repeat: no-repeat;
+        background-size: 4px 4px, 4px 4px;
+        color: $text-dark;
+        font: inherit;
+        font-size: var(--font-body);
+
+        &:focus {
+          outline: none;
+          border-color: $blue-main;
+          box-shadow: 0 0 0 3px rgba(59,130,246,.10);
+          background-color: #fff;
+        }
+      }
+
+    }
+
+    .reservation-time-quick-select {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.4rem;
+      width: 100%;
+      min-height: 2.5rem;
+      margin-top: 0.75rem;
+      padding: 0.5rem 0.75rem;
+      border: 1px solid rgba($blue-main, 0.25);
+      border-radius: 7px;
+      background: #EFF6FF;
+      color: #1D4ED8;
+      font: inherit;
+      font-size: var(--font-body);
+      font-weight: 600;
+      cursor: pointer;
+      transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+
+      &::before {
+        content: '';
+        width: 0.5rem;
+        height: 0.5rem;
+        border-radius: 50%;
+        background: currentColor;
+        opacity: 0.7;
+      }
+
+      &:hover {
+        border-color: $blue-main;
+        background: #DBEAFE;
+      }
+
+      &:focus-visible {
+        outline: none;
+        border-color: $blue-main;
+        box-shadow: 0 0 0 3px rgba($blue-main, 0.2);
+      }
+    }
+  }
+
   .input-group {
     min-width: 0; 
     display: flex; 
     flex-direction: column; 
     gap: 0.4375rem;
+
+    select.requestor-dropdown-select {
+      appearance: none;
+      -webkit-appearance: none;
+      background-image: none;
+
+      &::-ms-expand {
+        display: none;
+      }
+    }
 
     &.full-width { 
       grid-column: 1 / -1; 
@@ -371,6 +612,28 @@ $orange-main: #F59E0B;
 
       &.input-disabled { 
         background: #F1F5F9; 
+      }
+    }
+
+    input.specific-room-participants-input {
+      appearance: textfield;
+      -moz-appearance: textfield;
+
+      &::-webkit-inner-spin-button,
+      &::-webkit-outer-spin-button {
+        margin: 0;
+        -webkit-appearance: none;
+      }
+    }
+
+    input.facility-participants-input {
+      appearance: textfield;
+      -moz-appearance: textfield;
+
+      &::-webkit-inner-spin-button,
+      &::-webkit-outer-spin-button {
+        margin: 0;
+        -webkit-appearance: none;
       }
     }
 
@@ -1521,6 +1784,19 @@ $orange-main: #F59E0B;
     .form-grid { 
       &.col-2 { grid-template-columns: repeat(2,minmax(0,1fr)); } 
       &.col-3 { grid-template-columns: repeat(3,minmax(0,1fr)); } 
+
+      &.requestor-information-grid {
+        grid-template-areas: "requestor-name requestor-contact requestor-email";
+      }
+
+      &.event-information-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        grid-template-areas:
+          "event-name event-type"
+          "start-date taken-schedules"
+          "end-date event-times"
+          "daily-schedule daily-schedule";
+      }
     }
 
     .event-type-grid { 
@@ -1549,6 +1825,18 @@ $orange-main: #F59E0B;
           display: block; 
         } 
       }
+    }
+  }
+}
+
+@media (min-width: 1025px) {
+  .reservation-container {
+    .form-grid.event-information-grid {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-areas:
+        "event-name event-type taken-schedules"
+        "start-date end-date event-times"
+        "daily-schedule daily-schedule daily-schedule";
     }
   }
 }

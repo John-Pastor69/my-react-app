@@ -298,6 +298,12 @@ $red-main: #EF4444;
         text-align: left;
         text-indent: 0;
 
+        &.profile-readonly-select {
+          appearance: none;
+          -webkit-appearance: none;
+          background-image: none;
+        }
+
         &.editing {
           background: #FFFFFF;
           border: 0.0667rem solid #CBD5E1;

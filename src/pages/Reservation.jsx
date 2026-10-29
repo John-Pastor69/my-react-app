@@ -18,7 +18,6 @@ import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
 import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
-import { formatReservationTimeInput, isReservationTimeInputValid } from '../services/reservationTimeInput';
 import {
   findFacilityConflict,
   getParticipantsForFacility,
@@ -30,6 +29,14 @@ import {
   findUnavailableDateInRange,
   getUnavailableDatesInRange
 } from '../services/unavailableDates';
+import {
+  DEFAULT_ACCOUNT_TYPES,
+  DEFAULT_COURSE_OPTIONS,
+  DEFAULT_DEPARTMENT_OPTIONS,
+  filterSignupTextValue,
+  normalizeAccountTypes,
+  normalizeSignupDropdowns
+} from '../services/signupOptions';
 import ReservationDetails from './ReservationDetails';
 import { sanitizeEventName } from '../services/eventName';
 import '../styles/Reservation.scss';
@@ -37,6 +44,7 @@ import '../styles/Reservation.scss';
 const initialFormState = {
   fullName: '', 
   requestorTypes: [],
+  requestorAttributes: {},
   studentNumber: '',
   department: '',
   contactNumber: '09',
@@ -47,12 +55,15 @@ const initialFormState = {
   purpose: '',
   facilities: [], 
   specificRoom: '', 
+  specificRoomParticipants: '',
   otherEquipment: '',
   otherUtility: '',
   airconOnTime: '', 
   airconOffTime: '',
   endorserName: '', 
   endorserDesignation: '', 
+  endorserAccountType: '',
+  endorserAttributes: {},
   endorserEmail: ''
 };
 
@@ -116,6 +127,24 @@ const getFacilityCapacityLabel = (facility) => {
 
 const getFacilityParticipantFieldKey = (facilityId) => `participants-${facilityId}`;
 
+const normalizeLocationMatchValue = (value) => String(value || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]/g, '');
+
+const matchesSpecificRoom = (requestedRoom, reservedRoom) => {
+  const requested = normalizeLocationMatchValue(requestedRoom);
+  const reserved = normalizeLocationMatchValue(reservedRoom);
+  if (!requested || !reserved) return false;
+  if (requested === reserved) return true;
+
+  const requestedRoomNumbers = String(requestedRoom || '').match(/\d{3}/g) || [];
+  const reservedRoomNumbers = String(reservedRoom || '').match(/\d{3}/g) || [];
+  if (requestedRoomNumbers.some((number) => reservedRoomNumbers.includes(number))) return true;
+
+  return Math.min(requested.length, reserved.length) >= 3
+    && (requested.includes(reserved) || reserved.includes(requested));
+};
+
 // Helper function extracted outside component
 const parseTimeToDecimal = (timeStr) => {
   const minutes = parseTimeToMinutes(timeStr);
@@ -142,6 +171,16 @@ const parseTimeToMinutes = (timeStr) => {
   return hours * 60 + minutes;
 };
 
+const isWithinReservationHours = (time) => {
+  const minutes = parseTimeToMinutes(time);
+  return minutes !== null && minutes >= 7 * 60 && minutes <= 22 * 60;
+};
+
+const getReservationTimeValue = (hour, minute, period) => {
+  const hour24 = (hour % 12) + (period === 'PM' ? 12 : 0);
+  return `${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
+};
+
 const formatTimeForStorage = (timeStr) => {
   const totalMinutes = parseTimeToMinutes(timeStr);
   if (totalMinutes === null) return 'N/A';
@@ -161,6 +200,139 @@ const formatTimeForPicker = (timeStr) => {
   return `${hours}:${minutes}`;
 };
 
+const ReservationTimePicker = ({ value, onChange, label, invalid = false, disabled = false }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef(null);
+  const totalMinutes = parseTimeToMinutes(value);
+  const selectedMinutes = totalMinutes ?? 7 * 60;
+  const selectedHour24 = Math.floor(selectedMinutes / 60);
+  const selectedHour = selectedHour24 % 12 || 12;
+  const selectedMinute = selectedMinutes % 60;
+  const selectedPeriod = selectedHour24 >= 12 ? 'PM' : 'AM';
+  const displayedTime = totalMinutes === null ? 'Select time' : formatTimeForStorage(value);
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!pickerRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('touchstart', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('touchstart', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen]);
+
+  const updateTime = (hour, minute, period) => {
+    const nextTime = getReservationTimeValue(hour, minute, period);
+    if (isWithinReservationHours(nextTime)) onChange(nextTime);
+  };
+
+  return (
+    <div
+      className="reservation-time-picker"
+      ref={pickerRef}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        className={`reservation-time-trigger ${invalid ? 'input-error' : ''}`}
+        aria-label={`${label}: ${displayedTime}`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        disabled={disabled}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <i className="ph ph-clock" aria-hidden="true"></i>
+        <span className={totalMinutes === null ? 'is-placeholder' : ''}>{displayedTime}</span>
+        <i className={`ph ph-caret-down reservation-time-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true"></i>
+      </button>
+      {isOpen && (
+        <div className="reservation-time-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
+          <div className="reservation-time-popover-header">
+            <strong>Choose a time</strong>
+            <span>7:00 AM–10:00 PM</span>
+          </div>
+          <div className="reservation-time-selects">
+            <label>
+              <span>Hour</span>
+              <select
+                value={selectedHour}
+                aria-label={`${label} hour`}
+                onChange={(event) => updateTime(Number(event.target.value), selectedMinute, selectedPeriod)}
+              >
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
+                  <option
+                    key={hour}
+                    value={hour}
+                    disabled={!isWithinReservationHours(getReservationTimeValue(hour, selectedMinute, selectedPeriod))}
+                  >
+                    {String(hour).padStart(2, '0')}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Minute</span>
+              <select
+                value={selectedMinute}
+                aria-label={`${label} minute`}
+                onChange={(event) => updateTime(selectedHour, Number(event.target.value), selectedPeriod)}
+              >
+                {Array.from({ length: 60 }, (_, minute) => minute).map((minute) => {
+                  const nextTime = getReservationTimeValue(selectedHour, minute, selectedPeriod);
+                  return (
+                    <option key={minute} value={minute} disabled={!isWithinReservationHours(nextTime)}>
+                      {String(minute).padStart(2, '0')}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+            <label>
+              <span>Period</span>
+              <select
+                value={selectedPeriod}
+                aria-label={`${label} AM or PM`}
+                onChange={(event) => updateTime(selectedHour, selectedMinute, event.target.value)}
+              >
+                {['AM', 'PM'].map((period) => {
+                  const nextTime = getReservationTimeValue(selectedHour, selectedMinute, period);
+                  return (
+                    <option key={period} value={period} disabled={!isWithinReservationHours(nextTime)}>
+                      {period}
+                    </option>
+                  );
+                })}
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            className="reservation-time-quick-select"
+            onClick={() => {
+              updateTime(7, 0, 'AM');
+              setIsOpen(false);
+            }}
+          >
+            Use 7:00 AM
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // Name parsing helper function
 const formatName = (fullName) => {
   if (!fullName) return '';
@@ -170,6 +342,46 @@ const formatName = (fullName) => {
       name = `${parts[1].trim()} ${parts[0].trim()}`;
   }
   return name;
+};
+
+const getSignupConfiguration = (data = {}) => {
+  const courses = Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS;
+  const departments = Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS;
+  const accountTypes = normalizeAccountTypes(
+    Array.isArray(data.accountTypes) ? data.accountTypes : DEFAULT_ACCOUNT_TYPES,
+    courses,
+    departments
+  );
+  return {
+    accountTypes,
+    dropdownTypes: normalizeSignupDropdowns(data.dropdownTypes, accountTypes)
+  };
+};
+
+const getRequestorAttributes = (userData, accountType) => {
+  const storedAttributes = userData.customAttributes || {};
+  const legacyCustomFields = Array.isArray(userData.customFields) ? userData.customFields : [];
+  const attributes = {};
+
+  if (accountType?.dropdown) {
+    const key = `dropdown:${accountType.dropdown}`;
+    attributes[key] = storedAttributes[key]
+      ?? (userData.signupDropdown?.id === accountType.dropdown
+        ? userData.signupDropdown.value
+        : accountType.dropdown === 'courses'
+          ? userData.course || ''
+          : accountType.dropdown === 'departments'
+            ? userData.department || ''
+            : '');
+  }
+
+  (accountType?.customFields || []).forEach((field) => {
+    const key = `field:${field.id}`;
+    const legacyField = legacyCustomFields.find((item) => item.id === field.id);
+    attributes[key] = storedAttributes[key] ?? legacyField?.value ?? '';
+  });
+
+  return attributes;
 };
 
 // Helper to generate all date strings in a multi-day range (MM/DD/YYYY)
@@ -233,6 +445,7 @@ const Reservation = ({ currentUserRole }) => {
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
   const [userRole, setUserRole] = useState(currentUserRole || 'requestor');
+  const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
   const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editReservationId));
 
   // --- FORM STATES ---
@@ -311,14 +524,27 @@ const Reservation = ({ currentUserRole }) => {
         try {
           const userCollection = currentUserRole === 'super admin' ? 'super_users' : 'users';
           const userRef = doc(db, userCollection, user.uid);
-          const userSnap = await getDoc(userRef);
+          const [userSnap, signupOptionsSnap] = await Promise.all([
+            getDoc(userRef),
+            getDoc(doc(db, 'app_settings', 'signupOptions'))
+          ]);
           if (userSnap.exists()) {
             const userData = userSnap.data();
+            const nextSignupConfiguration = getSignupConfiguration(signupOptionsSnap.data() || {});
+            setSignupConfiguration(nextSignupConfiguration);
             const normalizedRole = (currentUserRole || userData.role || 'requestor').toLowerCase().trim().replace(/_/g, ' ');
             setUserRole(normalizedRole);
             const accountType = userData.accountType || '';
+            const configuredAccountType = nextSignupConfiguration.accountTypes.find(
+              (type) => type.value === accountType
+            );
+            const requestorAttributes = getRequestorAttributes(userData, configuredAccountType);
             
-            const profileName = [userData.firstName, userData.lastName].filter(Boolean).join(' ')
+            const profileName = [
+              userData.firstName,
+              userData.middleInitial ? `${userData.middleInitial}.` : '',
+              userData.lastName
+            ].filter(Boolean).join(' ')
               || userData.name
               || user.displayName
               || (normalizedRole === 'super admin' ? 'Super Admin' : '');
@@ -328,6 +554,10 @@ const Reservation = ({ currentUserRole }) => {
               ...prev,
               fullName: prev.fullName || cleanName,
               requestorTypes: accountType ? [accountType] : prev.requestorTypes,
+              requestorAttributes: {
+                ...requestorAttributes,
+                ...prev.requestorAttributes
+              },
               studentNumber: userData.studentNumber || prev.studentNumber,
               department: userData.department || prev.department,
               contactNumber: prev.contactNumber !== '09'
@@ -370,8 +600,16 @@ const Reservation = ({ currentUserRole }) => {
         const isOwner = reservation.userId === currentUser.uid
           || reservation.userEmail === currentUser.email;
         const userCollection = currentUserRole === 'super admin' ? 'super_users' : 'users';
-        const userSnap = await getDoc(doc(db, userCollection, currentUser.uid));
+        const [userSnap, signupOptionsSnap] = await Promise.all([
+          getDoc(doc(db, userCollection, currentUser.uid)),
+          getDoc(doc(db, 'app_settings', 'signupOptions'))
+        ]);
         const userData = userSnap.data() || {};
+        const nextSignupConfiguration = getSignupConfiguration(signupOptionsSnap.data() || {});
+        setSignupConfiguration(nextSignupConfiguration);
+        const configuredAccountType = nextSignupConfiguration.accountTypes.find(
+          (type) => type.value === userData.accountType
+        );
         const currentRole = (userData.role || '').toLowerCase().trim().replace(/_/g, ' ');
         const canEditApprovedReservation = canSkipReservationLeadTime(currentRole)
           && reservationStatus === 'approved'
@@ -406,6 +644,10 @@ const Reservation = ({ currentUserRole }) => {
             : Array.isArray(reservation.requestorTypes)
               ? reservation.requestorTypes.slice(0, 1)
               : [],
+          requestorAttributes: {
+            ...getRequestorAttributes(userData, configuredAccountType),
+            ...(reservation.requestorAttributes || {})
+          },
           studentNumber: reservation.studentNumber || userData.studentNumber || '',
           department: reservation.department || userData.department || '',
           contactNumber: normalizeContactNumber(reservation.contactNumber),
@@ -418,12 +660,16 @@ const Reservation = ({ currentUserRole }) => {
           purpose: (reservation.purpose || '').slice(0, 600),
           facilities: reservation.facilities || [],
           specificRoom: reservation.specificRoom || '',
+          specificRoomParticipants: reservation.specificRoomParticipants
+            ?? ((reservation.facilities || []).length === 0 ? String(reservation.expectedParticipants || '') : ''),
           otherEquipment: reservation.otherEquipment || '',
           otherUtility: reservation.otherUtility || '',
           airconOnTime: reservation.airconOnTime || '',
           airconOffTime: reservation.airconOffTime || '',
           endorserName: sanitizeAlphabeticName(reservation.endorserName || ''),
           endorserDesignation: reservation.endorserDesignation || '',
+          endorserAccountType: reservation.endorserAccountType || '',
+          endorserAttributes: reservation.endorserAttributes || {},
           endorserEmail: reservation.endorserEmail || ''
         });
         setFacilityParticipants(
@@ -612,12 +858,19 @@ const Reservation = ({ currentUserRole }) => {
         .filter(user => (user.role || user.personal_information?.role || '').toLowerCase() === 'endorser')
         .map(user => {
           const personalInformation = user.personal_information || {};
-          const profileName = [user.firstName || personalInformation.first_name, user.lastName || personalInformation.last_name]
+          const profileName = [
+            user.firstName || personalInformation.first_name,
+            user.middleInitial || personalInformation.middle_initial
+              ? `${user.middleInitial || personalInformation.middle_initial}.`
+              : '',
+            user.lastName || personalInformation.last_name
+          ]
             .filter(Boolean)
             .join(' ') || user.name;
 
           return {
             ...user,
+            accountType: user.accountType || personalInformation.account_type || '',
             cleanName: formatName(profileName),
             department: user.department || personalInformation.department || '',
             email: user.email || personalInformation.email_address || ''
@@ -660,7 +913,9 @@ const Reservation = ({ currentUserRole }) => {
   );
   const expectedParticipantCount = formData.facilities.length > 0
     ? totalFacilityParticipants
-    : Number(formData.expectedParticipants || 0);
+    : Number(formData.specificRoom.trim()
+      ? formData.specificRoomParticipants || 0
+      : formData.expectedParticipants || 0);
   const unavailableDatesInRange = getUnavailableDatesInRange(
     eventDate,
     endDateInput || eventDate,
@@ -744,10 +999,14 @@ const Reservation = ({ currentUserRole }) => {
     && requestEndDate < requestStartDate;
   const blockedStartDate = findUnavailableDateInRange(eventDate, eventDate, unavailableDates);
   const isDailyScheduleValid = dailySchedule.length > 0 && dailySchedule.every((entry) => {
-    const start = parseTimeToMinutes(entry.startTime);
-    const end = parseTimeToMinutes(entry.endTime);
-    return start !== null && end !== null && start !== end;
+    return isWithinReservationHours(entry.startTime)
+      && isWithinReservationHours(entry.endTime)
+      && parseTimeToMinutes(entry.startTime) !== parseTimeToMinutes(entry.endTime);
   });
+  const isStartTimeValid = isWithinReservationHours(startTime);
+  const isEndTimeValid = isWithinReservationHours(endTime);
+  const isAirconOnTimeValid = !aircon || isWithinReservationHours(formData.airconOnTime);
+  const isAirconOffTimeValid = !aircon || isWithinReservationHours(formData.airconOffTime);
   const totalScheduledHours = Math.round(dailySchedule.reduce((total, entry) => {
     const start = parseTimeToMinutes(entry.startTime);
     const end = parseTimeToMinutes(entry.endTime);
@@ -763,9 +1022,66 @@ const Reservation = ({ currentUserRole }) => {
   const selectedSchedule = reservationsData.find(
     (reservation) => reservation.id === selectedScheduleId
   );
+  const selectedFacilityReferences = new Set(
+    formData.facilities.flatMap((facilityId) => {
+      const facility = inventoryFacilities.find((item) => item.id === facilityId);
+      return [facilityId, facility?.name]
+        .map(normalizeLocationMatchValue)
+        .filter(Boolean);
+    })
+  );
+  const takenScheduleReservations = reservationsData.filter((reservation) => {
+    const statusLower = (reservation.status || '').toLowerCase().trim();
+    const hasRejectedApproval = reservation.approvals && Object.values(reservation.approvals).some(
+      (approval) => (typeof approval === 'string' && approval.toLowerCase() === 'rejected')
+        || (approval && typeof approval.status === 'string' && approval.status.toLowerCase() === 'rejected')
+    );
+    if (!['pending', 'approved'].includes(statusLower) || hasRejectedApproval) return false;
+
+    const reservationFacilityReferences = (reservation.facilities || []).flatMap((facilityId) => {
+      const facility = inventoryFacilities.find((item) => item.id === facilityId);
+      return [facilityId, facility?.name]
+        .map(normalizeLocationMatchValue)
+        .filter(Boolean);
+    });
+    const sharesSelectedFacility = reservationFacilityReferences.some(
+      (reference) => selectedFacilityReferences.has(reference)
+    );
+    const matchesRoom = matchesSpecificRoom(formData.specificRoom, reservation.specificRoom);
+    return sharesSelectedFacility || matchesRoom;
+  });
   const normalizedCurrentRole = userRole.replace(/_/g, ' ').trim().toLowerCase();
   const showProfileDepartment = ['room checker', 'mis', 'osa', 'building admin', 'academic head', 'school admin']
     .includes(normalizedCurrentRole);
+  const selectedRequestorAccountType = signupConfiguration.accountTypes.find(
+    (accountType) => accountType.value === formData.requestorTypes[0]
+  );
+  const selectedRequestorDropdownType = signupConfiguration.dropdownTypes.find(
+    (dropdown) => dropdown.value === selectedRequestorAccountType?.dropdown
+  );
+  const selectedEndorser = endorsersList.find(
+    (endorser) => getEndorserNameWithoutFacultySuffix(endorser.cleanName).toLowerCase()
+      === formData.endorserName.trim().toLowerCase()
+  );
+  const selectedEndorserAccountType = signupConfiguration.accountTypes.find(
+    (accountType) => accountType.value === (selectedEndorser?.accountType || formData.endorserAccountType)
+  );
+  const selectedEndorserAttributes = selectedEndorser
+    ? {
+      ...formData.endorserAttributes,
+      ...getRequestorAttributes(selectedEndorser, selectedEndorserAccountType)
+    }
+    : formData.endorserAttributes;
+  const selectedEndorserDropdownType = signupConfiguration.dropdownTypes.find(
+    (dropdown) => dropdown.value === selectedEndorserAccountType?.dropdown
+  );
+  const selectedEndorserDropdownValue = selectedEndorserAttributes[
+    `dropdown:${selectedEndorserAccountType?.dropdown}`
+  ] || '';
+  const selectedEndorserDropdownOption = (selectedEndorserAccountType?.options || []).find(
+    (option) => option.value === selectedEndorserDropdownValue
+  );
+  const endorserEmail = formData.endorserEmail || selectedEndorser?.email || '';
   const isSelectedScheduleOwner = Boolean(currentUser && selectedSchedule && (
     selectedSchedule.userId === currentUser.uid
     || (
@@ -796,18 +1112,26 @@ const Reservation = ({ currentUserRole }) => {
     const inputValue = field === 'eventName' ? sanitizeEventName(value).slice(0, 40)
       : field === 'purpose' ? value.slice(0, 600)
       : field === 'endorserName' ? sanitizeAlphabeticName(value) : value;
+    if (field === 'specificRoom') setSelectedScheduleId('');
 
     setFormData(prev => {
       const updated = { ...prev, [field]: inputValue };
 
       if (field === 'endorserName') {
         const matchedEndorser = endorsersList.find(
-          e => e.cleanName.toLowerCase() === inputValue.trim().toLowerCase()
+          (endorser) => getEndorserNameWithoutFacultySuffix(endorser.cleanName).toLowerCase()
+            === inputValue.trim().toLowerCase()
         );
-        if (matchedEndorser) {
-          updated.endorserDesignation = matchedEndorser.department || '';
-          clearMissingField('endorserDesignation');
-        }
+        updated.endorserDesignation = matchedEndorser?.department || '';
+        updated.endorserEmail = matchedEndorser?.email || '';
+        updated.endorserAccountType = matchedEndorser?.accountType || '';
+        const accountType = signupConfiguration.accountTypes.find(
+          (type) => type.value === matchedEndorser?.accountType
+        );
+        updated.endorserAttributes = matchedEndorser
+          ? getRequestorAttributes(matchedEndorser, accountType)
+          : {};
+        if (updated.endorserEmail) clearMissingField('endorserEmail');
       }
 
       return updated;
@@ -826,17 +1150,33 @@ const Reservation = ({ currentUserRole }) => {
     }
   };
 
+  const handleRequestorAttributeChange = (key, value, field) => {
+    const nextValue = field?.type === 'text'
+      ? filterSignupTextValue(value, field.characterTypes)
+      : value;
+    setFormData((previous) => ({
+      ...previous,
+      requestorAttributes: {
+        ...previous.requestorAttributes,
+        [key]: nextValue
+      }
+    }));
+    clearMissingField(`requestorAttribute:${key}`);
+  };
+
   const handleEndorserSelect = (endorser) => {
     setFormData(prev => ({
       ...prev,
       endorserName: getEndorserNameWithoutFacultySuffix(endorser.cleanName),
       endorserDesignation: endorser.department || '',
+      endorserAccountType: endorser.accountType || '',
+      endorserAttributes: getRequestorAttributes(
+        endorser,
+        signupConfiguration.accountTypes.find((accountType) => accountType.value === endorser.accountType)
+      ),
       endorserEmail: endorser.email
     }));
     clearMissingField('endorserName');
-    if (endorser.department) {
-      clearMissingField('endorserDesignation');
-    }
     clearMissingField('endorserEmail');
     setShowEndorserDropdown(false);
   };
@@ -847,6 +1187,7 @@ const Reservation = ({ currentUserRole }) => {
         ? formData.facilities.filter((item) => item !== value)
         : [...formData.facilities, value];
       setFormData((prev) => ({ ...prev, facilities: updatedFacilities }));
+      setSelectedScheduleId('');
       setFacilityParticipants((prev) => Object.fromEntries(
         Object.entries(prev).filter(([facilityId]) => updatedFacilities.includes(facilityId))
       ));
@@ -982,48 +1323,6 @@ const Reservation = ({ currentUserRole }) => {
     }
   };
 
-  // Restricts input strictly to 12-hour AM/PM time (disallows 13:00, 00:00, etc.)
-  const handleTimeInput = (e, setter, stateKey, isFormData = false) => {
-    const val = e.target.value;
-    if (!isReservationTimeInputValid(val)) return;
-    if (val === '') {
-      if (isFormData) {
-        setFormData(prev => ({ ...prev, [stateKey]: '' }));
-      } else {
-        setter('');
-      }
-      return;
-    }
-
-    if (isFormData) {
-      handleInputChange(stateKey, val);
-    } else {
-      setter(val);
-      if (val.trim() !== '') clearMissingField(stateKey);
-    }
-  };
-
-  const handleTimeBlur = (e, setter, fieldKey = null, missingKey = null) => {
-    const val = e.target.value.trim();
-    if (!val) return;
-    const formattedTime = formatReservationTimeInput(val);
-    if (formattedTime) {
-      if (fieldKey) {
-        setFormData(prev => ({ ...prev, [fieldKey]: formattedTime }));
-        clearMissingField(fieldKey);
-      } else {
-        setter(formattedTime);
-        if (missingKey) clearMissingField(missingKey);
-      }
-    } else {
-      if (fieldKey) {
-        setFormData(prev => ({ ...prev, [fieldKey]: '' }));
-      } else {
-        setter('');
-      }
-    }
-  };
-
   const handlePrevMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() - 1, 1));
   const handleNextMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() + 1, 1));
   
@@ -1140,6 +1439,7 @@ const Reservation = ({ currentUserRole }) => {
     const retainedFullName = formData.fullName;
     const retainedEmail = formData.emailAddress;
     const retainedRequestorTypes = formData.requestorTypes;
+    const retainedRequestorAttributes = formData.requestorAttributes;
     const retainedStudentNumber = formData.studentNumber;
     const retainedDepartment = formData.department;
     
@@ -1148,6 +1448,7 @@ const Reservation = ({ currentUserRole }) => {
         fullName: retainedFullName,
         emailAddress: retainedEmail,
         requestorTypes: retainedRequestorTypes,
+        requestorAttributes: retainedRequestorAttributes,
         studentNumber: retainedStudentNumber,
         department: retainedDepartment
     });
@@ -1222,17 +1523,39 @@ const Reservation = ({ currentUserRole }) => {
       { key: 'emailAddress', missing: !formData.emailAddress.trim() },
       ...(userRole === 'requestor' ? [
         { key: 'requestorTypes', missing: formData.requestorTypes.length === 0 },
-        ...(formData.requestorTypes.some(type => ['Student', 'Student Leader'].includes(type)) ? [
+        ...(selectedRequestorAccountType?.dropdown ? [{
+          key: `requestorAttribute:dropdown:${selectedRequestorAccountType.dropdown}`,
+          missing: !formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]
+        }] : []),
+        ...(selectedRequestorAccountType?.dropdown === 'courses'
+          || (!selectedRequestorAccountType && formData.requestorTypes.some(type => ['Student', 'Student Leader'].includes(type))) ? [
           { key: 'studentNumber', missing: !formData.studentNumber.trim() }
         ] : []),
-        ...(formData.requestorTypes.some(type => ['Admin', 'Staff', 'Faculty'].includes(type)) ? [
+        ...(!selectedRequestorAccountType && formData.requestorTypes.some(type => ['Admin', 'Staff', 'Faculty'].includes(type)) ? [
           { key: 'department', missing: !formData.department.trim() }
-        ] : [])
+        ] : []),
+        ...(selectedRequestorAccountType?.customFields || []).map((field) => {
+          const value = formData.requestorAttributes[`field:${field.id}`] || '';
+          const invalid = !value.trim()
+            || (field.type === 'text' && (
+              filterSignupTextValue(value, field.characterTypes) !== value
+              || (field.min !== '' && field.min != null && value.length < Number(field.min))
+              || (field.max !== '' && field.max != null && value.length > Number(field.max))
+            ))
+            || (field.type === 'number' && (
+              !Number.isFinite(Number(value))
+              || (field.min !== '' && field.min != null && Number(value) < Number(field.min))
+              || (field.max !== '' && field.max != null && Number(value) > Number(field.max))
+            ));
+          return {
+            key: `requestorAttribute:field:${field.id}`,
+            missing: invalid
+          };
+        })
       ] : []),
       ...((userRole === 'requestor' || userRole === 'user') ? [
         { key: 'endorserName', missing: !formData.endorserName.trim() },
-        { key: 'endorserDesignation', missing: !formData.endorserDesignation.trim() },
-        { key: 'endorserEmail', missing: !formData.endorserEmail.trim() }
+          { key: 'endorserEmail', missing: !endorserEmail.trim() }
       ] : []),
       { key: 'eventName', missing: !formData.eventName.trim() },
       ...(selectedFacilityCapacities.length > 0
@@ -1242,16 +1565,21 @@ const Reservation = ({ currentUserRole }) => {
             || Number(facilityParticipants[facility.id]) <= 0
         }))
         : []),
+      ...(formData.specificRoom.trim() ? [{
+        key: 'specificRoomParticipants',
+        missing: !Number.isInteger(Number(formData.specificRoomParticipants))
+          || Number(formData.specificRoomParticipants) <= 0
+      }] : []),
       { key: 'eventType', missing: formData.eventType.length === 0 },
       { key: 'eventDate', missing: !eventDate.trim() || !!dateError || Boolean(blockedStartDate) },
       { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
-      { key: 'startTime', missing: !startTime.trim() },
-      { key: 'endTime', missing: !endTime.trim() },
+      { key: 'startTime', missing: !isStartTimeValid },
+      { key: 'endTime', missing: !isEndTimeValid },
       { key: 'schedule', missing: !isDailyScheduleValid },
       { key: 'purpose', missing: !formData.purpose.trim() },
       ...(aircon ? [
-        { key: 'airconOnTime', missing: !formData.airconOnTime.trim() },
-        { key: 'airconOffTime', missing: !formData.airconOffTime.trim() }
+        { key: 'airconOnTime', missing: !isAirconOnTimeValid },
+        { key: 'airconOffTime', missing: !isAirconOffTimeValid }
       ] : [])
     ];
 
@@ -1273,7 +1601,7 @@ const Reservation = ({ currentUserRole }) => {
         targetEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
         const inputEl = firstMissingKey === 'requestorTypes'
           ? targetEl.querySelector('input')
-          : targetEl.querySelector('input:not([type="checkbox"]), textarea');
+          : targetEl.querySelector('input:not([type="checkbox"]), select, textarea');
         if (inputEl && firstMissingKey !== 'eventDate' && firstMissingKey !== 'endDateInput') {
           inputEl.focus({ preventScroll: true });
         }
@@ -1410,6 +1738,8 @@ const Reservation = ({ currentUserRole }) => {
         requestorTypes: editingReservation
           ? formData.requestorTypes
           : userRole === 'requestor' ? formData.requestorTypes : [],
+        endorserDesignation: formData.endorserDesignation || selectedEndorser?.department || '',
+        endorserEmail,
         userId: editingReservation?.userId || currentUser.uid,
         userEmail: editingReservation?.userEmail || currentUser.email,
         userRole: editingReservation?.userRole || userRole,
@@ -1584,9 +1914,9 @@ const Reservation = ({ currentUserRole }) => {
           Requestor Information
         </div>
 
-        <div className="form-grid col-2">
+        <div className="form-grid col-3 requestor-information-grid">
           <div 
-            className={`input-group ${missingFields.fullName ? 'field-missing' : ''}`}
+            className={`input-group requestor-name-group ${missingFields.fullName ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.fullName = el}
           >
             <label>Full Name <span className="req">*</span></label>
@@ -1601,20 +1931,58 @@ const Reservation = ({ currentUserRole }) => {
                 className={missingFields.fullName ? 'input-error' : ''}
               />
             </div>
+          </div>
             {userRole === 'requestor' && (
               <div
-                className={`requestor-type-field ${missingFields.requestorTypes ? 'field-missing' : ''}`}
-                ref={el => fieldRefs.current.requestorTypes = el}
+                className="requestor-type-field"
               >
-                <label>Requestor Type <span className="req">*</span></label>
-                <input
-                  type="text"
-                  value={formData.requestorTypes[0] || ''}
-                  readOnly
-                  aria-label="Requestor type from profile"
-                  className={missingFields.requestorTypes ? 'input-error' : ''}
-                />
-                {['Student', 'Student Leader'].includes(formData.requestorTypes[0]) && (
+                <div
+                  className={`input-group requestor-type-input ${missingFields.requestorTypes ? 'field-missing' : ''}`}
+                  ref={el => fieldRefs.current.requestorTypes = el}
+                >
+                  <label>Requestor Type <span className="req">*</span></label>
+                  <input
+                    type="text"
+                    value={formData.requestorTypes[0] || ''}
+                    readOnly
+                    aria-label="Requestor type from profile"
+                    className={missingFields.requestorTypes ? 'input-error' : ''}
+                  />
+                </div>
+                {selectedRequestorAccountType?.dropdown && (
+                  <div
+                    className={`input-group ${missingFields[`requestorAttribute:dropdown:${selectedRequestorAccountType.dropdown}`] ? 'field-missing' : ''}`}
+                    ref={(element) => {
+                      fieldRefs.current[`requestorAttribute:dropdown:${selectedRequestorAccountType.dropdown}`] = element;
+                    }}
+                  >
+                    <label>{selectedRequestorDropdownType?.label || selectedRequestorAccountType.dropdown} <span className="req">*</span></label>
+                    <select
+                      value={formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`] || ''}
+                      onChange={(event) => handleRequestorAttributeChange(
+                        `dropdown:${selectedRequestorAccountType.dropdown}`,
+                        event.target.value
+                      )}
+                      disabled={selectedRequestorDropdownType?.editableOnProfile === false}
+                      className={`requestor-dropdown-select ${missingFields[`requestorAttribute:dropdown:${selectedRequestorAccountType.dropdown}`] ? 'input-error' : ''}`}
+                    >
+                      <option value="">Select {selectedRequestorDropdownType?.label || 'an option'}</option>
+                      {formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]
+                        && !(selectedRequestorAccountType.options || []).some(
+                          (option) => option.value === formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]
+                        )
+                        && (
+                          <option value={formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]}>
+                            {formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]}
+                          </option>
+                        )}
+                      {(selectedRequestorAccountType.options || []).map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+                {selectedRequestorAccountType?.dropdown === 'courses' && (
                   <div
                     className={`input-group ${missingFields.studentNumber ? 'field-missing' : ''}`}
                     ref={el => fieldRefs.current.studentNumber = el}
@@ -1630,7 +1998,23 @@ const Reservation = ({ currentUserRole }) => {
                     />
                   </div>
                 )}
-                {['Admin', 'Staff', 'Faculty'].includes(formData.requestorTypes[0]) && (
+                {!selectedRequestorAccountType && ['Student', 'Student Leader'].includes(formData.requestorTypes[0]) && (
+                  <div
+                    className={`input-group ${missingFields.studentNumber ? 'field-missing' : ''}`}
+                    ref={el => fieldRefs.current.studentNumber = el}
+                  >
+                    <label>Student Number <span className="req">*</span></label>
+                    <input
+                      type="text"
+                      value={formData.studentNumber}
+                      onChange={(e) => handleInputChange('studentNumber', e.target.value)}
+                      maxLength={30}
+                      placeholder="Enter your student number"
+                      className={missingFields.studentNumber ? 'input-error' : ''}
+                    />
+                  </div>
+                )}
+                {!selectedRequestorAccountType && ['Admin', 'Staff', 'Faculty'].includes(formData.requestorTypes[0]) && (
                   <div
                     className={`input-group ${missingFields.department ? 'field-missing' : ''}`}
                     ref={el => fieldRefs.current.department = el}
@@ -1646,11 +2030,37 @@ const Reservation = ({ currentUserRole }) => {
                     />
                   </div>
                 )}
+                {(selectedRequestorAccountType?.customFields || []).map((field) => {
+                  const key = `field:${field.id}`;
+                  const missingKey = `requestorAttribute:${key}`;
+                  return (
+                    <div
+                      className={`input-group ${missingFields[missingKey] ? 'field-missing' : ''}`}
+                      key={field.id}
+                      ref={(element) => {
+                        fieldRefs.current[missingKey] = element;
+                      }}
+                    >
+                      <label>{field.label} <span className="req">*</span></label>
+                      <input
+                        type={field.type || 'text'}
+                        value={formData.requestorAttributes[key] || ''}
+                        onChange={(event) => handleRequestorAttributeChange(key, event.target.value, field)}
+                        readOnly={field.editableOnProfile === false}
+                        min={field.type === 'number' && field.min != null && field.min !== '' ? field.min : undefined}
+                        max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
+                        minLength={field.type === 'text' && field.min != null && field.min !== '' ? Number(field.min) : undefined}
+                        maxLength={field.type === 'text' && field.max != null && field.max !== '' ? Number(field.max) : undefined}
+                        required
+                        className={missingFields[missingKey] ? 'input-error' : ''}
+                      />
+                    </div>
+                  );
+                })}
               </div>
             )}
-          </div>
           <div 
-            className={`input-group ${missingFields.contactNumber ? 'field-missing' : ''}`}
+            className={`input-group requestor-contact-group ${missingFields.contactNumber ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.contactNumber = el}
           >
             <label>Contact Number <span className="req">*</span></label>
@@ -1688,7 +2098,7 @@ const Reservation = ({ currentUserRole }) => {
             </div>
           )}
           <div 
-            className={`input-group full-width ${missingFields.emailAddress ? 'field-missing' : ''}`}
+            className={`input-group requestor-email-group ${missingFields.emailAddress ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.emailAddress = el}
           >
             <label>Email Address <span className="req">*</span></label>
@@ -1758,20 +2168,26 @@ const Reservation = ({ currentUserRole }) => {
                   )}
                 </div>
               </div>
-              <div 
-                className={`input-group ${missingFields.endorserDesignation ? 'field-missing' : ''}`}
-                ref={el => fieldRefs.current.endorserDesignation = el}
-              >
-                <label>Department <span className="req">*</span></label>
-                <input 
-                  type="text" 
-                  value={formData.endorserDesignation} 
-                  readOnly
-                  maxLength={50}
-                  placeholder="Select an endorser to fill department"
-                  className={missingFields.endorserDesignation ? 'input-error' : ''}
-                />
-              </div>
+              {selectedEndorserAccountType?.dropdown && (
+                <div className="input-group">
+                  <label>{selectedEndorserDropdownType?.label || selectedEndorserAccountType.dropdown}</label>
+                  <input
+                    type="text"
+                    value={selectedEndorserDropdownOption?.label || selectedEndorserDropdownValue}
+                    readOnly
+                  />
+                </div>
+              )}
+              {(selectedEndorserAccountType?.customFields || []).map((field) => (
+                <div className="input-group" key={field.id}>
+                  <label>{field.label}</label>
+                  <input
+                    type="text"
+                    value={selectedEndorserAttributes[`field:${field.id}`] || ''}
+                    readOnly
+                  />
+                </div>
+              ))}
               <div 
                 className={`input-group full-width ${missingFields.endorserEmail ? 'field-missing' : ''}`}
                 ref={el => fieldRefs.current.endorserEmail = el}
@@ -1781,7 +2197,7 @@ const Reservation = ({ currentUserRole }) => {
                   <i className="ph-fill ph-envelope-simple"></i>
                   <input 
                     type="email" 
-                    value={formData.endorserEmail} 
+                    value={endorserEmail}
                     onChange={(e) => handleInputChange('endorserEmail', e.target.value)} 
                     maxLength={50}
                     placeholder="endorser@university.edu.ph" 
@@ -1855,15 +2271,18 @@ const Reservation = ({ currentUserRole }) => {
                         </label>
                         <input
                           id={`participants-${item.id}`}
-                          type="number"
+                          type="text"
                           inputMode="numeric"
-                          min={limits.min ?? 1}
-                          max={displayCapacityLeft ?? undefined}
-                          step="1"
                           value={facilityParticipants[item.id] ?? ''}
-                          onChange={(event) => handleFacilityParticipantsChange(item.id, event.target.value)}
+                          onKeyDown={(event) => {
+                            if (event.key.length === 1 && !/[0-9]/.test(event.key)) event.preventDefault();
+                          }}
+                          onChange={(event) => handleFacilityParticipantsChange(
+                            item.id,
+                            event.target.value.replace(/\D/g, '')
+                          )}
                           placeholder="Enter whole number"
-                          className={missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'input-error' : ''}
+                          className={`facility-participants-input ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'input-error' : ''}`}
                         />
                         {facilityParticipantErrors[item.id] && (
                           <span className="field-error">
@@ -1896,6 +2315,34 @@ const Reservation = ({ currentUserRole }) => {
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
           </div>
+          {formData.specificRoom.trim() && (
+            <div
+              className={`input-group ${missingFields.specificRoomParticipants ? 'field-missing' : ''}`}
+              ref={(element) => { fieldRefs.current.specificRoomParticipants = element; }}
+            >
+              <label htmlFor="specific-room-participants">
+                Number of Participants <span className="req">*</span>
+              </label>
+              <input
+                id="specific-room-participants"
+                type="text"
+                inputMode="numeric"
+                value={formData.specificRoomParticipants}
+                onKeyDown={(event) => {
+                  if (event.key.length === 1 && !/[0-9]/.test(event.key)) event.preventDefault();
+                }}
+                onChange={(event) => handleInputChange(
+                  'specificRoomParticipants',
+                  event.target.value.replace(/\D/g, '')
+                )}
+                placeholder="Enter whole number"
+                className={`specific-room-participants-input ${missingFields.specificRoomParticipants ? 'input-error' : ''}`}
+              />
+              {missingFields.specificRoomParticipants && (
+                <span className="field-error">Enter a positive whole number of participants.</span>
+              )}
+            </div>
+          )}
         </div>
 
         <div className="form-card">
@@ -2072,18 +2519,22 @@ const Reservation = ({ currentUserRole }) => {
                 ref={el => fieldRefs.current.airconOnTime = el}
               >
                 <label>Aircon ON Time {aircon && <span className="req">*</span>}</label>
-                <div className="input-with-icon left-icon">
-                  <i className="ph ph-clock"></i>
-                  <input
-                    type="text"
-                    value={formData.airconOnTime}
-                    onChange={(e) => handleTimeInput(e, null, 'airconOnTime', true)}
-                    onBlur={(e) => handleTimeBlur(e, null, 'airconOnTime')}
-                    placeholder="08:00 AM"
-                    disabled={!aircon}
-                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOnTime ? 'input-error' : ''}`.trim()}
-                  />
-                </div>
+                <ReservationTimePicker
+                  value={formData.airconOnTime}
+                  label="Aircon ON time"
+                  disabled={!aircon}
+                  invalid={Boolean(missingFields.airconOnTime || (formData.airconOnTime && !isAirconOnTimeValid))}
+                  onChange={(value) => {
+                    setFormData((previous) => ({
+                      ...previous,
+                      airconOnTime: formatTimeForStorage(value)
+                    }));
+                    clearMissingField('airconOnTime');
+                  }}
+                />
+                {aircon && formData.airconOnTime && !isAirconOnTimeValid && (
+                  <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+                )}
               </div>
               <i className="ph ph-arrow-right arrow"></i>
 
@@ -2092,25 +2543,29 @@ const Reservation = ({ currentUserRole }) => {
                 ref={el => fieldRefs.current.airconOffTime = el}
               >
                 <label>Aircon OFF Time {aircon && <span className="req">*</span>}</label>
-                <div className="input-with-icon left-icon">
-                  <i className="ph ph-clock"></i>
-                  <input
-                    type="text"
-                    value={formData.airconOffTime}
-                    onChange={(e) => handleTimeInput(e, null, 'airconOffTime', true)}
-                    onBlur={(e) => handleTimeBlur(e, null, 'airconOffTime')}
-                    placeholder="05:00 PM"
-                    disabled={!aircon}
-                    className={`${!aircon ? 'input-disabled' : ''} ${missingFields.airconOffTime ? 'input-error' : ''}`.trim()}
-                  />
-                </div>
+                <ReservationTimePicker
+                  value={formData.airconOffTime}
+                  label="Aircon OFF time"
+                  disabled={!aircon}
+                  invalid={Boolean(missingFields.airconOffTime || (formData.airconOffTime && !isAirconOffTimeValid))}
+                  onChange={(value) => {
+                    setFormData((previous) => ({
+                      ...previous,
+                      airconOffTime: formatTimeForStorage(value)
+                    }));
+                    clearMissingField('airconOffTime');
+                  }}
+                />
+                {aircon && formData.airconOffTime && !isAirconOffTimeValid && (
+                  <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+                )}
               </div>
             </div>
           </div>
 
           <div className="info-box blue aircon-note">
             <i className="ph ph-info"></i>
-            <div>Aircon will be scheduled based on approved timing. Ensure times are within facility operating hours (6:00 AM - 9:00 PM).</div>
+            <div>Aircon will be scheduled based on approved timing. Choose times between 7:00 AM and 10:00 PM.</div>
           </div>
 
         </div>
@@ -2121,10 +2576,10 @@ const Reservation = ({ currentUserRole }) => {
         <div className="section-header">
           Event Information
         </div>
-        <div className="form-grid col-2">
+        <div className="form-grid col-3 event-information-grid">
           {/* Row 1 Left: Event Name */}
           <div 
-            className={`input-group ${missingFields.eventName ? 'field-missing' : ''}`}
+            className={`input-group event-name-field ${missingFields.eventName ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.eventName = el}
           >
             <label>Event Name <span className="req">*</span></label>
@@ -2141,31 +2596,32 @@ const Reservation = ({ currentUserRole }) => {
           </div>
           
           {/* Row 2 Left: Event Type & Taken Schedules */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1.2rem' }}>
+          <div className="event-information-field-group">
             <div 
-              className={`input-group ${missingFields.eventType ? 'field-missing' : ''}`}
+              className={`input-group event-type-field ${missingFields.eventType ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.eventType = el}
             >
               <label>Event Type <span className="req">*</span></label>
-              <div className="event-type-grid">
-                {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map(type => (
-                  <label
-                    key={type}
-                    className={`checkbox-option ${formData.eventType.length > 0 && !formData.eventType.includes(type) ? 'is-disabled' : ''}`}
-                  >
-                    <input 
-                      type="checkbox" 
-                      checked={formData.eventType.includes(type)} 
-                      onChange={() => handleCheckboxArrayChange('eventType', type)} 
-                      disabled={formData.eventType.length > 0 && !formData.eventType.includes(type)}
-                    /> 
-                    {type}
-                  </label>
+              <select
+                value={formData.eventType[0] || ''}
+                onChange={(event) => {
+                  const value = event.target.value;
+                  setFormData((previous) => ({
+                    ...previous,
+                    eventType: value ? [value] : []
+                  }));
+                  if (value) clearMissingField('eventType');
+                }}
+                className={missingFields.eventType ? 'input-error' : ''}
+              >
+                <option value="">Select an event type</option>
+                {['Academic', 'Cultural', 'Sports', 'Seminar', 'Training', 'Other'].map((type) => (
+                  <option key={type} value={type}>{type}</option>
                 ))}
-              </div>
+              </select>
             </div>
 
-            <div className="input-group">
+            <div className="input-group taken-schedules-field">
               <label>Taken Schedules (Reference)</label>
               <select
                 value={selectedScheduleId}
@@ -2173,15 +2629,7 @@ const Reservation = ({ currentUserRole }) => {
                 style={{ cursor: 'pointer' }}
               >
                 <option value="" disabled>View pending & approved schedules...</option>
-                {reservationsData
-                  .filter(res => {
-                    const statusLower = (res.status || '').toLowerCase().trim();
-                    const hasRejectedApproval = res.approvals && Object.values(res.approvals).some(
-                      a => (typeof a === 'string' && a.toLowerCase() === 'rejected') || (a && typeof a.status === 'string' && a.status.toLowerCase() === 'rejected')
-                    );
-                    return (statusLower === 'pending' || statusLower === 'approved') && !hasRejectedApproval;
-                  })
-                  .map(res => (
+                {takenScheduleReservations.map(res => (
                     <option key={res.id} value={res.id}>
                       {res.eventName || 'Untitled Event'} | {res.eventDate} {res.endDate && res.endDate !== res.eventDate ? `to ${res.endDate}` : ''} | {res.startTime} - {res.endTime}
                       {' | '}{(res.facilities || [])
@@ -2189,17 +2637,16 @@ const Reservation = ({ currentUserRole }) => {
                         .join(', ') || 'No facility'}
                       {' | '}{res.status || 'Pending'}
                     </option>
-                  ))
-                }
+                  ))}
               </select>
             </div>
           </div>
 
           {/* Row 2 Right Column: Start Date & End Date Stacked */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="event-information-field-group">
             {/* Start Date (Formerly Event Date) */}
             <div 
-              className={`input-group ${missingFields.eventDate ? 'field-missing' : ''}`}
+              className={`input-group start-date-field ${missingFields.eventDate ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.eventDate = el}
             >
               <label>Start Date <span className="req">*</span></label>
@@ -2248,7 +2695,7 @@ const Reservation = ({ currentUserRole }) => {
 
             {/* End Date (Formerly Number of Days) */}
             <div 
-              className={`input-group ${missingFields.endDateInput ? 'field-missing' : ''}`}
+              className={`input-group end-date-field ${missingFields.endDateInput ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.endDateInput = el}
             >
               <label>End Date <span className="req">*</span></label>
@@ -2305,41 +2752,47 @@ const Reservation = ({ currentUserRole }) => {
           </div>
 
           {/* Row 3 Right Column: Start Time & End Time Stacked */}
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
+          <div className="event-information-field-group event-time-fields">
             <div 
               className={`input-group ${missingFields.startTime ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.startTime = el}
             >
               <label>Default Start Time <span className="req">*</span></label>
-              <input
-                type="time"
+              <ReservationTimePicker
                 value={startTime}
-                onChange={(e) => {
-                  setStartTime(e.target.value);
-                  if (e.target.value) clearMissingField('startTime');
+                label="Default start time"
+                invalid={Boolean(missingFields.startTime || (startTime && !isStartTimeValid))}
+                onChange={(value) => {
+                  setStartTime(value);
+                  if (value) clearMissingField('startTime');
                 }}
-                className={missingFields.startTime ? 'input-error' : ''}
               />
+              {startTime && !isStartTimeValid && (
+                <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+              )}
             </div>
             <div 
               className={`input-group ${missingFields.endTime ? 'field-missing' : ''}`}
               ref={el => fieldRefs.current.endTime = el}
             >
               <label>Default End Time <span className="req">*</span></label>
-              <input
-                type="time"
+              <ReservationTimePicker
                 value={endTime}
-                onChange={(e) => {
-                  setEndTime(e.target.value);
-                  if (e.target.value) clearMissingField('endTime');
+                label="Default end time"
+                invalid={Boolean(missingFields.endTime || (endTime && !isEndTimeValid))}
+                onChange={(value) => {
+                  setEndTime(value);
+                  if (value) clearMissingField('endTime');
                 }}
-                className={missingFields.endTime ? 'input-error' : ''}
               />
+              {endTime && !isEndTimeValid && (
+                <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+              )}
             </div>
           </div>
 
           <div
-            className={`input-group full-width schedule-override-group ${missingFields.schedule ? 'field-missing' : ''}`}
+            className={`input-group full-width schedule-override-group event-daily-schedule ${missingFields.schedule ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.schedule = el}
           >
             <button
@@ -2378,12 +2831,11 @@ const Reservation = ({ currentUserRole }) => {
                         <strong>{formatScheduleDate(entry.date)}</strong>
                         <label>
                           <span>Start</span>
-                          <input
-                            type="time"
+                          <ReservationTimePicker
                             value={entry.startTime}
-                            aria-label={`Start time for ${formatScheduleDate(entry.date)}`}
-                            onChange={(event) => {
-                              const value = event.target.value;
+                            label={`Start time for ${formatScheduleDate(entry.date)}`}
+                            invalid={!isWithinReservationHours(entry.startTime)}
+                            onChange={(value) => {
                               setDailyScheduleOverrides((overrides) => ({
                                 ...overrides,
                                 [entry.date]: {
@@ -2397,12 +2849,11 @@ const Reservation = ({ currentUserRole }) => {
                         </label>
                         <label>
                           <span>End</span>
-                          <input
-                            type="time"
+                          <ReservationTimePicker
                             value={entry.endTime}
-                            aria-label={`End time for ${formatScheduleDate(entry.date)}`}
-                            onChange={(event) => {
-                              const value = event.target.value;
+                            label={`End time for ${formatScheduleDate(entry.date)}`}
+                            invalid={!isWithinReservationHours(entry.endTime)}
+                            onChange={(value) => {
                               setDailyScheduleOverrides((overrides) => ({
                                 ...overrides,
                                 [entry.date]: {
@@ -2429,7 +2880,7 @@ const Reservation = ({ currentUserRole }) => {
                   </div>
                 )}
                 {missingFields.schedule && dailySchedule.length > 0 && !isDailyScheduleValid && (
-                  <span className="field-error">Each scheduled date needs a valid start and end time.</span>
+                  <span className="field-error">Each scheduled date needs start and end times between 7:00 AM and 10:00 PM, and the times must differ.</span>
                 )}
               </div>
             )}

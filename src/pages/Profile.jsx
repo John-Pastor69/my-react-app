@@ -4,6 +4,15 @@ import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'fir
 import { useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
 import { clearAccountStorage, clearBrowserCaches, LOGOUT_EVENT_KEY } from '../services/browserSession';
+import {
+  DEFAULT_ACCOUNT_TYPES,
+  DEFAULT_COURSE_OPTIONS,
+  DEFAULT_DEPARTMENT_OPTIONS,
+  DEFAULT_SIGNUP_DROPDOWNS,
+  filterSignupTextValue,
+  normalizeAccountTypes,
+  normalizeSignupDropdowns
+} from '../services/signupOptions';
 import * as OTPAuth from 'otpauth'; 
 import QRCode from 'qrcode'; 
 import '../styles/Profile.scss';
@@ -35,6 +44,10 @@ const Profile = ({ currentUserRole }) => {
   const [saveSuccess, setSaveSuccess] = useState(false);
   const [saveError, setSaveError] = useState('');
   const [profileLoadError, setProfileLoadError] = useState('');
+  const [signupConfiguration, setSignupConfiguration] = useState({
+    accountTypes: normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES),
+    dropdownTypes: DEFAULT_SIGNUP_DROPDOWNS
+  });
 
   const [avatarFile, setAvatarFile] = useState(null);
   const [bannerFile, setBannerFile] = useState(null);
@@ -57,12 +70,14 @@ const Profile = ({ currentUserRole }) => {
 
   const [formData, setFormData] = useState({
     firstName: '',
+    middleInitial: '',
     lastName: '',
     email: '',
     accountType: '',
     studentNumber: '',
     course: '',
     department: '',
+    signupAttributes: {},
     phone: '',
     role: '',
     status: 'Offline',
@@ -72,6 +87,12 @@ const Profile = ({ currentUserRole }) => {
   });
   
   const isSuperAdminProfile = formData.role.toLowerCase().trim().replace(/_/g, ' ') === 'super admin';
+  const selectedSignupAccountType = signupConfiguration.accountTypes.find(
+    (accountType) => accountType.value === formData.accountType
+  );
+  const selectedSignupDropdownType = signupConfiguration.dropdownTypes.find(
+    (dropdown) => dropdown.value === selectedSignupAccountType?.dropdown
+  );
             
   useEffect(() => {
     const unsubscribe = auth.onAuthStateChanged(async (user) => {
@@ -98,10 +119,58 @@ const Profile = ({ currentUserRole }) => {
         try {
           // --- FIX: Querying the correct collection ---
           const docRef = doc(db, fetchCollection, viewedProfileId || user.uid);
-          const docSnap = await getDoc(docRef);
+          const [docSnap, signupOptionsSnap] = await Promise.all([
+            getDoc(docRef),
+            getDoc(doc(db, 'app_settings', 'signupOptions'))
+          ]);
 
           if (docSnap.exists()) {
             const data = docSnap.data();
+            const signupOptionsData = signupOptionsSnap.data() || {};
+            const courses = Array.isArray(signupOptionsData.courses)
+              ? signupOptionsData.courses
+              : DEFAULT_COURSE_OPTIONS;
+            const departments = Array.isArray(signupOptionsData.departments)
+              ? signupOptionsData.departments
+              : DEFAULT_DEPARTMENT_OPTIONS;
+            const accountTypes = normalizeAccountTypes(
+              Array.isArray(signupOptionsData.accountTypes)
+                ? signupOptionsData.accountTypes
+                : DEFAULT_ACCOUNT_TYPES,
+              courses,
+              departments
+            );
+            setSignupConfiguration({
+              accountTypes,
+              dropdownTypes: normalizeSignupDropdowns(
+                signupOptionsData.dropdownTypes,
+                accountTypes
+              )
+            });
+            const configuredAccountType = accountTypes.find(
+              (type) => type.value === data.accountType
+            );
+            const storedAttributes = data.customAttributes || {};
+            const legacyCustomFields = Array.isArray(data.customFields) ? data.customFields : [];
+            const signupAttributes = {};
+            if (configuredAccountType?.dropdown) {
+              const dropdownKey = `dropdown:${configuredAccountType.dropdown}`;
+              signupAttributes[dropdownKey] = storedAttributes[dropdownKey]
+                ?? (data.signupDropdown?.id === configuredAccountType.dropdown
+                  ? data.signupDropdown.value
+                  : configuredAccountType.dropdown === 'courses'
+                    ? data.course || ''
+                    : configuredAccountType.dropdown === 'departments'
+                      ? data.department || ''
+                      : '');
+            }
+            (configuredAccountType?.customFields || []).forEach((field) => {
+              const fieldKey = `field:${field.id}`;
+              const legacyField = legacyCustomFields.find((item) => item.id === field.id);
+              signupAttributes[fieldKey] = storedAttributes[fieldKey]
+                ?? legacyField?.value
+                ?? '';
+            });
             const isHiddenSuperAdmin = (data.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin'
               && docSnap.id !== user.uid;
             
@@ -141,11 +210,13 @@ const Profile = ({ currentUserRole }) => {
             setFormData(prev => ({
               ...prev,
               firstName: parsedFirstName,
+              middleInitial: data.middleInitial || '',
               lastName: parsedLastName,
               email: data.email || (viewedProfileId ? '' : user.email || ''),
               accountType: data.accountType || '',
               studentNumber: data.studentNumber || '',
               course: data.course || '',
+              signupAttributes,
               role: data.role
                 ? data.role.toUpperCase()
                 : normalizedUserRole === 'super admin'
@@ -187,6 +258,19 @@ const Profile = ({ currentUserRole }) => {
     setFormData(prev => ({ ...prev, [name]: sanitizedValue }));
   };
 
+  const handleSignupAttributeChange = (key, value, field) => {
+    const sanitizedValue = field?.type === 'text'
+      ? filterSignupTextValue(value, field.characterTypes)
+      : value;
+    setFormData((previous) => ({
+      ...previous,
+      signupAttributes: {
+        ...previous.signupAttributes,
+        [key]: sanitizedValue
+      }
+    }));
+  };
+
   const handleImageChange = (e, type) => {
     const file = e.target.files[0];
     if (!file) return;
@@ -225,13 +309,44 @@ const Profile = ({ currentUserRole }) => {
   const handleSave = async () => {
     if (!isEditing) return;
 
-    const accountType = formData.accountType.toLowerCase();
-    if (['student', 'student leader'].includes(accountType) && !formData.studentNumber.trim()) {
-      setSaveError('Enter your student number.');
+    if (selectedSignupAccountType?.dropdown
+      && selectedSignupDropdownType?.editableOnProfile !== false
+      && !formData.signupAttributes[`dropdown:${selectedSignupAccountType.dropdown}`]) {
+      setSaveError(`Select a value for ${selectedSignupDropdownType?.label || 'the signup dropdown'}.`);
       return;
     }
-    if (['admin', 'staff', 'faculty'].includes(accountType) && !formData.department.trim()) {
-      setSaveError('Enter your department or office.');
+    if (selectedSignupAccountType?.dropdown === 'courses' && !/^[0-9]{11}$/.test(formData.studentNumber)) {
+      setSaveError('Student number must contain exactly 11 digits.');
+      return;
+    }
+    const invalidCustomField = (selectedSignupAccountType?.customFields || [])
+      .filter((field) => field.editableOnProfile !== false)
+      .find((field) => {
+      const value = formData.signupAttributes[`field:${field.id}`] || '';
+      if (!value.trim()) return true;
+      if (field.type === 'text') {
+        return filterSignupTextValue(value, field.characterTypes) !== value
+          || (field.min !== '' && field.min != null && value.length < Number(field.min))
+          || (field.max !== '' && field.max != null && value.length > Number(field.max));
+      }
+      if (field.type === 'number') {
+        const numericValue = Number(value);
+        return !Number.isFinite(numericValue)
+          || (field.min !== '' && field.min != null && numericValue < Number(field.min))
+          || (field.max !== '' && field.max != null && numericValue > Number(field.max));
+      }
+      if (field.type === 'email') {
+        return !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value);
+      }
+      return false;
+    });
+    if (invalidCustomField) {
+      setSaveError(`Complete "${invalidCustomField.label}" with a valid value before saving.`);
+      return;
+    }
+    if (!selectedSignupAccountType && !formData.studentNumber.trim()
+      && ['student', 'student leader'].includes(formData.accountType.toLowerCase())) {
+      setSaveError('Enter your student number.');
       return;
     }
 
@@ -280,15 +395,39 @@ const Profile = ({ currentUserRole }) => {
 
         // --- FIX: Saving to the correct collection ---
         const userDocRef = doc(db, myCollection, user.uid);
-        
+        const customAttributes = Object.fromEntries([
+          ...(selectedSignupAccountType?.dropdown
+            ? [[
+              `dropdown:${selectedSignupAccountType.dropdown}`,
+              formData.signupAttributes[`dropdown:${selectedSignupAccountType.dropdown}`] || ''
+            ]]
+            : []),
+          ...(selectedSignupAccountType?.customFields || []).map((field) => [
+            `field:${field.id}`,
+            formData.signupAttributes[`field:${field.id}`]?.trim() || ''
+          ])
+        ]);
+        const dropdownValue = selectedSignupAccountType?.dropdown
+          ? formData.signupAttributes[`dropdown:${selectedSignupAccountType.dropdown}`] || ''
+          : '';
+
         await updateDoc(userDocRef, {
           accountType: formData.accountType,
-          studentNumber: ['Student', 'Student Leader'].includes(formData.accountType) ? formData.studentNumber.trim() : '',
-          course: ['Student', 'Student Leader'].includes(formData.accountType) ? formData.course : '',
+          studentNumber: selectedSignupAccountType?.dropdown === 'courses' ? formData.studentNumber.trim() : '',
+          course: selectedSignupAccountType?.dropdown === 'courses' ? dropdownValue : '',
           phone: formData.phone,
-          department: ['Admin', 'Staff', 'Faculty'].includes(formData.accountType) || formData.role.toLowerCase() === 'endorser'
-            ? formData.department
-            : '',
+          department: selectedSignupAccountType?.dropdown === 'departments' ? dropdownValue : '',
+          signupDropdown: selectedSignupAccountType?.dropdown ? {
+            id: selectedSignupAccountType.dropdown,
+            label: selectedSignupDropdownType?.label || selectedSignupAccountType.dropdown,
+            value: dropdownValue
+          } : null,
+          customAttributes,
+          customFields: (selectedSignupAccountType?.customFields || []).map((field) => ({
+            id: field.id,
+            label: field.label,
+            value: formData.signupAttributes[`field:${field.id}`]?.trim() || ''
+          })),
           avatarUrl: updatedAvatarUrl,
           bannerUrl: updatedBannerUrl
         });
@@ -497,7 +636,11 @@ const Profile = ({ currentUserRole }) => {
             
             <div className="user-titles">
               <div className="name-row">
-                <h2>{formData.firstName || 'Your'} {formData.lastName || 'Name'}</h2>
+                <h2>
+                  {[formData.firstName || 'Your', formData.middleInitial ? `${formData.middleInitial}.` : '', formData.lastName || 'Name']
+                    .filter(Boolean)
+                    .join(' ')}
+                </h2>
                 <span className="role-badge">{formData.role || 'Role'}</span>
               </div>
             </div>
@@ -543,6 +686,10 @@ const Profile = ({ currentUserRole }) => {
                 <input type="text" name="firstName" value={formData.firstName} readOnly className="profile-readonly-input" />
               </div>
               <div className="input-group">
+                <label>MI</label>
+                <input type="text" name="middleInitial" value={formData.middleInitial} readOnly className="profile-readonly-input" />
+              </div>
+              <div className="input-group">
                 <label>LAST NAME</label>
                 <input type="text" name="lastName" value={formData.lastName} readOnly className="profile-readonly-input" />
               </div>
@@ -556,7 +703,27 @@ const Profile = ({ currentUserRole }) => {
                   className="profile-readonly-input"
                 />
               </div>
-              {['student', 'student leader'].includes(formData.accountType.toLowerCase()) && (
+              {selectedSignupAccountType?.dropdown && (
+                <div className="input-group">
+                  <label>{(selectedSignupDropdownType?.label || selectedSignupAccountType.dropdown).toUpperCase()}</label>
+                  <select
+                    value={formData.signupAttributes[`dropdown:${selectedSignupAccountType.dropdown}`] || ''}
+                    onChange={(event) => handleSignupAttributeChange(
+                      `dropdown:${selectedSignupAccountType.dropdown}`,
+                      event.target.value
+                    )}
+                    disabled={!isEditing || selectedSignupDropdownType?.editableOnProfile === false}
+                    required={isEditing && selectedSignupDropdownType?.editableOnProfile !== false}
+                    className={`profile-dynamic-input ${isEditing && selectedSignupDropdownType?.editableOnProfile !== false ? 'editing' : 'profile-readonly-select'}`}
+                  >
+                    <option value="" disabled>Select {selectedSignupDropdownType?.label || 'an option'}</option>
+                    {(selectedSignupAccountType.options || []).map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              {selectedSignupAccountType?.dropdown === 'courses' && (
                 <div className="input-group">
                   <label>STUDENT NUMBER</label>
                   <input
@@ -570,6 +737,27 @@ const Profile = ({ currentUserRole }) => {
                   />
                 </div>
               )}
+              {(selectedSignupAccountType?.customFields || []).map((field) => {
+                const fieldKey = `field:${field.id}`;
+                return (
+                  <div className="input-group" key={field.id}>
+                    <label>{field.label.toUpperCase()}</label>
+                    <input
+                      type={field.type || 'text'}
+                      name={fieldKey}
+                      value={formData.signupAttributes[fieldKey] || ''}
+                      onChange={(event) => handleSignupAttributeChange(fieldKey, event.target.value, field)}
+                      readOnly={!isEditing || field.editableOnProfile === false}
+                      required={isEditing && field.editableOnProfile !== false}
+                      min={field.type === 'number' && field.min != null && field.min !== '' ? field.min : undefined}
+                      max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
+                      minLength={field.type === 'text' && field.min != null && field.min !== '' ? Number(field.min) : undefined}
+                      maxLength={field.type === 'text' && field.max != null && field.max !== '' ? Number(field.max) : undefined}
+                      className={`profile-dynamic-input ${isEditing && field.editableOnProfile !== false ? 'editing' : ''}`}
+                    />
+                  </div>
+                );
+              })}
               <div className="input-group">
                 <label>PHONE NUMBER</label>
                 {isEditing ? (
@@ -615,12 +803,6 @@ const Profile = ({ currentUserRole }) => {
                 <label>DATE JOINED</label>
                 <input type="text" name="dateJoined" value={formData.dateJoined} readOnly className="profile-readonly-input" />
               </div>
-              {['admin', 'staff', 'faculty'].includes(formData.accountType.toLowerCase()) || formData.role?.toLowerCase() === 'endorser' ? (
-                <div className="input-group">
-                  <label>DEPARTMENT / OFFICE</label>
-                  <input type="text" name="department" value={formData.department} readOnly placeholder="e.g. SHS, MIS" className="profile-readonly-input" />
-                </div>
-              ) : null}
             </div>
           </div>
         </div>

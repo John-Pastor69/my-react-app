@@ -126,18 +126,45 @@ main,
     border: 0.0667rem solid $border-color;
     border-radius: 0.8rem;
     background: $card-bg;
+    max-height: 50rem;
+    overflow-y: auto;
+
+    .error-banner {
+      background: #fef2f2;
+      border: 0.0667rem solid #fecaca;
+      color: $danger-color;
+      padding: 0.6667rem 0.8rem;
+      border-radius: 0.5333rem;
+      font-size: var(--font-body);
+      margin-bottom: 0.8rem;
+    }
+
+    .success-banner {
+      background: #f0fdf4;
+      border: 0.0667rem solid #bbf7d0;
+      color: #15803d;
+      padding: 0.6667rem 0.8rem;
+      border-radius: 0.5333rem;
+      font-size: var(--font-body);
+      margin-bottom: 0.8rem;
+    }
 
     @media (min-width: $bp-tablet) {
       padding: 1.6rem;
     }
 
     .signup-options-heading {
+      position: sticky;
+      top: 0;
+      z-index: 2;
       display: flex;
       flex-direction: column;
       align-items: flex-start;
       justify-content: space-between;
       gap: 1rem;
+      padding: 0.5rem 0;
       margin-bottom: 1.2rem;
+      background: $card-bg;
 
       @media (min-width: $bp-tablet) {
         flex-direction: row;
@@ -306,6 +333,276 @@ main,
       }
     }
 
+    .signup-account-type-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .signup-dropdown-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .signup-dropdown-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto auto;
+      gap: 0.65rem;
+      align-items: end;
+
+      label {
+        display: grid;
+        min-width: 0;
+        gap: 0.25rem;
+
+        span {
+          color: $text-muted;
+          font-size: 0.72rem;
+        }
+
+        input {
+          width: 100%;
+          min-width: 0;
+          padding: 0.5rem 0.6rem;
+          border: 1px solid $border-color;
+          border-radius: 0.45rem;
+          color: $text-main;
+          font: inherit;
+          background: #ffffff;
+        }
+      }
+
+      .remove-signup-option-btn {
+        padding: 0.5rem 0.65rem;
+        border: 1px solid #fecaca;
+        border-radius: 0.45rem;
+        background: #fef2f2;
+        color: $danger-color;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        cursor: pointer;
+
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+      }
+    }
+
+    .signup-account-type-editor {
+      padding: 0.75rem;
+      border: 1px solid $border-color;
+      border-radius: 0.65rem;
+      background: #ffffff;
+    }
+
+    .signup-account-dropdown-options {
+      margin-top: 0.9rem;
+      padding: 0.85rem;
+      border-radius: 0.55rem;
+      background: #f8fafc;
+
+      > h4 {
+        margin: 0 0 0.75rem;
+        color: $text-main;
+        font-size: var(--font-body);
+      }
+    }
+
+    .signup-account-custom-fields {
+      margin-top: 0.9rem;
+      padding: 0.85rem;
+      border-radius: 0.55rem;
+      background: #f8fafc;
+
+      > h4 {
+        margin: 0 0 0.75rem;
+        color: $text-main;
+        font-size: var(--font-body);
+      }
+    }
+
+    .signup-custom-field-list {
+      display: grid;
+      gap: 0.6rem;
+    }
+
+    .signup-custom-field-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.5fr) auto;
+      gap: 0.65rem;
+      align-items: end;
+
+      &.has-limits {
+        grid-template-columns: minmax(0, 1.2fr) minmax(8rem, 0.7fr) repeat(2, minmax(7rem, 0.5fr)) auto;
+      }
+
+      label {
+        display: grid;
+        min-width: 0;
+        gap: 0.25rem;
+
+        span {
+          color: $text-muted;
+          font-size: 0.72rem;
+        }
+
+        input,
+        select {
+          width: 100%;
+          min-width: 0;
+          padding: 0.5rem 0.6rem;
+          border: 1px solid $border-color;
+          border-radius: 0.45rem;
+          color: $text-main;
+          font: inherit;
+          background: #ffffff;
+        }
+      }
+
+      .remove-signup-option-btn {
+        padding: 0.5rem 0.65rem;
+        border: 1px solid #fecaca;
+        border-radius: 0.45rem;
+        background: #fef2f2;
+        color: $danger-color;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+    }
+
+    .signup-character-type-options {
+      display: flex;
+      grid-column: 1 / -1;
+      flex-wrap: wrap;
+      gap: 0.55rem 1rem;
+      margin: 0;
+      padding: 0.6rem 0.7rem;
+      border: 1px solid $border-color;
+      border-radius: 0.45rem;
+
+      legend {
+        padding: 0 0.25rem;
+        color: $text-muted;
+        font-size: 0.72rem;
+      }
+
+      label {
+        display: inline-flex;
+        grid-template-columns: auto auto;
+        align-items: center;
+        gap: 0.35rem;
+        color: $text-main;
+        font-size: 0.78rem;
+        cursor: pointer;
+
+        input {
+          width: auto;
+          margin: 0;
+        }
+      }
+    }
+
+    .signup-profile-editable-option {
+      display: inline-flex !important;
+      align-items: center;
+      gap: 0.4rem !important;
+      color: $text-main;
+      font-size: 0.78rem;
+      cursor: pointer;
+
+      input {
+        width: auto !important;
+        margin: 0;
+      }
+    }
+
+    .signup-custom-field-row > .signup-profile-editable-option {
+      grid-column: 1 / -1;
+    }
+
+    .signup-account-custom-fields > .add-signup-option-row {
+      input:first-child {
+        flex: 2 1 12rem;
+      }
+
+      input:not(:first-child) {
+        flex: 1 1 8rem;
+      }
+
+      select {
+        flex: 1 1 8rem;
+        min-width: 7rem;
+        padding: 0.55rem 0.6rem;
+        border: 1px solid $border-color;
+        border-radius: 0.45rem;
+        color: $text-main;
+        font: inherit;
+        background: #ffffff;
+      }
+    }
+
+    .signup-account-type-row {
+      display: grid;
+      grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr) minmax(0, 1fr) auto;
+      gap: 0.65rem;
+      align-items: end;
+
+      label {
+        display: grid;
+        min-width: 0;
+        gap: 0.25rem;
+
+        span {
+          color: $text-muted;
+          font-size: 0.72rem;
+        }
+
+        input,
+        select {
+          width: 100%;
+          min-width: 0;
+          padding: 0.5rem 0.6rem;
+          border: 1px solid $border-color;
+          border-radius: 0.45rem;
+          color: $text-main;
+          font: inherit;
+          background: #ffffff;
+        }
+      }
+
+      .remove-signup-option-btn {
+        padding: 0.5rem 0.65rem;
+        border: 1px solid #fecaca;
+        border-radius: 0.45rem;
+        background: #fef2f2;
+        color: $danger-color;
+        font-size: 0.8rem;
+        white-space: nowrap;
+        cursor: pointer;
+      }
+    }
+
+    .add-signup-account-type-row {
+      margin-top: 0.85rem;
+
+      > button {
+        border: 0;
+        border-radius: 0.4rem;
+        padding: 0.55rem 0.85rem;
+        background: $accent-purple;
+        color: #ffffff;
+        font-size: var(--font-body);
+        font-weight: 600;
+        cursor: pointer;
+
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.55;
+        }
+      }
+    }
+
     .add-signup-option-row {
       display: flex;
       gap: 0.6rem;
@@ -346,6 +643,45 @@ main,
         }
       }
 
+      .signup-account-type-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+
+        > button,
+        .remove-signup-option-btn {
+          grid-column: 1 / -1;
+          justify-self: end;
+        }
+      }
+
+      .signup-dropdown-row {
+        grid-template-columns: minmax(0, 1fr);
+
+        .remove-signup-option-btn {
+          justify-self: end;
+        }
+      }
+
+      .signup-custom-field-row {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+
+        &.has-limits {
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .remove-signup-option-btn {
+          grid-column: 1 / -1;
+          justify-self: end;
+        }
+      }
+
+      .signup-account-custom-fields > .add-signup-option-row {
+        flex-wrap: wrap;
+
+        input {
+          flex-basis: 100%;
+        }
+      }
+
       .signup-option-group-heading {
         grid-template-columns: minmax(0, 1fr);
 
@@ -369,8 +705,8 @@ main,
     width: 100%;
     max-width: 100%;
     min-width: 0;
-    box-sizing: border-box;
-    overflow: hidden; 
+    box-sizing: border-box; 
+    overflow-x: hidden;
 
     @media (min-width: $bp-tablet) {
       padding: 1.6rem;
@@ -502,10 +838,27 @@ main,
       }
     }
 
+    .table-content-scroll {
+      max-height: 28rem;
+      overflow-x: hidden;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+
     .error-banner {
       background: #fef2f2;
       border: 0.0667rem solid #fecaca;
       color: $danger-color;
+      padding: 0.6667rem 0.8rem;
+      border-radius: 0.5333rem;
+      font-size: var(--font-body);
+      margin-bottom: 0.8rem;
+    }
+
+    .success-banner {
+      background: #f0fdf4;
+      border: 0.0667rem solid #bbf7d0;
+      color: #15803d;
       padding: 0.6667rem 0.8rem;
       border-radius: 0.5333rem;
       font-size: var(--font-body);
