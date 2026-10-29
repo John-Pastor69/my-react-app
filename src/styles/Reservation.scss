@@ -418,7 +418,7 @@ $orange-main: #F59E0B;
     z-index: 20;
     top: calc(100% + 0.4rem);
     left: 0;
-    width: min(22rem, calc(100vw - 2rem));
+    width: min(22rem, 100%);
     padding: 0.875rem;
     border: 1px solid $border-color;
     border-radius: 10px;
@@ -427,6 +427,7 @@ $orange-main: #F59E0B;
 
     .reservation-time-popover-header {
       display: flex;
+      flex-wrap: wrap;
       align-items: baseline;
       justify-content: space-between;
       gap: 0.5rem;
@@ -440,7 +441,6 @@ $orange-main: #F59E0B;
       span {
         color: $text-muted;
         font-size: var(--font-small);
-        white-space: nowrap;
       }
     }
 

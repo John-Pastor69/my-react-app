@@ -1,4 +1,4 @@
-import React, { lazy, Suspense, useEffect, useMemo, useState } from 'react';
+import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase';
@@ -80,6 +80,122 @@ const normalizeName = (value) => {
   return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
 };
 
+const DashboardTimePicker = ({ value, onChange, label }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const pickerRef = useRef(null);
+  const totalMinutes = parseTime(value);
+  const selectedHour24 = totalMinutes === null ? 0 : Math.floor(totalMinutes / 60);
+  const selectedHour = selectedHour24 % 12 || 12;
+  const selectedMinute = totalMinutes === null ? 0 : totalMinutes % 60;
+  const selectedPeriod = selectedHour24 >= 12 ? 'PM' : 'AM';
+  const displayedTime = totalMinutes === null
+    ? 'Select time'
+    : `${selectedHour}:${String(selectedMinute).padStart(2, '0')} ${selectedPeriod}`;
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!pickerRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('touchstart', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('touchstart', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen]);
+
+  const updateTime = (hour, minute, period) => {
+    const hour24 = (hour % 12) + (period === 'PM' ? 12 : 0);
+    onChange(`${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
+  };
+
+  return (
+    <div
+      className="dashboard-time-picker"
+      ref={pickerRef}
+      onBlurCapture={(event) => {
+        if (!event.currentTarget.contains(event.relatedTarget)) setIsOpen(false);
+      }}
+    >
+      <button
+        type="button"
+        className="dashboard-time-trigger"
+        aria-label={`${label}: ${displayedTime}`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => setIsOpen((open) => !open)}
+      >
+        <i className="ph ph-clock" aria-hidden="true"></i>
+        <span className={totalMinutes === null ? 'is-placeholder' : ''}>{displayedTime}</span>
+        <i className={`ph ph-caret-down dashboard-time-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true"></i>
+      </button>
+      {isOpen && (
+        <div className="dashboard-time-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
+          <div className="dashboard-time-popover-header">
+            <strong>Choose a time</strong>
+            <span>12:00 AM–11:59 PM</span>
+          </div>
+          <div className="dashboard-time-selects">
+            <label>
+              <span>Hour</span>
+              <select
+                value={selectedHour}
+                aria-label={`${label} hour`}
+                onChange={(event) => updateTime(Number(event.target.value), selectedMinute, selectedPeriod)}
+              >
+                {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
+                  <option key={hour} value={hour}>{String(hour).padStart(2, '0')}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Minute</span>
+              <select
+                value={selectedMinute}
+                aria-label={`${label} minute`}
+                onChange={(event) => updateTime(selectedHour, Number(event.target.value), selectedPeriod)}
+              >
+                {Array.from({ length: 60 }, (_, minute) => (
+                  <option key={minute} value={minute}>{String(minute).padStart(2, '0')}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              <span>Period</span>
+              <select
+                value={selectedPeriod}
+                aria-label={`${label} AM or PM`}
+                onChange={(event) => updateTime(selectedHour, selectedMinute, event.target.value)}
+              >
+                <option value="AM">AM</option>
+                <option value="PM">PM</option>
+              </select>
+            </label>
+          </div>
+          <button
+            type="button"
+            className="dashboard-time-clear"
+            onClick={() => {
+              onChange('');
+              setIsOpen(false);
+            }}
+          >
+            Clear time
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard }) => (
   <section className="dashboard-filters" aria-label="Dashboard filters">
     <div className="filter-heading">
@@ -122,23 +238,23 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
       </label>
       <label>
         <span>Start time from</span>
-        <input
-          type="time"
+        <DashboardTimePicker
           value={filters.startTime}
-          onChange={(event) => setFilters((current) => ({
+          label="Start time from"
+          onChange={(time) => setFilters((current) => ({
             ...current,
-            startTime: event.target.value
+            startTime: time
           }))}
         />
       </label>
       <label>
         <span>Start time to</span>
-        <input
-          type="time"
+        <DashboardTimePicker
           value={filters.endTime}
-          onChange={(event) => setFilters((current) => ({
+          label="Start time to"
+          onChange={(time) => setFilters((current) => ({
             ...current,
-            endTime: event.target.value
+            endTime: time
           }))}
         />
       </label>
