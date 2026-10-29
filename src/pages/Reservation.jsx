@@ -30,12 +30,8 @@ import {
   getUnavailableDatesInRange
 } from '../services/unavailableDates';
 import {
-  DEFAULT_ACCOUNT_TYPES,
-  DEFAULT_COURSE_OPTIONS,
-  DEFAULT_DEPARTMENT_OPTIONS,
   filterSignupTextValue,
-  normalizeAccountTypes,
-  normalizeSignupDropdowns
+  getSignupConfiguration
 } from '../services/signupOptions';
 import ReservationDetails from './ReservationDetails';
 import { sanitizeEventName } from '../services/eventName';
@@ -342,20 +338,6 @@ const formatName = (fullName) => {
       name = `${parts[1].trim()} ${parts[0].trim()}`;
   }
   return name;
-};
-
-const getSignupConfiguration = (data = {}) => {
-  const courses = Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS;
-  const departments = Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS;
-  const accountTypes = normalizeAccountTypes(
-    Array.isArray(data.accountTypes) ? data.accountTypes : DEFAULT_ACCOUNT_TYPES,
-    courses,
-    departments
-  );
-  return {
-    accountTypes,
-    dropdownTypes: normalizeSignupDropdowns(data.dropdownTypes, accountTypes)
-  };
 };
 
 const getRequestorAttributes = (userData, accountType) => {
@@ -911,11 +893,12 @@ const Reservation = ({ currentUserRole }) => {
     (total, facilityId) => total + (Number(facilityParticipants[facilityId]) || 0),
     0
   );
-  const expectedParticipantCount = formData.facilities.length > 0
-    ? totalFacilityParticipants
-    : Number(formData.specificRoom.trim()
-      ? formData.specificRoomParticipants || 0
-      : formData.expectedParticipants || 0);
+  const specificRoomParticipantCount = formData.specificRoom.trim()
+    ? Number(formData.specificRoomParticipants) || 0
+    : 0;
+  const expectedParticipantCount = formData.facilities.length > 0 || formData.specificRoom.trim()
+    ? totalFacilityParticipants + specificRoomParticipantCount
+    : Number(formData.expectedParticipants || 0);
   const unavailableDatesInRange = getUnavailableDatesInRange(
     eventDate,
     endDateInput || eventDate,
@@ -1759,6 +1742,7 @@ const Reservation = ({ currentUserRole }) => {
         selectedUtilities,
         selectedUtilityUnits,
         expectedParticipants: expectedParticipantCount,
+        specificRoomParticipants: specificRoomParticipantCount,
         facilityParticipants: selectedFacilityParticipants,
         status: isAdminEditMode ? editingReservation?.status || 'Approved' : 'Pending',
         updatedAt: new Date().toISOString()

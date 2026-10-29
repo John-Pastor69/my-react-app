@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { auth, db } from '../Firebase'; 
@@ -14,10 +14,16 @@ import {
 } from '../services/signupOptions';
 import '../styles/Login.scss';
 
+const capitalizeInitial = (value) => value.replace(/^(\s*)([a-z])/, (_, leadingSpace, letter) => (
+  `${leadingSpace}${letter.toUpperCase()}`
+));
+
 export default function Login({ error, setError }) {
   const [showForm, setShowForm] = useState(false);
   const [isLogin, setIsLogin] = useState(true); 
   const [showTerms, setShowTerms] = useState(false);
+  const modalBodyRef = useRef(null);
+  const signupSubmissionInProgress = useRef(false);
 
   const [firstName, setFirstName] = useState('');
   const [middleInitial, setMiddleInitial] = useState('');
@@ -32,6 +38,7 @@ export default function Login({ error, setError }) {
   const [confirmPassword, setConfirmPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [isSubmittingSignup, setIsSubmittingSignup] = useState(false);
 
   const [resetMessage, setResetMessage] = useState(''); 
   const [resetCooldown, setResetCooldown] = useState(0);
@@ -152,6 +159,7 @@ export default function Login({ error, setError }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (!isLogin && signupSubmissionInProgress.current) return;
     if (setError) setError('');
     setResetMessage('');
 
@@ -222,6 +230,11 @@ export default function Login({ error, setError }) {
       }
     }
 
+    if (!isLogin) {
+      signupSubmissionInProgress.current = true;
+      setIsSubmittingSignup(true);
+    }
+
     try {
       sessionStorage.setItem(NEW_LOGIN_KEY, 'true');
 
@@ -267,7 +280,7 @@ export default function Login({ error, setError }) {
           middleInitial: normalizedMiddleInitial,
           lastName: lastName.trim(),
           accountType: tag,
-          role: selectedSignupAccountType?.role || 'requestor',
+          role: selectedSignupAccountType?.role === 'faculty' ? 'pending' : 'requestor',
           studentNumber: selectedSignupAccountType?.dropdown === 'courses' ? studentNumber.trim() : '',
           course: selectedSignupAccountType?.dropdown === 'courses' ? signupDropdownValue : '',
           department: selectedSignupAccountType?.dropdown === 'departments' ? signupDropdownValue : '',
@@ -336,6 +349,11 @@ export default function Login({ error, setError }) {
           setError("Authentication failed: " + err.message);
         }
       }
+    } finally {
+      if (!isLogin) {
+        signupSubmissionInProgress.current = false;
+        setIsSubmittingSignup(false);
+      }
     }
   };
 
@@ -344,6 +362,12 @@ export default function Login({ error, setError }) {
       setShowForm(true);
     }
   }, [error]);
+
+  useEffect(() => {
+    if (error && !isLogin && showForm) {
+      modalBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+  }, [error, isLogin, showForm]);
 
   const inputStyle = { 
     padding: '10px', 
@@ -403,7 +427,7 @@ export default function Login({ error, setError }) {
                 <i className="ph ph-x close-icon" onClick={closeModal} style={{ color: themeBlue }}></i>
               </div>
 
-              <div className="modal-body" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
+              <div ref={modalBodyRef} className="modal-body" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
                 {error && <div role="alert" aria-live="assertive" style={{color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{error}</div>}
                 {resetMessage && <div style={{color: '#16a34a', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{resetMessage}</div>}
                 
@@ -421,7 +445,7 @@ export default function Login({ error, setError }) {
                             type="text" 
                             placeholder="First Name" 
                             value={firstName}
-                            onChange={(e) => setFirstName(e.target.value.replace(/[^A-Za-z ]/g, ''))}
+                            onChange={(e) => setFirstName(capitalizeInitial(e.target.value.replace(/[^A-Za-z ]/g, '')))}
                             maxLength={20}
                             pattern="[A-Za-z ]+"
                             title="Use letters and spaces only."
@@ -435,7 +459,7 @@ export default function Login({ error, setError }) {
                             type="text" 
                             placeholder="MI"
                             value={middleInitial}
-                            onChange={(e) => setMiddleInitial(e.target.value.replace(/[^A-Za-z]/g, '').slice(0, 1))}
+                            onChange={(e) => setMiddleInitial(e.target.value.replace(/[^A-Za-z]/g, '').slice(0, 1).toUpperCase())}
                             maxLength={1}
                             pattern="[A-Za-z]"
                             title="Enter one letter."
@@ -450,7 +474,7 @@ export default function Login({ error, setError }) {
                           type="text"
                           placeholder="Last Name"
                           value={lastName}
-                          onChange={(e) => setLastName(e.target.value.replace(/[^A-Za-z]/g, ''))}
+                          onChange={(e) => setLastName(capitalizeInitial(e.target.value.replace(/[^A-Za-z]/g, '')))}
                           maxLength={20}
                           pattern="[A-Za-z]+"
                           title="Use letters only."
@@ -675,15 +699,34 @@ export default function Login({ error, setError }) {
                     </div>
                   )}
                   
-                  <button type="submit" style={{ padding: '12px', background: themeBlue, color: '#FFFFFF', borderRadius: '6px', border: 'none', fontWeight: 'bold', cursor: 'pointer', marginTop: '8px' }}>
-                    {isLogin ? 'Log In' : 'Sign Up'}
+                  <button
+                    type="submit"
+                    disabled={!isLogin && isSubmittingSignup}
+                    aria-busy={!isLogin && isSubmittingSignup}
+                    style={{
+                      padding: '12px',
+                      background: !isLogin && isSubmittingSignup ? '#94a3b8' : themeBlue,
+                      color: '#FFFFFF',
+                      borderRadius: '6px',
+                      border: 'none',
+                      fontWeight: 'bold',
+                      cursor: !isLogin && isSubmittingSignup ? 'not-allowed' : 'pointer',
+                      marginTop: '8px',
+                      opacity: !isLogin && isSubmittingSignup ? 0.75 : 1
+                    }}
+                  >
+                    {isLogin ? 'Log In' : isSubmittingSignup ? 'Signing Up…' : 'Sign Up'}
                   </button>
                 </form>
 
                 <div style={{ marginTop: '1rem', textAlign: 'center' }}>
                   <button 
                     type="button" 
-                    onClick={() => setIsLogin(!isLogin)}
+                    onClick={() => {
+                      setIsLogin(!isLogin);
+                      if (setError) setError('');
+                      setResetMessage('');
+                    }}
                     style={{ background: 'none', border: 'none', color: themeBlue, fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
                   >
                     {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}

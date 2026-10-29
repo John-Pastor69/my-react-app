@@ -78,7 +78,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     displayName: 'Loading...',
     avatarName: 'User',
     role: '...',
-    avatarUrl: null
+    avatarUrl: null,
+    roleChangeNotification: null
   });
   
   const [reservationsData, setReservationsData] = useState([]);
@@ -114,7 +115,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const archivingReservationsRef = useRef(new Set());
   const normalizedRole = normalizeApprovalRoleKey(userData.role);
-  const canOpenDashboardSearch = !['requestor', 'user'].includes(normalizedRole);
+  const canOpenDashboardSearch = !['requestor', 'user', 'pending'].includes(normalizedRole);
   const canSearchUsers = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRole);
   const globalSearchResults = useMemo(() => {
     const query = globalSearchQuery.trim().toLowerCase();
@@ -237,7 +238,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           displayName: finalDisplayName,
           avatarName: finalAvatarName,
           role: fetchedRole,
-          avatarUrl: data.avatarUrl || null
+          avatarUrl: data.avatarUrl || null,
+          roleChangeNotification: data.roleChangeNotification || null
         });
       }
     });
@@ -523,6 +525,40 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       }
     });
 
+    if (userData.roleChangeNotification?.fromRole === 'pending') {
+      const { id, toRole, timestamp } = userData.roleChangeNotification;
+      const roleLabel = (toRole || 'assigned role')
+        .split(' ')
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
+      newNotifs.push({
+        id: `role-change-${id}`,
+        type: 'role_changed',
+        title: 'Role Updated',
+        message: `Your account role has been changed from Pending to ${roleLabel}.`,
+        time: timestamp,
+        rawDate: new Date(timestamp || 0)
+      });
+    }
+
+    if (['mis', 'mis admin', 'building admin', 'super admin'].includes(myRoleKey)) {
+      usersData
+        .filter((user) => normalizeApprovalRoleKey(user.role) === 'pending')
+        .forEach((user) => {
+          const userId = user.uid || user.id;
+          const pendingTime = user.timeCreated || user.createdAt || user.dateJoined;
+          const userName = getProfileName(user) || user.email || 'A user';
+          newNotifs.push({
+            id: `pending-user-${userId}`,
+            type: 'pending_user',
+            title: 'Pending User',
+            message: `${userName} has a pending account awaiting role assignment.`,
+            time: pendingTime,
+            rawDate: new Date(pendingTime || 0)
+          });
+        });
+    }
+
     const uniqueNotifs = [...new Map(newNotifs.map((notif) => [notif.id, notif])).values()];
     const filteredNotifs = uniqueNotifs.filter(notif => !deletedNotifs.includes(notif.id));
     
@@ -537,8 +573,13 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       localStorage.setItem('facilityResReadNotifs', JSON.stringify(updatedReadNotifs));
     }
     
-    setSelectedRequest(notif.fullData);
     setIsNotifOpen(false);
+    if (notif.type === 'pending_user') {
+      navigate('/user');
+      return;
+    }
+    if (notif.type === 'role_changed') return;
+    setSelectedRequest(notif.fullData);
   };
 
   const handleClearAllNotifs = () => {
@@ -760,6 +801,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
                           {notif.type === 'resubmitted' && <div className="notif-avatar bg-blue">↻</div>}
                           {notif.type === 'expired' && <div className="notif-avatar bg-charcoal">!</div>}
                           {notif.type === 'cancelled' && <div className="notif-avatar bg-gray">×</div>}
+                          {notif.type === 'role_changed' && <div className="notif-avatar bg-green">✓</div>}
+                          {notif.type === 'pending_user' && <div className="notif-avatar bg-yellow">!</div>}
                           
                           <div className="notif-content">
                             <p><strong>{notif.title}:</strong> {notif.message.replace(`${notif.title}:`, '')}</p>

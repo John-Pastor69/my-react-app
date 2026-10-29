@@ -45,6 +45,7 @@ export default function App() {
   const [isAuthLoading, setIsAuthLoading] = useState(true);
   const [loginError, setLoginError] = useState('');
   const [tabBlocked, setTabBlocked] = useState('');
+  const [isPendingNoticeOpen, setIsPendingNoticeOpen] = useState(false);
 
   // --- 2FA ENFORCEMENT STATES ---
   const [twoFactorMode, setTwoFactorMode] = useState(null); // 'setup' | 'verify' | null
@@ -58,6 +59,7 @@ export default function App() {
     navigation.current.navigate('/', { replace: true });
 
     setIsAuthenticated(false); 
+    setIsPendingNoticeOpen(false);
     setTwoFactorMode(null);
     setTwoFactorSecret(null);
     setUserRole('requestor'); 
@@ -90,6 +92,7 @@ export default function App() {
       if (user) {
         setIsAuthenticated(false);
         setIsAuthLoading(true);
+        setIsPendingNoticeOpen(false);
         setTwoFactorMode(null);
         setTwoFactorSecret(null);
         setTabBlocked('');
@@ -132,6 +135,7 @@ export default function App() {
           sessionUid.current = null;
           sessionStorage.removeItem(`2fa_verified_${user.uid}`);
           setIsAuthenticated(false);
+          setIsPendingNoticeOpen(false);
           setTwoFactorMode(null);
           setTwoFactorSecret(null);
           setIsAuthLoading(false);
@@ -214,7 +218,7 @@ export default function App() {
             const userData = userDocSnap.data();
             // If they are a super admin, we keep the 'super admin' role set above. Otherwise, read from doc.
             if (!isSuperAdmin) {
-              resolvedRole = userData.role || (userData.accountType === 'Faculty' ? 'endorser' : 'requestor');
+              resolvedRole = userData.role || (userData.accountType === 'Faculty' ? 'pending' : 'requestor');
             }
             
             const is2FAPolicyActive = userData.twoFactorEnabled === true;
@@ -311,6 +315,7 @@ export default function App() {
 
           if (!needsTwoFactor) {
             setIsAuthenticated(true);
+            setIsPendingNoticeOpen(resolvedRole.toLowerCase().trim().replace(/_/g, ' ') === 'pending');
             if (!initialRedirectDone.current && navigation.current.pathname === '/') {
                navigation.current.navigate(resolvedRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
                initialRedirectDone.current = true;
@@ -337,6 +342,7 @@ export default function App() {
         sessionUid.current = null;
         initialRedirectDone.current = false;
         setIsAuthenticated(false);
+        setIsPendingNoticeOpen(false);
         setTwoFactorMode(null);
         setTwoFactorSecret(null);
         setUserRole('requestor');
@@ -440,6 +446,7 @@ export default function App() {
           
           setTwoFactorMode(null);
           setIsAuthenticated(true);
+          setIsPendingNoticeOpen(userRole.toLowerCase().trim().replace(/_/g, ' ') === 'pending');
           localStorage.removeItem(`req2FA_${auth.currentUser.uid}`); 
           if (!initialRedirectDone.current && location.pathname === '/') {
             navigate(userRole.toLowerCase() === 'requestor' ? '/reserve' : '/dashboard', { replace: true });
@@ -482,6 +489,25 @@ export default function App() {
           </Suspense>
         </div>
       </div>
+      {isPendingNoticeOpen && (
+        <div className="pending-review-overlay">
+          <section
+            className="pending-review-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="pending-review-title"
+          >
+            <div className="pending-review-icon" aria-hidden="true">
+              <i className="ph ph-clock-countdown"></i>
+            </div>
+            <h2 id="pending-review-title">Account under review</h2>
+            <p>Your current account is being reviewed. Kindly wait while we process and verify your account. Thank you!</p>
+            <button type="button" onClick={() => setIsPendingNoticeOpen(false)}>
+              Okay
+            </button>
+          </section>
+        </div>
+      )}
     </div>
   );
 }

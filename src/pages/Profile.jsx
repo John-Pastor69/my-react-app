@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { doc, getDoc, updateDoc, deleteDoc } from 'firebase/firestore';
+import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
 import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'; 
 import { useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
@@ -65,6 +65,9 @@ const Profile = ({ currentUserRole }) => {
   const [pendingSecret, setPendingSecret] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [twoFactorError, setTwoFactorError] = useState('');
+  const [isCreatingBackup, setIsCreatingBackup] = useState(false);
+  const [backupMessage, setBackupMessage] = useState('');
+  const [backupHasError, setBackupHasError] = useState(false);
 
   const [expandedImage, setExpandedImage] = useState(null);
 
@@ -528,6 +531,60 @@ const Profile = ({ currentUserRole }) => {
     }
   };
 
+  const handleDownloadBackup = async () => {
+    if (normalizedUserRole !== 'super admin' || isCreatingBackup) return;
+
+    const collectionsToBackup = [
+      'archive',
+      'reservations',
+      'users',
+      'super_users',
+      'facilities',
+      'equipments',
+      'utilities',
+      'app_settings'
+    ];
+
+    try {
+      setIsCreatingBackup(true);
+      setBackupMessage('');
+      setBackupHasError(false);
+      const snapshots = await Promise.all(
+        collectionsToBackup.map((collectionName) => getDocs(collection(db, collectionName)))
+      );
+      const collections = Object.fromEntries(collectionsToBackup.map((collectionName, index) => [
+        collectionName,
+        snapshots[index].docs.map((backupDoc) => ({
+          id: backupDoc.id,
+          ...backupDoc.data()
+        }))
+      ]));
+      const backupData = {
+        createdAt: new Date().toISOString(),
+        collections
+      };
+      const dateString = new Date().toISOString().split('T')[0];
+      const backupBlob = new Blob([JSON.stringify(backupData, null, 2)], {
+        type: 'application/json'
+      });
+      const downloadUrl = URL.createObjectURL(backupBlob);
+      const downloadLink = document.createElement('a');
+      downloadLink.href = downloadUrl;
+      downloadLink.download = `firestore_backup_${dateString}.json`;
+      document.body.appendChild(downloadLink);
+      downloadLink.click();
+      downloadLink.remove();
+      window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 1000);
+      setBackupMessage('Backup downloaded successfully.');
+    } catch (error) {
+      console.error('Failed to create Firestore backup:', error);
+      setBackupHasError(true);
+      setBackupMessage('Backup failed. Check Firestore access and try again.');
+    } finally {
+      setIsCreatingBackup(false);
+    }
+  };
+
   const closeDeleteModal = () => {
     setDeleteStep(0);
     setDeleteVerification('');
@@ -832,6 +889,25 @@ const Profile = ({ currentUserRole }) => {
                   {is2FAEnabled ? 'Disable' : 'Enable 2FA'}
                 </button>
               </div>
+              {normalizedUserRole === 'super admin' && (
+                <div className="profile-backup-controls">
+                  <p>Download a JSON backup of the application’s Firestore collections.</p>
+                  <button
+                    type="button"
+                    className="btn-profile-backup"
+                    onClick={handleDownloadBackup}
+                    disabled={isCreatingBackup}
+                  >
+                    <i className={`ph ${isCreatingBackup ? 'ph-spinner-gap' : 'ph-download-simple'}`} aria-hidden="true"></i>
+                    {isCreatingBackup ? 'Creating backup…' : 'Download Firestore Backup'}
+                  </button>
+                  {backupMessage && (
+                    <p className={`profile-backup-message${backupHasError ? ' error' : ''}`} role="status">
+                      {backupMessage}
+                    </p>
+                  )}
+                </div>
+              )}
             </div>
 
             <div className="side-panel card-style danger-zone">

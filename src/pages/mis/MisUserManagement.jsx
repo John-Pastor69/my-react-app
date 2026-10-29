@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { db, auth } from '../../Firebase';
 import {
   DEFAULT_ACCOUNT_TYPES,
@@ -15,17 +15,19 @@ import {
 import "../../styles/mis/MisUserManagement.scss";
   
 const ROLE_OPTIONS = [
-  { value: 'mis', label: 'MIS' },
-  { value: 'building admin', label: 'Building Admin' },
-  { value: 'school admin', label: 'School Admin' },
-  { value: 'room checker', label: 'Room Checker' },
-  { value: 'academic head', label: 'Academic Head' },
+  { value: 'pending', label: 'Pending' },
+  { value: 'requestor', label: 'Requestor' },
   { value: 'endorser', label: 'Endorser' },
+  { value: 'room checker', label: 'Room Checker' },
   { value: 'osa', label: 'OSA' },
-  { value: 'requestor', label: 'Requestor' }
+  { value: 'building admin', label: 'Building Admin' },
+  { value: 'mis', label: 'MIS' },
+  { value: 'academic head', label: 'Academic Head' },
+  { value: 'school admin', label: 'School Admin' }
 ];
 
 const ROLE_LABELS = {
+  'pending': 'Pending',
   'mis': 'MIS',
   'mis admin': 'MIS',
   'building admin': 'Building Admin',
@@ -107,9 +109,16 @@ const getCreatedDate = (user) => {
 };
 
 const MisUserManagement = ({ currentUserRole }) => {
+  const [searchParams] = useSearchParams();
+  const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  const isSuperAdmin = normalizedCurrentUserRole === 'super admin';
+  const canViewPendingUsers = ['super admin', 'mis', 'mis admin', 'building admin'].includes(normalizedCurrentUserRole);
+  const canAssignPendingRole = isSuperAdmin;
   const [usersData, setUsersData] = useState([]);
   const [searchQuery, setSearchQuery] = useState(''); // Added search state
-  const [userFilter, setUserFilter] = useState('all');
+  const [userFilter, setUserFilter] = useState(() => (
+    canViewPendingUsers && searchParams.get('filter') === 'pending' ? 'pending' : 'all'
+  ));
   const [unverifiedAgeFilter, setUnverifiedAgeFilter] = useState('all');
   const [unverifiedFilterNow, setUnverifiedFilterNow] = useState(() => Date.now());
   const [isLoading, setIsLoading] = useState(true);
@@ -119,7 +128,12 @@ const MisUserManagement = ({ currentUserRole }) => {
   const [accountTypes, setAccountTypes] = useState(() => normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES));
   const [signupDropdowns, setSignupDropdowns] = useState(() => DEFAULT_SIGNUP_DROPDOWNS.map((dropdown) => ({ ...dropdown })));
   const [newSignupDropdown, setNewSignupDropdown] = useState('');
-  const [newAccountType, setNewAccountType] = useState({ value: '', label: '', dropdown: '' });
+  const [newAccountType, setNewAccountType] = useState({
+    value: '',
+    label: '',
+    dropdown: '',
+    role: 'requestor'
+  });
   const [newAccountTypeOptions, setNewAccountTypeOptions] = useState({});
   const [newAccountTypeFields, setNewAccountTypeFields] = useState({});
   const [isSavingSignupOptions, setIsSavingSignupOptions] = useState(false);
@@ -132,8 +146,6 @@ const MisUserManagement = ({ currentUserRole }) => {
   const [updatingBlockUserId, setUpdatingBlockUserId] = useState(null);
 
   const [currentUser, setCurrentUser] = useState(null);
-  const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
-  const isSuperAdmin = normalizedCurrentUserRole === 'super admin';
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
@@ -241,6 +253,10 @@ const MisUserManagement = ({ currentUserRole }) => {
 
   const handleSaveRole = async () => {
     if (!roleModalUser) return;
+    if (selectedRole === 'pending' && !canAssignPendingRole) {
+      setActionError('You do not have permission to assign the pending role.');
+      return;
+    }
 
     try {
       setIsUpdatingRole(true);
@@ -251,8 +267,19 @@ const MisUserManagement = ({ currentUserRole }) => {
         roleToSave = 'mis';
       }
 
+      const previousRole = (roleModalUser.role || 'requestor').toLowerCase().trim().replace(/_/g, ' ');
+      const roleChangeNotification = previousRole === 'pending' && roleToSave !== 'pending'
+        ? {
+          id: `${roleModalUser.id}-${Date.now()}`,
+          fromRole: 'pending',
+          toRole: roleToSave,
+          timestamp: new Date().toISOString()
+        }
+        : null;
+
       await updateDoc(doc(db, 'users', roleModalUser.id), {
-        role: roleToSave
+        role: roleToSave,
+        ...(roleChangeNotification ? { roleChangeNotification } : {})
       });
 
       setRoleModalUser(null);
@@ -518,11 +545,11 @@ const MisUserManagement = ({ currentUserRole }) => {
       value,
       label,
       dropdown: newAccountType.dropdown,
-      role: 'requestor',
+      role: newAccountType.role,
       options: dropdownOptions.map((option) => ({ ...option })),
       customFields: []
     }]);
-    setNewAccountType({ value: '', label: '', dropdown: '' });
+    setNewAccountType({ value: '', label: '', dropdown: '', role: 'requestor' });
     setSignupOptionsError('');
     setSignupOptionsSuccess('');
   };
@@ -538,6 +565,7 @@ const MisUserManagement = ({ currentUserRole }) => {
     const hasInvalidAccountTypes = accountTypes.some((accountType) => (
       !accountType.value.trim()
       || !accountType.label.trim()
+      || !['requestor', 'faculty'].includes(accountType.role)
       || !['', ...signupDropdowns.map((dropdown) => dropdown.value)].includes(accountType.dropdown || '')
     )) || new Set(accountTypeValues).size !== accountTypeValues.length;
     const hasInvalidDropdownOptions = accountTypes.some((accountType) => {
@@ -591,6 +619,10 @@ const MisUserManagement = ({ currentUserRole }) => {
 
   // Filter users based on search query
   const filteredUsers = usersData.filter((user) => {
+    const isPending = (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending';
+    if (userFilter !== 'unverified' && user.emailVerified === false) return false;
+    if (isPending && (!canViewPendingUsers || userFilter !== 'pending')) return false;
+    if (!isPending && userFilter === 'pending') return false;
     if (isSuperAdmin && userFilter === 'unverified' && user.emailVerified !== false) return false;
     if (isSuperAdmin && userFilter === 'unverified' && unverifiedAgeFilter !== 'all') {
       const createdDate = getCreatedDate(user);
@@ -656,6 +688,17 @@ const MisUserManagement = ({ currentUserRole }) => {
                   {signupDropdowns.map((dropdown) => (
                     <option key={dropdown.value} value={dropdown.value}>{dropdown.label}</option>
                   ))}
+                </select>
+              </label>
+              <label>
+                <span>Default role</span>
+                <select
+                  value={accountType.role}
+                  onChange={(event) => handleUpdateAccountType(index, 'role', event.target.value)}
+                  disabled={isSavingSignupOptions}
+                >
+                  <option value="requestor">Requestor</option>
+                  <option value="faculty">Faculty (pending)</option>
                 </select>
               </label>
               <button
@@ -931,6 +974,17 @@ const MisUserManagement = ({ currentUserRole }) => {
             ))}
           </select>
         </label>
+        <label>
+          <span>Default role</span>
+          <select
+            value={newAccountType.role}
+            onChange={(event) => setNewAccountType((current) => ({ ...current, role: event.target.value }))}
+            disabled={isSavingSignupOptions}
+          >
+            <option value="requestor">Requestor</option>
+            <option value="faculty">Faculty (pending)</option>
+          </select>
+        </label>
         <button
           type="button"
           className="add-signup-value-btn"
@@ -983,7 +1037,7 @@ const MisUserManagement = ({ currentUserRole }) => {
               <span className="pagination-text">
                 {filteredUsers.length === 0
                   ? 'No users to show'
-                  : `Showing all ${filteredUsers.length} users`}
+                  : `Showing all ${filteredUsers.length}${userFilter === 'pending' ? ' pending' : ''} users`}
               </span>
             </div>
           </div>
@@ -998,17 +1052,20 @@ const MisUserManagement = ({ currentUserRole }) => {
                 onChange={(e) => setSearchQuery(e.target.value)}
               />
             </div>
-            {isSuperAdmin && (
-              <select
-                className="user-filter-select"
-                aria-label="Filter users"
-                value={userFilter}
-                onChange={(event) => setUserFilter(event.target.value)}
-              >
-                <option value="all">All users</option>
+            <select
+              className="user-filter-select"
+              aria-label="Filter users"
+              value={userFilter}
+              onChange={(event) => setUserFilter(event.target.value)}
+            >
+              <option value="all">All users</option>
+              {canViewPendingUsers && (
+                <option value="pending">Pending users</option>
+              )}
+              {isSuperAdmin && (
                 <option value="unverified">Unverified users</option>
-              </select>
-            )}
+              )}
+            </select>
             {isSuperAdmin && userFilter === 'unverified' && (
               <select
                 className="user-filter-select"
@@ -1054,7 +1111,11 @@ const MisUserManagement = ({ currentUserRole }) => {
                         <p className="empty-state-subtitle">
                           {isLoading
                             ? 'Fetching the latest users from the database.'
-                            : loadError || (searchQuery ? 'Try adjusting your search filters.' : 'Users will appear here once they are registered.')}
+                            : loadError || (searchQuery
+                              ? 'Try adjusting your search filters.'
+                              : userFilter === 'pending'
+                                ? 'Accounts with a pending role will appear here.'
+                                : 'Users will appear here once they are registered.')}
                         </p>
                       </div>
                     </td>
@@ -1141,82 +1202,88 @@ const MisUserManagement = ({ currentUserRole }) => {
 
       {isSuperAdmin && (
         <section className="signup-options-container" aria-labelledby="signup-options-title">
-          <div className="signup-options-heading">
-            <div>
-              <h2 id="signup-options-title">Signup Account Types</h2>
-              <p>Manage each account type and its signup dropdown values.</p>
-            </div>
-            <button
-              type="button"
-              className="save-signup-options-btn"
-              onClick={handleSaveSignupOptions}
-              disabled={isSavingSignupOptions}
-            >
-              {isSavingSignupOptions ? 'Saving…' : 'Save changes'}
-            </button>
-          </div>
-          {signupOptionsError && <div className="error-banner" role="alert">{signupOptionsError}</div>}
-          {signupOptionsSuccess && <div className="success-banner" role="status">{signupOptionsSuccess}</div>}
-          <section className="signup-option-category">
-            <h3>Signup Dropdowns</h3>
-            <div className="signup-dropdown-list">
-              {signupDropdowns.map((dropdown, index) => (
-                <div className="signup-dropdown-row" key={dropdown.value}>
-                  <label>
-                    <span>Dropdown name</span>
-                    <input
-                      value={dropdown.label}
-                      onChange={(event) => handleUpdateSignupDropdown(index, 'label', event.target.value)}
-                      disabled={isSavingSignupOptions}
-                    />
-                  </label>
-                   <label className="signup-profile-editable-option">
-                     <input
-                       type="checkbox"
-                       checked={dropdown.editableOnProfile !== false}
-                       onChange={(event) => handleUpdateSignupDropdown(
-                         index,
-                         'editableOnProfile',
-                         event.target.checked
-                       )}
-                       disabled={isSavingSignupOptions}
-                     />
-                     <span>Editable on profile</span>
-                   </label>
-                   <button
-                    type="button"
-                    className="remove-signup-option-btn"
-                    onClick={() => handleRemoveSignupDropdown(dropdown)}
-                    disabled={isSavingSignupOptions}
-                    aria-label={`Remove ${dropdown.label} signup dropdown`}
-                  >
-                    Remove
-                  </button>
-                </div>
-              ))}
-            </div>
-            <div className="add-signup-option-row">
-              <input
-                aria-label="New signup dropdown name"
-                placeholder="New dropdown name (e.g., Course / Program)"
-                value={newSignupDropdown}
-                onChange={(event) => setNewSignupDropdown(event.target.value)}
-                disabled={isSavingSignupOptions}
-              />
+          <div className="signup-options-header-container">
+            <div className="signup-options-heading">
+              <div>
+                <h2 id="signup-options-title">Signup Account Types</h2>
+                <p>Manage each account type and its signup dropdown values.</p>
+                {signupOptionsSuccess && (
+                  <div className="success-banner" role="status">{signupOptionsSuccess}</div>
+                )}
+              </div>
               <button
                 type="button"
-                className="add-signup-value-btn"
-                onClick={handleAddSignupDropdown}
-                disabled={isSavingSignupOptions || !newSignupDropdown.trim()}
+                className="save-signup-options-btn"
+                onClick={handleSaveSignupOptions}
+                disabled={isSavingSignupOptions}
               >
-                Add Dropdown
+                {isSavingSignupOptions ? 'Saving…' : 'Save changes'}
               </button>
             </div>
-          </section>
-          <section className="signup-option-category">
-            <h3>Account Types</h3>
-            {renderAccountTypes()}
-          </section>
+          </div>
+          <div className="signup-options-content">
+            {signupOptionsError && <div className="error-banner" role="alert">{signupOptionsError}</div>}
+            <section className="signup-option-category">
+              <h3>Signup Dropdowns</h3>
+              <div className="signup-dropdown-list">
+                {signupDropdowns.map((dropdown, index) => (
+                  <div className="signup-dropdown-row" key={dropdown.value}>
+                    <label>
+                      <span>Dropdown name</span>
+                      <input
+                        value={dropdown.label}
+                        onChange={(event) => handleUpdateSignupDropdown(index, 'label', event.target.value)}
+                        disabled={isSavingSignupOptions}
+                      />
+                    </label>
+                    <label className="signup-profile-editable-option">
+                      <input
+                        type="checkbox"
+                        checked={dropdown.editableOnProfile !== false}
+                        onChange={(event) => handleUpdateSignupDropdown(
+                          index,
+                          'editableOnProfile',
+                          event.target.checked
+                        )}
+                        disabled={isSavingSignupOptions}
+                      />
+                      <span>Editable on profile</span>
+                    </label>
+                    <button
+                      type="button"
+                      className="remove-signup-option-btn"
+                      onClick={() => handleRemoveSignupDropdown(dropdown)}
+                      disabled={isSavingSignupOptions}
+                      aria-label={`Remove ${dropdown.label} signup dropdown`}
+                    >
+                      Remove
+                    </button>
+                  </div>
+                ))}
+              </div>
+              <div className="add-signup-option-row">
+                <input
+                  aria-label="New signup dropdown name"
+                  placeholder="New dropdown name (e.g., Course / Program)"
+                  value={newSignupDropdown}
+                  onChange={(event) => setNewSignupDropdown(event.target.value)}
+                  disabled={isSavingSignupOptions}
+                />
+                <button
+                  type="button"
+                  className="add-signup-value-btn"
+                  onClick={handleAddSignupDropdown}
+                  disabled={isSavingSignupOptions || !newSignupDropdown.trim()}
+                >
+                  Add Dropdown
+                </button>
+              </div>
+            </section>
+            <section className="signup-option-category">
+              <h3>Account Types</h3>
+              {renderAccountTypes()}
+            </section>
+          </div>
         </section>
       )}
 
@@ -1234,7 +1301,7 @@ const MisUserManagement = ({ currentUserRole }) => {
                 onChange={(e) => setSelectedRole(e.target.value)}
                 className="role-select"
               >
-                {ROLE_OPTIONS.map((opt) => (
+                {ROLE_OPTIONS.filter((option) => canAssignPendingRole || option.value !== 'pending').map((opt) => (
                   <option key={opt.value} value={opt.value}>
                     {opt.label}
                   </option>

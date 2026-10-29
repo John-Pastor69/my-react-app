@@ -169,8 +169,8 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
   </section>
 );
 
-const DashboardKpis = ({ metrics, pendingApprovals, isAdminDashboard }) => (
-  <section className="dashboard-kpis" aria-label="Key analytics">
+const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboard }) => (
+  <section className="dashboard-kpis admin-dashboard-kpis" aria-label="Key analytics">
     <article className="kpi-card kpi-primary">
       <span className="kpi-label">Reservations in range</span>
       <strong>{metrics.total}</strong>
@@ -193,17 +193,44 @@ const DashboardKpis = ({ metrics, pendingApprovals, isAdminDashboard }) => (
         <span className="kpi-footnote">Units available in current inventory</span>
       </article>
     )}
+    {isAdminDashboard && (
+      <Link className="kpi-card pending-users-kpi" to="/user?filter=pending">
+        <span className="kpi-label">Pending users</span>
+        <strong>{pendingUsers}</strong>
+        <span className="kpi-footnote">View accounts with pending roles</span>
+      </Link>
+    )}
   </section>
 );
 
-const Dashboard = ({ currentUserRole }) => {
+const PendingAccountDashboard = () => (
+  <div className="mis-dashboard-content pending-account-dashboard">
+    <header className="dashboard-header">
+      <div className="dashboard-title">
+        <span className="dashboard-eyebrow">Account status</span>
+        <h1>Account review</h1>
+      </div>
+    </header>
+    <section className="dashboard-panel pending-review-panel" aria-live="polite">
+      <div className="pending-review-indicator" aria-hidden="true">!</div>
+      <div>
+        <h2>Account review in progress</h2>
+        <p>Your current account is being reviewed. Kindly wait while we process and verify your account. Thank you!</p>
+      </div>
+    </section>
+  </div>
+);
+
+const DashboardContent = ({ currentUserRole }) => {
   const [searchParams, setSearchParams] = useSearchParams();
   const dashboardSearchQuery = searchParams.get('search') || '';
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [equipmentData, setEquipmentData] = useState([]);
+  const [utilitiesData, setUtilitiesData] = useState([]);
   const [facilitiesData, setFacilitiesData] = useState([]);
   const [usersData, setUsersData] = useState([]);
+  const [unavailableDatesData, setUnavailableDatesData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [upcomingDays, setUpcomingDays] = useState('7');
   const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
@@ -254,6 +281,12 @@ const Dashboard = ({ currentUserRole }) => {
           ...document.data()
         })));
       }, (error) => console.error('Failed to load equipment:', error)),
+      onSnapshot(collection(db, 'utilities'), (snapshot) => {
+        setUtilitiesData(snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data()
+        })));
+      }, (error) => console.error('Failed to load utilities:', error)),
       onSnapshot(collection(db, 'facilities'), (snapshot) => {
         setFacilitiesData(snapshot.docs.map((document) => ({
           id: document.id,
@@ -265,7 +298,13 @@ const Dashboard = ({ currentUserRole }) => {
           id: document.id,
           ...document.data()
         })));
-      }, (error) => console.error('Failed to load users:', error))
+      }, (error) => console.error('Failed to load users:', error)),
+      onSnapshot(collection(db, 'unavailableDates'), (snapshot) => {
+        setUnavailableDatesData(snapshot.docs.map((document) => ({
+          id: document.id,
+          ...document.data()
+        })));
+      }, (error) => console.error('Failed to load unavailable dates:', error))
     ];
 
     return () => {
@@ -293,7 +332,13 @@ const Dashboard = ({ currentUserRole }) => {
     && !isAdminDashboard;
   const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
   const visibleUserCount = usersData.filter(
-    (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') !== 'super admin'
+    (user) => {
+      const role = (user.role || '').toLowerCase().trim().replace(/_/g, ' ');
+      return role !== 'super admin';
+    }
+  ).length;
+  const pendingUserCount = usersData.filter(
+    (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending'
   ).length;
 
   useEffect(() => {
@@ -357,7 +402,8 @@ const Dashboard = ({ currentUserRole }) => {
     const normalizedPhoneQuery = query.replace(/\D/g, '');
     return usersData
       .filter((user) => {
-        if ((user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'super admin') return false;
+        const role = (user.role || '').toLowerCase().trim().replace(/_/g, ' ');
+        if (role === 'super admin' || (!isAdminDashboard && role === 'pending')) return false;
         const name = (user.name || '').toLowerCase();
         const email = (user.email || '').toLowerCase();
         const phone = String(user.phone || '');
@@ -365,7 +411,7 @@ const Dashboard = ({ currentUserRole }) => {
           || email.includes(query)
           || (normalizedPhoneQuery && phone.replace(/\D/g, '').includes(normalizedPhoneQuery));
       });
-  }, [usersData, reservationSearchFilters.query]);
+  }, [usersData, reservationSearchFilters.query, isAdminDashboard]);
 
   const todayKey = toDateInputValue(new Date());
   const today = parseDate(todayKey);
@@ -436,6 +482,10 @@ const Dashboard = ({ currentUserRole }) => {
   const equipmentById = useMemo(
     () => new Map(equipmentData.map((equipment) => [equipment.id, equipment])),
     [equipmentData]
+  );
+  const utilitiesById = useMemo(
+    () => new Map(utilitiesData.map((utility) => [utility.id, utility])),
+    [utilitiesData]
   );
   const facilitiesById = useMemo(
     () => new Map(facilitiesData.map((facility) => [facility.id, facility])),
@@ -606,6 +656,7 @@ const Dashboard = ({ currentUserRole }) => {
       });
 
     const lastBorrowedByEquipment = new Map();
+    const lastReservedByUtility = new Map();
     filteredReservations
       .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
       .forEach((reservation) => {
@@ -623,9 +674,23 @@ const Dashboard = ({ currentUserRole }) => {
             });
           }
         });
+        (Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : [])
+          .forEach((utilityId) => {
+            const quantity = Number(reservation.selectedUtilityUnits?.[utilityId] ?? 1);
+            if (!Number.isFinite(quantity) || quantity <= 0) return;
+            const existing = lastReservedByUtility.get(utilityId);
+            if (!existing || reservationDate > existing.date) {
+              lastReservedByUtility.set(utilityId, {
+                date: reservationDate,
+                quantity,
+                borrower: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+                startTime: reservation.startTime || ''
+              });
+            }
+          });
       });
 
-    return { recentReservations, lastBorrowedByEquipment };
+    return { recentReservations, lastBorrowedByEquipment, lastReservedByUtility };
   }, [filteredReservations, facilitiesById, equipmentById]);
 
   const usageByEquipment = useMemo(() => {
@@ -648,6 +713,29 @@ const Dashboard = ({ currentUserRole }) => {
       .sort((first, second) => second.quantity - first.quantity)
       .slice(0, 5);
   }, [filteredReservations, equipmentById]);
+
+  const utilityUsage = useMemo(() => {
+    const totals = new Map();
+    filteredReservations
+      .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
+      .forEach((reservation) => {
+        (Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : [])
+          .forEach((utilityId) => {
+            const quantity = Number(reservation.selectedUtilityUnits?.[utilityId] ?? 1);
+            if (!Number.isFinite(quantity) || quantity <= 0) return;
+            totals.set(utilityId, (totals.get(utilityId) || 0) + quantity);
+          });
+      });
+
+    return [...totals.entries()]
+      .map(([id, quantity]) => ({
+        id,
+        quantity,
+        name: utilitiesById.get(id)?.name || 'Utility'
+      }))
+      .sort((first, second) => second.quantity - first.quantity)
+      .slice(0, 5);
+  }, [filteredReservations, utilitiesById]);
 
   const facilityUsage = useMemo(() => {
     const totals = new Map();
@@ -698,7 +786,33 @@ const Dashboard = ({ currentUserRole }) => {
   const facilitiesUnderMaintenance = facilitiesData.filter((facility) => facility.status === 'Maintenance').length;
   const facilitiesUnavailable = facilitiesData.filter((facility) => facility.status === 'Unavailable').length;
   const resourceAlerts = useMemo(() => {
-    const alerts = equipmentInventory
+    const alerts = [];
+    const today = parseDate(todayKey);
+    if (today) {
+      const monthAhead = new Date(today);
+      monthAhead.setDate(monthAhead.getDate() + 30);
+      monthAhead.setHours(23, 59, 59, 999);
+      unavailableDatesData
+        .map((unavailableDate) => ({
+          ...unavailableDate,
+          dateValue: parseDate(unavailableDate.date || unavailableDate.id)
+        }))
+        .filter((unavailableDate) => (
+          unavailableDate.dateValue
+          && unavailableDate.dateValue >= today
+          && unavailableDate.dateValue <= monthAhead
+        ))
+        .sort((first, second) => first.dateValue - second.dateValue)
+        .slice(0, 3)
+        .forEach((unavailableDate) => alerts.push({
+          key: `unavailable-date-${unavailableDate.id}`,
+          title: formatDate(unavailableDate.dateValue),
+          detail: `Unavailable · ${unavailableDate.remark?.trim() || 'No reason provided'}`,
+          link: '/calendar'
+        }));
+    }
+
+    alerts.push(...equipmentInventory
       .filter((equipment) => (
         equipment.total > 0
         && equipment.available <= Math.ceil(equipment.total * 0.2)
@@ -708,7 +822,7 @@ const Dashboard = ({ currentUserRole }) => {
         title: equipment.name || 'Unnamed equipment',
         detail: `${equipment.available} of ${equipment.total} units available`,
         link: '/equipment'
-      }));
+      })));
 
     facilitiesData
       .filter((facility) => ['maintenance', 'unavailable'].includes((facility.status || '').toLowerCase()))
@@ -719,11 +833,11 @@ const Dashboard = ({ currentUserRole }) => {
         link: '/facility'
       }));
 
-    const today = parseDate(todayKey);
     if (today) {
       const weekAhead = new Date(today);
       weekAhead.setDate(weekAhead.getDate() + 7);
       weekAhead.setHours(23, 59, 59, 999);
+
       const reservationGroups = new Map();
 
       reservationsData
@@ -765,9 +879,10 @@ const Dashboard = ({ currentUserRole }) => {
     }
 
     return alerts.slice(0, 8);
-  }, [equipmentInventory, facilitiesData, reservationsData, facilitiesById, todayKey]);
+  }, [equipmentInventory, facilitiesData, reservationsData, unavailableDatesData, facilitiesById, todayKey]);
   const chartMaximum = Math.max(1, ...trendData.map((bucket) => bucket.count));
   const equipmentMaximum = Math.max(1, ...usageByEquipment.map((equipment) => equipment.quantity));
+  const utilityMaximum = Math.max(1, ...utilityUsage.map((utility) => utility.quantity));
   const facilityMaximum = Math.max(1, ...facilityUsage.map((facility) => facility.count));
   const formatTime = (time) => time || 'Time not set';
 
@@ -802,6 +917,7 @@ const Dashboard = ({ currentUserRole }) => {
           <DashboardKpis
             metrics={metrics}
             pendingApprovals={pendingApprovals}
+            pendingUsers={pendingUserCount}
             isAdminDashboard={isAdminDashboard}
           />
         )}
@@ -915,7 +1031,7 @@ const Dashboard = ({ currentUserRole }) => {
             <div className="panel-heading">
               <div>
                 <h2>Resource alerts</h2>
-                <p>Low equipment stock and facility status.</p>
+                <p>Low stock, facility status, and upcoming unavailable dates.</p>
               </div>
             </div>
             {resourceAlerts.length ? (
@@ -925,7 +1041,7 @@ const Dashboard = ({ currentUserRole }) => {
                     <span className="resource-alert-icon">!</span>
                     <div>
                       <strong>{alert.title}</strong>
-                      <span>{alert.detail}</span>
+                      <span title={alert.detail}>{alert.detail}</span>
                     </div>
                     <Link to={alert.link}>View</Link>
                   </div>
@@ -1230,12 +1346,12 @@ const Dashboard = ({ currentUserRole }) => {
             )}
           </section>
 
-          {isAdminDashboard && (
+          {hasAnalyticsDashboard && (
           <section className="dashboard-insights">
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Most requested equipment</h2>
+                  <h2>Most Requested Equipment</h2>
                   <p>Approved equipment units in the selected period.</p>
                 </div>
               </div>
@@ -1260,7 +1376,32 @@ const Dashboard = ({ currentUserRole }) => {
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Most booked facilities</h2>
+                  <h2>Most Requested Utilities</h2>
+                  <p>Approved utility units in the selected period.</p>
+                </div>
+              </div>
+              {utilityUsage.length ? (
+                <div className="ranking-list">
+                  {utilityUsage.map((utility, index) => (
+                    <div className="ranking-row" key={utility.id}>
+                      <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
+                      <span className="ranking-name" title={utility.name}>{utility.name}</span>
+                      <div className="ranking-track utility-track">
+                        <span style={{ width: `${utility.quantity / utilityMaximum * 100}%` }} />
+                      </div>
+                      <strong>{utility.quantity}</strong>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="panel-empty">No approved utility requests match these filters.</p>
+              )}
+            </article>
+
+            <article className="dashboard-panel ranking-panel">
+              <div className="panel-heading">
+                <div>
+                  <h2>Most Requested Facilities</h2>
                   <p>Approved facility reservations in the selected period.</p>
                 </div>
               </div>
@@ -1289,7 +1430,7 @@ const Dashboard = ({ currentUserRole }) => {
             <article className="dashboard-panel equipment-history-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Latest approved equipment reservations</h2>
+                  <h2>Recent Approved Equipment</h2>
                   <p>Most recent approved booking for each equipment item in range.</p>
                 </div>
               </div>
@@ -1341,6 +1482,62 @@ const Dashboard = ({ currentUserRole }) => {
             </article>
             )}
 
+            {hasAnalyticsDashboard && (
+              <article className="dashboard-panel equipment-history-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Recent Approved Utilities</h2>
+                    <p>Most recent approved booking for each utility in range.</p>
+                  </div>
+                </div>
+                {utilitiesData.length ? (
+                  <div className="equipment-history-list">
+                    {utilitiesData
+                      .map((utility) => ({
+                        ...utility,
+                        lastReservation: activity.lastReservedByUtility.get(utility.id)
+                      }))
+                      .sort((first, second) => {
+                        const firstTime = first.lastReservation?.date.getTime() || 0;
+                        const secondTime = second.lastReservation?.date.getTime() || 0;
+                        return secondTime - firstTime;
+                      })
+                      .slice(0, 6)
+                      .map((utility) => (
+                        <div className="equipment-history-row" key={utility.id}>
+                          <div className="equipment-initial">{(utility.name || 'U').slice(0, 1).toUpperCase()}</div>
+                          <div className="equipment-history-name">
+                            <strong>{utility.name || 'Unnamed utility'}</strong>
+                            <span className="equipment-history-sku">{utility.sku || 'No SKU'}</span>
+                          </div>
+                          {utility.lastReservation ? (
+                            <div className="equipment-history-borrow">
+                              <strong>{utility.lastReservation.borrower}</strong>
+                              <div className="equipment-history-meta">
+                                <span>
+                                  {formatDate(utility.lastReservation.date)}
+                                  {utility.lastReservation.startTime ? ` · ${formatTime(utility.lastReservation.startTime)}` : ''}
+                                </span>
+                                <span className="equipment-quantity">
+                                  {utility.lastReservation.quantity} unit{utility.lastReservation.quantity === 1 ? '' : 's'}
+                                </span>
+                              </div>
+                            </div>
+                          ) : (
+                            <div className="equipment-history-borrow no-history">
+                              <strong>No recent booking</strong>
+                              <span>Nothing approved in this date range</span>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No utilities have been added to the inventory.</p>
+                )}
+              </article>
+            )}
+
             <article className="dashboard-panel recent-activity-panel">
               <div className="panel-heading">
                 <div>
@@ -1350,36 +1547,47 @@ const Dashboard = ({ currentUserRole }) => {
               </div>
               {activity.recentReservations.length ? (
                 <div className="recent-reservations-list">
-                  {activity.recentReservations.map((reservation) => (
-                    <button
-                      className="recent-reservation"
-                      key={reservation.id}
-                      type="button"
-                      onClick={() => setSelectedReservation({ data: reservation, source: 'active' })}
-                    >
-                      <div className={`reservation-status-dot ${getStatusClass(reservation.status)}`} />
-                      <div className="recent-reservation-main">
-                        <div className="recent-reservation-title">
-                          <strong>{reservation.eventName || 'Untitled reservation'}</strong>
-                          <span className={`reservation-status ${getStatusClass(reservation.status)}`}>
-                            {reservation.status || 'Pending'}
+                  {activity.recentReservations.map((reservation) => {
+                    const participantCount = reservation.specificRoomParticipants || reservation.expectedParticipants;
+                    const roomAndParticipants = [
+                      reservation.specificRoom,
+                      participantCount ? `${participantCount} participants` : ''
+                    ].filter(Boolean).join(' · ');
+
+                    return (
+                      <button
+                        className="recent-reservation"
+                        key={reservation.id}
+                        type="button"
+                        onClick={() => setSelectedReservation({ data: reservation, source: 'active' })}
+                      >
+                        <div className={`reservation-status-dot ${getStatusClass(reservation.status)}`} />
+                        <div className="recent-reservation-main">
+                          <div className="recent-reservation-title">
+                            <strong>{reservation.eventName || 'Untitled reservation'}</strong>
+                            <span className={`reservation-status ${getStatusClass(reservation.status)}`}>
+                              {reservation.status || 'Pending'}
+                            </span>
+                          </div>
+                          <span className="recent-reservation-requestor">
+                            {reservation.fullName || reservation.userEmail || 'Unknown requestor'}
                           </span>
+                          <span className="recent-reservation-meta">
+                            {reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}
+                            {' · '}{formatTime(reservation.startTime)}
+                          </span>
+                          {(reservation.facilityNames.length > 0 || reservation.equipmentNames.length > 0) && (
+                            <span className="recent-reservation-resources">
+                              {[...reservation.facilityNames, ...reservation.equipmentNames].slice(0, 2).join(' · ')}
+                            </span>
+                          )}
+                          {roomAndParticipants && (
+                            <span className="recent-reservation-resources">{roomAndParticipants}</span>
+                          )}
                         </div>
-                        <span className="recent-reservation-requestor">
-                          {reservation.fullName || reservation.userEmail || 'Unknown requestor'}
-                        </span>
-                        <span className="recent-reservation-meta">
-                          {reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}
-                          {' · '}{formatTime(reservation.startTime)}
-                        </span>
-                        {(reservation.facilityNames.length > 0 || reservation.equipmentNames.length > 0) && (
-                          <span className="recent-reservation-resources">
-                            {[...reservation.facilityNames, ...reservation.equipmentNames].slice(0, 2).join(' · ')}
-                          </span>
-                        )}
-                      </div>
-                    </button>
-                  ))}
+                      </button>
+                    );
+                  })}
                 </div>
               ) : (
                 <p className="panel-empty">No reservations match this date, time, and status selection.</p>
@@ -1437,6 +1645,13 @@ const Dashboard = ({ currentUserRole }) => {
       )}
     </div>
   );
+};
+
+const Dashboard = ({ currentUserRole }) => {
+  const normalizedRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+  return normalizedRole === 'pending'
+    ? <PendingAccountDashboard />
+    : <DashboardContent currentUserRole={currentUserRole} />;
 };
 
 export default Dashboard;

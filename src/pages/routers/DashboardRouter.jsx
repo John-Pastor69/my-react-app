@@ -15,6 +15,7 @@ const DashboardRouter = ({ currentUserRole }) => {
     'mis': <Dashboard key={dashboardSearchQuery} currentUserRole={currentUserRole} />,
     'mis admin': <Dashboard key={dashboardSearchQuery} currentUserRole={currentUserRole} />,
     'super admin': <Dashboard key={dashboardSearchQuery} currentUserRole={currentUserRole} />,
+    'pending': <Dashboard key={dashboardSearchQuery} currentUserRole={currentUserRole} />,
     'academic head': <Dashboard key={dashboardSearchQuery} currentUserRole={currentUserRole} />,
     'school admin': <Dashboard key={dashboardSearchQuery} currentUserRole={currentUserRole} />,
 

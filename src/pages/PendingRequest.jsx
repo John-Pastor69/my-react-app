@@ -5,6 +5,7 @@ import { db, auth } from '../Firebase';
 import { sendReservationEmail } from '../services/emailService'; 
 import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import '../styles/PendingRequest.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -48,6 +49,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
   const [showFacilityParticipants, setShowFacilityParticipants] = useState(false);
+  const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
   
   // States for processing & modals
   const [remarks, setRemarks] = useState('');
@@ -58,6 +60,12 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const [actionRemarkError, setActionRemarkError] = useState('');
   
   const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => onSnapshot(
+    doc(db, 'app_settings', 'signupOptions'),
+    (snapshot) => setSignupConfiguration(getSignupConfiguration(snapshot.data() || {})),
+    (error) => console.error('Failed to load signup options for reservation details:', error)
+  ), []);
 
   // State for the currently logged-in user (Approver)
   const [approver, setApprover] = useState({
@@ -261,8 +269,8 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
     : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
   const eventTime = renderDailyTimeDisplay('details');
   const summaryTime = renderDailyTimeDisplay('summary');
-  const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
-  const facilityParticipantBreakdown = (currentData.facilities || [])
+  const specificRoomParticipantCount = Number(currentData.specificRoomParticipants) || 0;
+  const participantBreakdown = (currentData.facilities || [])
     .map((id) => ({
       id,
       name: facilitiesMap[id]?.name || id,
@@ -272,6 +280,21 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
       )
     }))
     .filter(({ participants }) => Number.isInteger(participants) && participants > 0);
+  if (currentData.specificRoom?.trim() && specificRoomParticipantCount > 0) {
+    participantBreakdown.push({
+      id: 'specific-room',
+      name: currentData.specificRoom,
+      participants: specificRoomParticipantCount
+    });
+  }
+  const facilityParticipantTotal = participantBreakdown
+    .filter(({ id }) => id !== 'specific-room')
+    .reduce((total, { participants }) => total + participants, 0);
+  const expectedParticipantTotal = Math.max(
+    Number(currentData.expectedParticipants) || 0,
+    facilityParticipantTotal + specificRoomParticipantCount
+  );
+  const expectedAttendees = expectedParticipantTotal ? `${expectedParticipantTotal} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
   
   const facilityNames = (currentData.facilities || []).map(id => facilitiesMap[id]?.name || id);
@@ -317,6 +340,11 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const requestorTypeDisplay = requestorTypes.length > 0
     ? requestorTypes.join(', ')
     : 'N/A';
+  const requestorDynamicAttributes = getReservationDynamicAttributes(
+    currentData,
+    'requestor',
+    signupConfiguration
+  );
   const contactNumber = currentData.contactNumber || 'N/A';
   const email = currentData.emailAddress || currentData.userEmail || 'N/A';
   
@@ -329,6 +357,11 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const endorserName = currentData.endorserName ? formatName(currentData.endorserName) : 'N/A';
   const endorserDesignation = currentData.endorserDesignation || 'N/A';
   const endorserEmail = currentData.endorserEmail || 'N/A';
+  const endorserDynamicAttributes = getReservationDynamicAttributes(
+    currentData,
+    'endorser',
+    signupConfiguration
+  );
   const endorsedBy = currentData.endorserName ? `${endorserName} (${currentData.endorserDesignation})` : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
@@ -569,7 +602,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                 <label>EXPECTED ATTENDEES</label>
                 <div className="val attendees-total">
                   <span>{expectedAttendees}</span>
-                  {facilityParticipantBreakdown.length > 0 && (
+                  {participantBreakdown.length > 0 && (
                     <button
                       type="button"
                       className="participant-breakdown-toggle"
@@ -580,9 +613,9 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                     </button>
                   )}
                 </div>
-                {showFacilityParticipants && facilityParticipantBreakdown.length > 0 && (
+                {showFacilityParticipants && participantBreakdown.length > 0 && (
                   <div className="facility-participant-breakdown">
-                    {facilityParticipantBreakdown.map(({ id, name, participants }) => (
+                    {participantBreakdown.map(({ id, name, participants }) => (
                       <div className="facility-participant-row" key={id}>
                         <span>{name}</span>
                         <strong>{participants} attendees</strong>
@@ -653,6 +686,12 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                 <label>EMAIL ADDRESS</label>
                 <div className="val">{email}</div>
               </div>
+              {requestorDynamicAttributes.map(({ key, label, value }) => (
+                <div className="full-width-field" key={`requestor-${key}`}>
+                  <label>{label.toUpperCase()}</label>
+                  <div className="val word-break">{value}</div>
+                </div>
+              ))}
               <div>
                 <label>DATE SUBMITTED</label>
                 <div className="val">{dateSubmitted}</div>
@@ -680,6 +719,12 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                   <label>CONTACT EMAIL</label>
                   <div className="val">{endorserEmail}</div>
                 </div>
+                {endorserDynamicAttributes.map(({ key, label, value }) => (
+                  <div className="full-width-field" key={`endorser-${key}`}>
+                    <label>{label.toUpperCase()}</label>
+                    <div className="val word-break">{value}</div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

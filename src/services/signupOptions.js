@@ -121,7 +121,10 @@ export const normalizeAccountTypes = (
   departments = DEFAULT_DEPARTMENT_OPTIONS
 ) => accountTypes.map((accountType) => ({
   ...accountType,
-  role: accountType.role || (accountType.value === 'Faculty' ? 'endorser' : 'requestor'),
+  role: ['faculty', 'endorser'].includes(String(accountType.role || '').toLowerCase())
+    || (!accountType.role && accountType.value === 'Faculty')
+    ? 'faculty'
+    : 'requestor',
   options: Array.isArray(accountType.options)
     ? accountType.options.map((option) => ({ ...option }))
     : getSignupDropdownOptions(accountType.dropdown, courses, departments),
@@ -139,5 +142,78 @@ export const DEFAULT_ACCOUNT_TYPES = normalizeAccountTypes([
   { value: 'Student', label: 'Student', dropdown: 'courses', role: 'requestor' },
   { value: 'Student Leader', label: 'Student Leader', dropdown: 'courses', role: 'requestor' },
   { value: 'Admin Staff', label: 'Admin Staff', dropdown: 'departments', role: 'requestor' },
-  { value: 'Faculty', label: 'Faculty', dropdown: 'departments', role: 'endorser' }
+  { value: 'Faculty', label: 'Faculty', dropdown: 'departments', role: 'faculty' }
 ]);
+
+export const getSignupConfiguration = (data = {}) => {
+  const courses = Array.isArray(data.courses) ? data.courses : DEFAULT_COURSE_OPTIONS;
+  const departments = Array.isArray(data.departments) ? data.departments : DEFAULT_DEPARTMENT_OPTIONS;
+  const accountTypes = normalizeAccountTypes(
+    Array.isArray(data.accountTypes) ? data.accountTypes : DEFAULT_ACCOUNT_TYPES,
+    courses,
+    departments
+  );
+  return {
+    accountTypes,
+    dropdownTypes: normalizeSignupDropdowns(data.dropdownTypes, accountTypes)
+  };
+};
+
+export const getReservationDynamicAttributes = (reservation, person, configuration) => {
+  const isEndorser = person === 'endorser';
+  const accountTypeValue = isEndorser
+    ? reservation.endorserAccountType
+    : reservation.requestorTypes?.[0];
+  const accountType = configuration.accountTypes.find(({ value }) => value === accountTypeValue);
+  if (!accountType) return [];
+
+  const attributes = isEndorser
+    ? reservation.endorserAttributes || {}
+    : reservation.requestorAttributes || {};
+  const entries = [];
+
+  if (accountType.dropdown) {
+    const key = `dropdown:${accountType.dropdown}`;
+    const rawValue = attributes[key]
+      ?? (reservation.signupDropdown?.id === accountType.dropdown
+        ? reservation.signupDropdown.value
+        : accountType.dropdown === 'courses'
+          ? reservation.course || ''
+          : accountType.dropdown === 'departments'
+            ? reservation.department || ''
+            : '');
+    if (rawValue) {
+      const option = (accountType.options || []).find(({ value }) => value === rawValue);
+      const dropdown = configuration.dropdownTypes.find(({ value }) => value === accountType.dropdown);
+      entries.push({
+        key,
+        label: dropdown?.label || accountType.dropdown,
+        value: option?.label || rawValue
+      });
+    }
+  }
+
+  (accountType.customFields || []).forEach((field) => {
+    const value = attributes[`field:${field.id}`];
+    if (value !== undefined && value !== null && String(value).trim()) {
+      entries.push({
+        key: `field:${field.id}`,
+        label: field.label,
+        value: String(value)
+      });
+    }
+  });
+
+  if (!isEndorser
+    && accountType.dropdown === 'courses'
+    && reservation.studentNumber
+    && String(reservation.studentNumber).trim()) {
+    entries.push({
+      key: 'studentNumber',
+      label: 'Student Number',
+      value: String(reservation.studentNumber)
+    });
+  }
+
+  return entries;
+};

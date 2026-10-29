@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import '../styles/ReservationDetails.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -51,9 +52,16 @@ const ReservationDetails = ({
   const [requestorRole, setRequestorRole] = useState('requestor');
   const [expandedTimeGroups, setExpandedTimeGroups] = useState({});
   const [showFacilityParticipants, setShowFacilityParticipants] = useState(false);
+  const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
 
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserRole, setCurrentUserRole] = useState('');
+
+  useEffect(() => onSnapshot(
+    doc(db, 'app_settings', 'signupOptions'),
+    (snapshot) => setSignupConfiguration(getSignupConfiguration(snapshot.data() || {})),
+    (error) => console.error('Failed to load signup options for reservation details:', error)
+  ), []);
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
@@ -237,8 +245,8 @@ const ReservationDetails = ({
   };
   const eventTimeDisplay = renderDailyTimeDisplay('details');
   const summaryTimeDisplay = renderDailyTimeDisplay('summary');
-  const expectedAttendees = currentData.expectedParticipants ? `${currentData.expectedParticipants} attendees` : 'N/A';
-  const facilityParticipantBreakdown = (currentData.facilities || [])
+  const specificRoomParticipantCount = Number(currentData.specificRoomParticipants) || 0;
+  const participantBreakdown = (currentData.facilities || [])
     .map((id) => ({
       id,
       name: facilitiesMap[id]?.name || id,
@@ -248,6 +256,21 @@ const ReservationDetails = ({
       )
     }))
     .filter(({ participants }) => Number.isInteger(participants) && participants > 0);
+  if (currentData.specificRoom?.trim() && specificRoomParticipantCount > 0) {
+    participantBreakdown.push({
+      id: 'specific-room',
+      name: currentData.specificRoom,
+      participants: specificRoomParticipantCount
+    });
+  }
+  const facilityParticipantTotal = participantBreakdown
+    .filter(({ id }) => id !== 'specific-room')
+    .reduce((total, { participants }) => total + participants, 0);
+  const expectedParticipantTotal = Math.max(
+    Number(currentData.expectedParticipants) || 0,
+    facilityParticipantTotal + specificRoomParticipantCount
+  );
+  const expectedAttendees = expectedParticipantTotal ? `${expectedParticipantTotal} attendees` : 'N/A';
   const description = currentData.purpose || 'No description provided.';
   
   const facilityNames = (currentData.facilities || []).map(id => facilitiesMap[id]?.name || id);
@@ -293,6 +316,11 @@ const ReservationDetails = ({
   const requestorTypeDisplay = requestorTypes.length > 0
     ? requestorTypes.join(', ')
     : 'None selected';
+  const requestorDynamicAttributes = getReservationDynamicAttributes(
+    currentData,
+    'requestor',
+    signupConfiguration
+  );
   const contactNumber = currentData.contactNumber || 'N/A';
   const email = currentData.emailAddress || currentData.userEmail || 'N/A';
   
@@ -305,6 +333,11 @@ const ReservationDetails = ({
   const endorserName = currentData.endorserName ? formatName(currentData.endorserName) : 'N/A';
   const endorserDesignation = currentData.endorserDesignation || 'N/A';
   const endorserEmail = currentData.endorserEmail || 'N/A';
+  const endorserDynamicAttributes = getReservationDynamicAttributes(
+    currentData,
+    'endorser',
+    signupConfiguration
+  );
   const endorsedBy = currentData.endorserName ? `${endorserName} (${currentData.endorserDesignation})` : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
@@ -487,6 +520,12 @@ const ReservationDetails = ({
     drawTwoColRow('Event Name', eventName, 'Event Type', eventType);
     drawTwoColRow('Event Date', eventDate, 'Time', eventTime.replace('–', '-'));
     drawTwoColRow('Expected Attendees', expectedAttendees, '', '');
+    if (participantBreakdown.length > 0) {
+      drawFullRow(
+        'Participant Breakdown',
+        participantBreakdown.map(({ name, participants }) => `${name}: ${participants} attendees`).join('; ')
+      );
+    }
     drawFullRow('Event Description / Purpose', description);
     y += 4;
 
@@ -502,6 +541,7 @@ const ReservationDetails = ({
     drawSectionHeader('Requestor Information');
     drawTwoColRow('Full Name', requestorName, 'Contact Number', contactNumber);
     drawFullRow('Requestor Type', requestorTypeDisplay);
+    requestorDynamicAttributes.forEach(({ label, value }) => drawFullRow(label, value));
     drawTwoColRow('Email Address', email, 'Date Submitted', dateSubmitted);
     y += 4;
 
@@ -510,6 +550,7 @@ const ReservationDetails = ({
       drawSectionHeader('Endorser Information');
       drawTwoColRow("Endorser's Full Name", endorserName, 'Designation', endorserDesignation);
       drawFullRow('Contact Email', endorserEmail);
+      endorserDynamicAttributes.forEach(({ label, value }) => drawFullRow(label, value));
       y += 4;
     }
 
@@ -580,7 +621,7 @@ const ReservationDetails = ({
                 <label>EXPECTED ATTENDEES</label>
                 <div className="val attendees-total">
                   <span>{expectedAttendees}</span>
-                  {facilityParticipantBreakdown.length > 0 && (
+                  {participantBreakdown.length > 0 && (
                     <button
                       type="button"
                       className="participant-breakdown-toggle"
@@ -591,9 +632,9 @@ const ReservationDetails = ({
                     </button>
                   )}
                 </div>
-                {showFacilityParticipants && facilityParticipantBreakdown.length > 0 && (
+                {showFacilityParticipants && participantBreakdown.length > 0 && (
                   <div className="facility-participant-breakdown">
-                    {facilityParticipantBreakdown.map(({ id, name, participants }) => (
+                    {participantBreakdown.map(({ id, name, participants }) => (
                       <div className="facility-participant-row" key={id}>
                         <span>{name}</span>
                         <strong>{participants} attendees</strong>
@@ -665,6 +706,12 @@ const ReservationDetails = ({
                   <label>DATE SUBMITTED</label>
                   <div className="val">{dateSubmitted}</div>
                 </div>
+                {requestorDynamicAttributes.map(({ key, label, value }) => (
+                  <div className="full-width-field" key={`requestor-${key}`}>
+                    <label>{label.toUpperCase()}</label>
+                    <div className="val word-break">{value}</div>
+                  </div>
+                ))}
               </div>
             </div>
           )}
@@ -689,6 +736,12 @@ const ReservationDetails = ({
                   <label>CONTACT EMAIL</label>
                   <div className="val word-break">{endorserEmail}</div>
                 </div>
+                {endorserDynamicAttributes.map(({ key, label, value }) => (
+                  <div className="full-width-field" key={`endorser-${key}`}>
+                    <label>{label.toUpperCase()}</label>
+                    <div className="val word-break">{value}</div>
+                  </div>
+                ))}
               </div>
             </div>
           )}

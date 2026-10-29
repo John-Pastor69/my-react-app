@@ -44,6 +44,63 @@ label {
   padding: 24px;
 }
 
+.pending-review-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: grid;
+  place-items: center;
+  padding: 1rem;
+  background: rgba(15, 23, 42, 0.55);
+}
+
+.pending-review-modal {
+  width: min(100%, 28rem);
+  padding: 2rem;
+  border: 1px solid #e2e8f0;
+  border-radius: 1rem;
+  background: #ffffff;
+  box-shadow: 0 1.5rem 4rem rgba(15, 23, 42, 0.2);
+  text-align: center;
+}
+
+.pending-review-icon {
+  display: grid;
+  width: 3.5rem;
+  height: 3.5rem;
+  margin: 0 auto 1rem;
+  place-items: center;
+  border-radius: 50%;
+  background: #eff6ff;
+  color: #2563eb;
+  font-size: 1.75rem;
+}
+
+.pending-review-modal h2 {
+  margin: 0 0 0.75rem;
+  color: #0f172a;
+  font-size: 1.35rem;
+}
+
+.pending-review-modal p {
+  margin: 0;
+  color: #475569;
+  line-height: 1.6;
+}
+
+.pending-review-modal button {
+  min-width: 7rem;
+  margin-top: 1.5rem;
+  padding: 0.7rem 1.25rem;
+  border: 0;
+  border-radius: 0.55rem;
+  background: #0033a0;
+  color: #ffffff;
+  font-size: 0.95rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
 @media (max-width: 768px) {
   .main-content {
     min-width: 100vw;
