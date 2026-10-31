@@ -302,9 +302,8 @@ const ReservationDetails = ({
   const capacityDisplay = roomCapacities.length > 0 ? roomCapacities.join(', ') + ' people' : 'N/A';
 
   const floorLocations = (currentData.facilities || []).map(id => facilitiesMap[id]?.location).filter(Boolean);
-  const locationDisplay = currentData.specificRoom 
-    ? currentData.specificRoom
-    : (floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A');
+  const locationDisplay = floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A';
+  const specificRoomDisplay = currentData.specificRoom?.trim() || 'N/A';
 
   const equipArray = Object.entries(currentData.selectedEquip || {})
     .filter(([id, qty]) => Number(qty) > 0)
@@ -543,7 +542,8 @@ const ReservationDetails = ({
     // 4. Section: Facility & Equipment Details
     drawSectionHeader('Facility & Equipment Details');
     drawTwoColRow('Facility Name', facilityDisplay, 'Room Capacity', capacityDisplay);
-    drawTwoColRow('Floor / Location', locationDisplay, 'Air Conditioning', airconDisplay);
+    drawTwoColRow('Floor / Location', locationDisplay, 'Specific Room', specificRoomDisplay);
+    drawTwoColRow('Air Conditioning', airconDisplay);
     drawFullRow('Utility Requested', utilityRequested);
     drawFullRow('Equipment Requested', equipmentRequested);
     y += 4;
@@ -676,6 +676,10 @@ const ReservationDetails = ({
               <div>
                 <label>FLOOR / LOCATION</label>
                 <div className="val word-break">{locationDisplay}</div>
+              </div>
+              <div>
+                <label>SPECIFIC ROOM</label>
+                <div className="val word-break">{specificRoomDisplay}</div>
               </div>
               <div>
                 <label>AIR CONDITIONING</label>

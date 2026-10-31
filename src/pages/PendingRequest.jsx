@@ -315,9 +315,8 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const capacityDisplay = roomCapacities.length > 0 ? roomCapacities.join(', ') + ' people' : 'N/A';
 
   const floorLocations = (currentData.facilities || []).map(id => facilitiesMap[id]?.location).filter(Boolean);
-  const locationDisplay = currentData.specificRoom 
-    ? currentData.specificRoom
-    : (floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A');
+  const locationDisplay = floorLocations.length > 0 ? floorLocations.join(' | ') : 'N/A';
+  const specificRoomDisplay = currentData.specificRoom?.trim() || 'N/A';
 
   const equipArray = Object.entries(currentData.selectedEquip || {})
     .filter(([id, qty]) => Number(qty) > 0)
@@ -646,6 +645,10 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
               <div>
                 <label>FLOOR / LOCATION</label>
                 <div className="val">{locationDisplay}</div>
+              </div>
+              <div>
+                <label>SPECIFIC ROOM</label>
+                <div className="val">{specificRoomDisplay}</div>
               </div>
               <div>
                 <label>AIR CONDITIONING</label>

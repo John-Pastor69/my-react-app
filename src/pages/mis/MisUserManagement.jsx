@@ -621,7 +621,8 @@ const MisUserManagement = ({ currentUserRole }) => {
   const filteredUsers = usersData.filter((user) => {
     const isPending = (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending';
     if (userFilter !== 'unverified' && user.emailVerified === false) return false;
-    if (isPending && (!canViewPendingUsers || userFilter !== 'pending')) return false;
+    if (userFilter === 'pending' && user.emailVerified !== true) return false;
+    if (isPending && userFilter !== 'unverified' && (!canViewPendingUsers || userFilter !== 'pending')) return false;
     if (!isPending && userFilter === 'pending') return false;
     if (isSuperAdmin && userFilter === 'unverified' && user.emailVerified !== false) return false;
     if (isSuperAdmin && userFilter === 'unverified' && unverifiedAgeFilter !== 'all') {

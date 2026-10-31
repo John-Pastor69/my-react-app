@@ -8,6 +8,7 @@ import "../styles/Dashboard.scss";
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
 
+// Shared date and time helpers normalize values from filters and stored reservations.
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
@@ -66,6 +67,7 @@ const formatDate = (date) => date
   ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   : 'Date unavailable';
 
+// Display helpers keep status badges and requestor names consistent.
 const getStatusClass = (status) => {
   const normalizedStatus = (status || 'Pending').toLowerCase();
   if (normalizedStatus === 'approved') return 'approved';
@@ -80,6 +82,7 @@ const normalizeName = (value) => {
   return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
 };
 
+// Reusable selector for dashboard time filters.
 const DashboardTimePicker = ({ value, onChange, label }) => {
   const [isOpen, setIsOpen] = useState(false);
   const pickerRef = useRef(null);
@@ -92,6 +95,7 @@ const DashboardTimePicker = ({ value, onChange, label }) => {
     ? 'Select time'
     : `${selectedHour}:${String(selectedMinute).padStart(2, '0')} ${selectedPeriod}`;
 
+  // Close the popover when focus leaves it or the user clicks outside.
   useEffect(() => {
     if (!isOpen) return undefined;
 
@@ -117,6 +121,7 @@ const DashboardTimePicker = ({ value, onChange, label }) => {
     onChange(`${String(hour24).padStart(2, '0')}:${String(minute).padStart(2, '0')}`);
   };
 
+  // Render the accessible hour, minute, and AM/PM controls.
   return (
     <div
       className="dashboard-time-picker"
@@ -196,6 +201,7 @@ const DashboardTimePicker = ({ value, onChange, label }) => {
   );
 };
 
+// Date, time, status, and quick-range filters for analytics dashboards.
 const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard }) => (
   <section className="dashboard-filters" aria-label="Dashboard filters">
     <div className="filter-heading">
@@ -222,6 +228,7 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
         <span>Date from</span>
         <input
           type="date"
+          inputMode="none"
           value={filters.startDate}
           max={filters.endDate || undefined}
           onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
@@ -231,6 +238,7 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
         <span>Date to</span>
         <input
           type="date"
+          inputMode="none"
           value={filters.endDate}
           min={filters.startDate || undefined}
           onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
@@ -285,6 +293,7 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
   </section>
 );
 
+// Summary metrics shown to staff and administrators.
 const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboard }) => (
   <section className="dashboard-kpis admin-dashboard-kpis" aria-label="Key analytics">
     <article className="kpi-card kpi-primary">
@@ -319,6 +328,7 @@ const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboa
   </section>
 );
 
+// Restricted landing page for accounts awaiting review.
 const PendingAccountDashboard = () => (
   <div className="mis-dashboard-content pending-account-dashboard">
     <header className="dashboard-header">
@@ -338,6 +348,7 @@ const PendingAccountDashboard = () => (
 );
 
 const DashboardContent = ({ currentUserRole }) => {
+  // Data, role, search, and filter state for the dashboard.
   const [searchParams, setSearchParams] = useSearchParams();
   const dashboardSearchQuery = searchParams.get('search') || '';
   const [reservationsData, setReservationsData] = useState([]);
@@ -367,6 +378,7 @@ const DashboardContent = ({ currentUserRole }) => {
     status: 'all'
   });
 
+  // Remove the search query from the URL when the search dialog closes.
   const closeDashboardSearch = () => {
     setSearchParams((current) => {
       const next = new URLSearchParams(current);
@@ -375,12 +387,14 @@ const DashboardContent = ({ currentUserRole }) => {
     }, { replace: true });
   };
 
+  // Track authentication before loading role-protected dashboard data.
   useEffect(() => {
     return auth.onAuthStateChanged((user) => {
       setCurrentUser(user);
     });
   }, []);
 
+  // Subscribe to live reservations, inventory, users, and unavailable dates.
   useEffect(() => {
     if (!currentUser) return undefined;
 
@@ -428,6 +442,7 @@ const DashboardContent = ({ currentUserRole }) => {
     };
   }, [currentUser]);
 
+  // Resolve the current user's role and role-specific dashboard permissions.
   const currentUserRecord = usersData.find(
     (user) => user.uid === currentUser?.uid
       || user.id === currentUser?.uid
@@ -455,8 +470,10 @@ const DashboardContent = ({ currentUserRole }) => {
   ).length;
   const pendingUserCount = usersData.filter(
     (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending'
+      && user.emailVerified === true
   ).length;
 
+  // Load archived reservations for history and cross-source search.
   useEffect(() => {
     if (!currentUser) return; // Added safeguard
 
@@ -468,6 +485,7 @@ const DashboardContent = ({ currentUserRole }) => {
     }, (error) => console.error('Failed to load reservation history:', error));
   }, [currentUser]);
 
+  // Build role-aware approval queues and matching users for global search.
   const scheduleCount = currentUser
     ? reservationsData.filter(
       (reservation) => reservation.userId === currentUser.uid || reservation.userEmail === currentUser.email
@@ -529,6 +547,7 @@ const DashboardContent = ({ currentUserRole }) => {
       });
   }, [usersData, reservationSearchFilters.query, isAdminDashboard]);
 
+  // Select approved events scheduled within the chosen upcoming window.
   const todayKey = toDateInputValue(new Date());
   const today = parseDate(todayKey);
   const weekAhead = today ? new Date(today) : null;
@@ -565,6 +584,7 @@ const DashboardContent = ({ currentUserRole }) => {
       .slice(0, 6)
     : [];
 
+  // Apply the main date, status, and start-time filters to active reservations.
   const startMinutes = parseTime(filters.startTime);
   const endMinutes = parseTime(filters.endTime);
   const startDate = filters.startDate ? parseDate(filters.startDate) : null;
@@ -595,6 +615,7 @@ const DashboardContent = ({ currentUserRole }) => {
     return true;
   }), [reservationsData, filters.status, startDate, endDate, startMinutes, endMinutes]);
 
+  // Index inventory by ID to support fast lookups in calculations and search.
   const equipmentById = useMemo(
     () => new Map(equipmentData.map((equipment) => [equipment.id, equipment])),
     [equipmentData]
@@ -607,6 +628,7 @@ const DashboardContent = ({ currentUserRole }) => {
     () => new Map(facilitiesData.map((facility) => [facility.id, facility])),
     [facilitiesData]
   );
+  // Combine and normalize active and archived reservations for global search.
   const searchableReservations = useMemo(() => {
     const activeRecords = reservationsData.map((reservation) => ({ ...reservation, source: 'active' }));
     const archivedRecords = historyData.map((reservation) => ({ ...reservation, source: 'archived' }));
@@ -665,6 +687,7 @@ const DashboardContent = ({ currentUserRole }) => {
     });
   }, [reservationsData, historyData, usersData, facilitiesById, equipmentById]);
 
+  // Filter and sort search results by text, status, source, and event date.
   const filteredSearchReservations = useMemo(() => {
     const searchText = reservationSearchFilters.query.trim().toLowerCase();
     const fromDate = reservationSearchFilters.startDate
@@ -703,6 +726,7 @@ const DashboardContent = ({ currentUserRole }) => {
       });
   }, [searchableReservations, reservationSearchFilters]);
 
+  // Calculate remaining equipment and reservation totals for the selected range.
   const equipmentInventory = useMemo(() => equipmentData.map((equipment) => {
     const reserved = reservationsData.reduce((total, reservation) => {
       if (!isReservationActive(reservation)) return total;
@@ -745,6 +769,7 @@ const DashboardContent = ({ currentUserRole }) => {
     };
   }, [filteredReservations, equipmentInventory]);
 
+  // Prepare recent bookings and the latest borrower/reservation per resource.
   const activity = useMemo(() => {
     const recentReservations = [...filteredReservations]
       .sort((first, second) => {
@@ -809,6 +834,7 @@ const DashboardContent = ({ currentUserRole }) => {
     return { recentReservations, lastBorrowedByEquipment, lastReservedByUtility };
   }, [filteredReservations, facilitiesById, equipmentById]);
 
+  // Rank approved equipment, utility, and facility usage.
   const usageByEquipment = useMemo(() => {
     const totals = new Map();
     filteredReservations
@@ -873,6 +899,7 @@ const DashboardContent = ({ currentUserRole }) => {
       .slice(0, 5);
   }, [filteredReservations, facilitiesById]);
 
+  // Group filtered reservations into chart buckets and find resource alerts.
   const trendData = useMemo(() => {
     const from = startDate || endDate || new Date();
     const to = endDate || startDate || new Date();
@@ -996,6 +1023,7 @@ const DashboardContent = ({ currentUserRole }) => {
 
     return alerts.slice(0, 8);
   }, [equipmentInventory, facilitiesData, reservationsData, unavailableDatesData, facilitiesById, todayKey]);
+  // Calculate chart scales and quick date-range presets for the rendered panels.
   const chartMaximum = Math.max(1, ...trendData.map((bucket) => bucket.count));
   const equipmentMaximum = Math.max(1, ...usageByEquipment.map((equipment) => equipment.quantity));
   const utilityMaximum = Math.max(1, ...utilityUsage.map((utility) => utility.quantity));
@@ -1012,6 +1040,7 @@ const DashboardContent = ({ currentUserRole }) => {
     }));
   };
 
+  // Render dashboard operations, search, analytics, and resource summaries.
   return (
     <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : hasAnalyticsDashboard ? 'staff-dashboard' : 'personal-dashboard'}`}>
       <header className="dashboard-header">
@@ -1020,6 +1049,7 @@ const DashboardContent = ({ currentUserRole }) => {
         </div>
       </header>
 
+      {/* Operations include date filters, key metrics, approval queues, and upcoming events. */}
       <section className="dashboard-operations" aria-label="Dashboard operations">
         {hasAnalyticsDashboard && (
           <DashboardFilters
@@ -1169,6 +1199,7 @@ const DashboardContent = ({ currentUserRole }) => {
           </article>
         )}
 
+          {/* Global search covers active and archived reservations and admin user matches. */}
           {dashboardSearchQuery && (
             <div
               className="dashboard-search-modal-overlay"
@@ -1253,6 +1284,7 @@ const DashboardContent = ({ currentUserRole }) => {
                 <span>Event date from</span>
                 <input
                   type="date"
+                  inputMode="none"
                   value={reservationSearchFilters.startDate}
                   max={reservationSearchFilters.endDate || undefined}
                   onChange={(event) => setReservationSearchFilters((current) => ({
@@ -1265,6 +1297,7 @@ const DashboardContent = ({ currentUserRole }) => {
                 <span>Event date to</span>
                 <input
                   type="date"
+                  inputMode="none"
                   value={reservationSearchFilters.endDate}
                   min={reservationSearchFilters.startDate || undefined}
                   onChange={(event) => setReservationSearchFilters((current) => ({
@@ -1303,6 +1336,7 @@ const DashboardContent = ({ currentUserRole }) => {
             >
               Clear search and filters
             </button>
+            {/* Admin-only user matches are separate from reservation search results. */}
             {isAdminDashboard && reservationSearchFilters.query.trim() && (
               <section className="reservation-search-user-results" aria-label="Matching users">
                 <div className="reservation-search-subheading">
@@ -1342,6 +1376,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <h3>Reservations</h3>
               <span>{filteredSearchReservations.length} matches</span>
             </div>
+            {/* Open a selected result in the reservation details dialog. */}
             {filteredSearchReservations.length ? (
               <div className="reservation-search-results">
                 {filteredSearchReservations.map((reservation) => {
@@ -1398,6 +1433,7 @@ const DashboardContent = ({ currentUserRole }) => {
 
       {hasAnalyticsDashboard ? (
         <>
+          {/* Summarize reservation trends and current resource availability. */}
           <section className="dashboard-charts">
             <article className="dashboard-panel reservations-trend-panel">
               <div className="panel-heading">
@@ -1462,6 +1498,7 @@ const DashboardContent = ({ currentUserRole }) => {
             )}
           </section>
 
+          {/* Rank the most-requested resources for the selected period. */}
           {hasAnalyticsDashboard && (
           <section className="dashboard-insights">
             <article className="dashboard-panel ranking-panel">
@@ -1541,6 +1578,7 @@ const DashboardContent = ({ currentUserRole }) => {
           </section>
           )}
 
+          {/* Show the latest approved equipment and utility activity. */}
           <section className="dashboard-lower">
             {isAdminDashboard && (
             <article className="dashboard-panel equipment-history-panel">
@@ -1654,6 +1692,7 @@ const DashboardContent = ({ currentUserRole }) => {
               </article>
             )}
 
+            {/* List matching reservations with requestor, schedule, and resource details. */}
             <article className="dashboard-panel recent-activity-panel">
               <div className="panel-heading">
                 <div>
@@ -1726,6 +1765,7 @@ const DashboardContent = ({ currentUserRole }) => {
         </section>
       )}
 
+      {/* Display the selected active or archived reservation in a lazy-loaded dialog. */}
       {selectedReservation && (
         <div
           className="dashboard-detail-overlay"
@@ -1763,6 +1803,7 @@ const DashboardContent = ({ currentUserRole }) => {
   );
 };
 
+// Route pending accounts to review status; render the full dashboard for other roles.
 const Dashboard = ({ currentUserRole }) => {
   const normalizedRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
   return normalizedRole === 'pending'

@@ -196,11 +196,19 @@ const formatTimeForPicker = (timeStr) => {
   return `${hours}:${minutes}`;
 };
 
-const ReservationTimePicker = ({ value, onChange, label, invalid = false, disabled = false }) => {
+const ReservationTimePicker = ({
+  value,
+  onChange,
+  label,
+  invalid = false,
+  disabled = false,
+  defaultTime = '07:00'
+}) => {
   const [isOpen, setIsOpen] = useState(false);
   const pickerRef = useRef(null);
   const totalMinutes = parseTimeToMinutes(value);
-  const selectedMinutes = totalMinutes ?? 7 * 60;
+  const defaultMinutes = parseTimeToMinutes(defaultTime) ?? 7 * 60;
+  const selectedMinutes = totalMinutes ?? defaultMinutes;
   const selectedHour24 = Math.floor(selectedMinutes / 60);
   const selectedHour = selectedHour24 % 12 || 12;
   const selectedMinute = selectedMinutes % 60;
@@ -317,11 +325,16 @@ const ReservationTimePicker = ({ value, onChange, label, invalid = false, disabl
             type="button"
             className="reservation-time-quick-select"
             onClick={() => {
-              updateTime(7, 0, 'AM');
+              const hour24 = Math.floor(defaultMinutes / 60);
+              updateTime(
+                hour24 % 12 || 12,
+                defaultMinutes % 60,
+                hour24 >= 12 ? 'PM' : 'AM'
+              );
               setIsOpen(false);
             }}
           >
-            Use 7:00 AM
+            Use {formatTimeForStorage(defaultTime)}
           </button>
         </div>
       )}
@@ -2531,6 +2544,7 @@ const Reservation = ({ currentUserRole }) => {
                   value={formData.airconOffTime}
                   label="Aircon OFF time"
                   disabled={!aircon}
+                  defaultTime="22:00"
                   invalid={Boolean(missingFields.airconOffTime || (formData.airconOffTime && !isAirconOffTimeValid))}
                   onChange={(value) => {
                     setFormData((previous) => ({
@@ -2639,6 +2653,7 @@ const Reservation = ({ currentUserRole }) => {
                   <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowCalendar(!showCalendar)}></i>
                   <input 
                     type="text" 
+                    inputMode="none"
                     value={eventDate} 
                     onChange={handleDateChange} 
                     maxLength={10}
@@ -2688,6 +2703,7 @@ const Reservation = ({ currentUserRole }) => {
                   <i className="ph ph-calendar-blank calendar-trigger" onClick={() => setShowDaysCalendar(!showDaysCalendar)}></i>
                   <input 
                     type="text" 
+                    inputMode="none"
                     value={endDateInput} 
                     onChange={handleDaysDateChange} 
                     maxLength={10}
@@ -2763,6 +2779,7 @@ const Reservation = ({ currentUserRole }) => {
               <ReservationTimePicker
                 value={endTime}
                 label="Default end time"
+                defaultTime="22:00"
                 invalid={Boolean(missingFields.endTime || (endTime && !isEndTimeValid))}
                 onChange={(value) => {
                   setEndTime(value);
@@ -2836,6 +2853,7 @@ const Reservation = ({ currentUserRole }) => {
                           <ReservationTimePicker
                             value={entry.endTime}
                             label={`End time for ${formatScheduleDate(entry.date)}`}
+                            defaultTime="22:00"
                             invalid={!isWithinReservationHours(entry.endTime)}
                             onChange={(value) => {
                               setDailyScheduleOverrides((overrides) => ({

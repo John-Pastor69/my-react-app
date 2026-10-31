@@ -14,6 +14,13 @@ import {
 } from '../services/signupOptions';
 import '../styles/Login.scss';
 
+const RESET_COOLDOWN_STORAGE_KEY = 'passwordResetCooldownExpiresAt';
+
+const getRemainingResetCooldown = () => {
+  const expiresAt = Number(localStorage.getItem(RESET_COOLDOWN_STORAGE_KEY));
+  return Number.isFinite(expiresAt) ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) : 0;
+};
+
 const capitalizeInitial = (value) => value.replace(/^(\s*)([a-z])/, (_, leadingSpace, letter) => (
   `${leadingSpace}${letter.toUpperCase()}`
 ));
@@ -41,7 +48,7 @@ export default function Login({ error, setError }) {
   const [isSubmittingSignup, setIsSubmittingSignup] = useState(false);
 
   const [resetMessage, setResetMessage] = useState(''); 
-  const [resetCooldown, setResetCooldown] = useState(0);
+  const [resetCooldown, setResetCooldown] = useState(getRemainingResetCooldown);
   const [signupOptions, setSignupOptions] = useState({
     accountTypes: normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES),
     dropdownTypes: DEFAULT_SIGNUP_DROPDOWNS
@@ -78,14 +85,14 @@ export default function Login({ error, setError }) {
     return () => unsubscribe();
   }, []);
 
-  // --- 60 SECOND BUTTON COOLDOWN TIMER ---
   useEffect(() => {
-    let timer;
-    if (resetCooldown > 0) {
-      timer = setInterval(() => {
-        setResetCooldown((prev) => prev - 1);
-      }, 1000);
-    }
+    if (resetCooldown <= 0) return undefined;
+
+    const timer = setInterval(() => {
+      const remaining = getRemainingResetCooldown();
+      setResetCooldown(remaining);
+      if (remaining === 0) localStorage.removeItem(RESET_COOLDOWN_STORAGE_KEY);
+    }, 1000);
     return () => clearInterval(timer);
   }, [resetCooldown]);
 
@@ -108,6 +115,7 @@ export default function Login({ error, setError }) {
   };
 
   const closeModal = () => {
+    if (isSubmittingSignup) return;
     setShowForm(false);
     setIsLogin(true);
     setFirstName('');
@@ -142,7 +150,9 @@ export default function Login({ error, setError }) {
     try {
       await sendPasswordResetEmail(auth, emailToReset);
       setResetMessage('Password reset link sent! Check your email.');
-      setResetCooldown(60); 
+      const expiresAt = Date.now() + 60 * 1000;
+      localStorage.setItem(RESET_COOLDOWN_STORAGE_KEY, String(expiresAt));
+      setResetCooldown(getRemainingResetCooldown());
     } catch (err) {
       console.error("Password reset error:", err.message);
       if (setError) {
@@ -424,7 +434,16 @@ export default function Login({ error, setError }) {
             <div className="login-modal-content" onClick={(e) => e.stopPropagation()} style={{ borderTop: `6px solid ${themeBlue}` }}>
               
               <div className="modal-header">
-                <i className="ph ph-x close-icon" onClick={closeModal} style={{ color: themeBlue }}></i>
+                <i
+                  className="ph ph-x close-icon"
+                  onClick={isSubmittingSignup ? undefined : closeModal}
+                  aria-disabled={isSubmittingSignup}
+                  style={{
+                    color: isSubmittingSignup ? '#94a3b8' : themeBlue,
+                    cursor: isSubmittingSignup ? 'not-allowed' : 'pointer',
+                    opacity: isSubmittingSignup ? 0.75 : 1
+                  }}
+                ></i>
               </div>
 
               <div ref={modalBodyRef} className="modal-body" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
@@ -722,12 +741,22 @@ export default function Login({ error, setError }) {
                 <div style={{ marginTop: '1rem', textAlign: 'center' }}>
                   <button 
                     type="button" 
+                    disabled={!isLogin && isSubmittingSignup}
                     onClick={() => {
                       setIsLogin(!isLogin);
                       if (setError) setError('');
                       setResetMessage('');
                     }}
-                    style={{ background: 'none', border: 'none', color: themeBlue, fontSize: '13px', cursor: 'pointer', textDecoration: 'underline', fontWeight: 'bold' }}
+                    style={{
+                      background: 'none',
+                      border: 'none',
+                      color: !isLogin && isSubmittingSignup ? '#94a3b8' : themeBlue,
+                      fontSize: '13px',
+                      cursor: !isLogin && isSubmittingSignup ? 'not-allowed' : 'pointer',
+                      textDecoration: 'underline',
+                      fontWeight: 'bold',
+                      opacity: !isLogin && isSubmittingSignup ? 0.75 : 1
+                    }}
                   >
                     {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
                   </button>
