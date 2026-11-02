@@ -415,20 +415,52 @@ export default function Login({ error, setError }) {
 
   return (
     <div className="landing-page">
-      <div className="top-nav-bar">
-        <div className="spacer"></div>
-        <button className="top-login-btn" onClick={openModal} style={{ backgroundColor: themeBlue, color: '#FFFFFF', fontWeight: 'bold' }}>
-          Log in
-        </button>
-      </div>
-
       <div className="brand-header">
         <div className="sti-logo-container">
           <h1 className="brand-title" style={{ color: themeBlue }}>STI Global City Reservation System</h1>
+          <button className="top-login-btn" onClick={openModal} style={{ backgroundColor: themeBlue, color: '#FFFFFF', fontWeight: 'bold' }}>
+            Log in
+          </button>
         </div>
       </div>
 
       <div className="landing-content">
+        <section className="hero-section">
+          <div className="hero-copy">
+            <p className="eyebrow">Campus operations made simple</p>
+            <h2>Streamline your campus events or STI facility reservation system.</h2>
+            <p className="subheadline">Book rooms, request equipment, and manage your campus activities all in one place.</p>
+            <div className="hero-actions">
+              <button type="button" className="primary-btn" onClick={openModal}>Get Started</button>
+              <button type="button" className="secondary-btn" onClick={openModal}>Make a Reservation</button>
+            </div>
+          </div>
+
+          <div className="hero-visual" aria-label="Facility reservation preview">
+            <div className="visual-card">
+              <div className="visual-header">
+                <span className="status-dot" />
+                <span>Campus Venue Planner</span>
+              </div>
+              <div className="visual-body">
+                <div className="mini-schedule">
+                  <span className="schedule-block schedule-highlight" />
+                  <span className="schedule-block" />
+                  <span className="schedule-block" />
+                </div>
+                <div className="meta-row">
+                  <span>14 rooms available</span>
+                  <span>8 equipment requests</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <div className="scroll-indicator" aria-hidden="true">
+          <span>↓</span>
+        </div>
+
         {showForm && (
           <div className="login-modal-overlay">
             <div className="login-modal-content" onClick={(e) => e.stopPropagation()} style={{ borderTop: `6px solid ${themeBlue}` }}>
