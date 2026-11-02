@@ -48,6 +48,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const [equipmentMap, setEquipmentMap] = useState({});
   const [utilitiesMap, setUtilitiesMap] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
+  const [requestorAccountType, setRequestorAccountType] = useState('N/A');
   const [showFacilityParticipants, setShowFacilityParticipants] = useState(false);
   const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
   
@@ -91,6 +92,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   useEffect(() => {
     const fetchRequestorRole = async () => {
       if (!currentData) return;
+      setRequestorAccountType('N/A');
       try {
         let userDoc = null;
         if (currentData.userId) {
@@ -107,6 +109,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             userDoc = querySnap.docs[0].data();
           }
         }
+        setRequestorAccountType(userDoc?.accountType || currentData.requestorInfo?.accountType || 'N/A');
         if (userDoc && userDoc.role) {
           setRequestorRole(userDoc.role.toLowerCase().trim());
         }
@@ -153,6 +156,9 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             }
 
             setApprover({
+              id: user.uid,
+              email: user.email || '',
+              collection: isSuperAdmin ? 'super_users' : 'users',
               name: approverName,
               role: displayRole,
               roleKey: isSuperAdmin ? 'super admin' : normalizeApprovalRoleKey(rawRole),
@@ -333,12 +339,6 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const utilityRequested = utilityNames.length > 0 ? utilityNames.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
-  const requestorTypes = Array.isArray(currentData.requestorTypes)
-    ? currentData.requestorTypes
-    : [];
-  const requestorTypeDisplay = requestorTypes.length > 0
-    ? requestorTypes.join(', ')
-    : 'N/A';
   const requestorDynamicAttributes = getReservationDynamicAttributes(
     currentData,
     'requestor',
@@ -354,14 +354,17 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
 
   const hasEndorser = !!currentData.endorserName;
   const endorserName = currentData.endorserName ? formatName(currentData.endorserName) : 'N/A';
-  const endorserDesignation = currentData.endorserDesignation || 'N/A';
+  const endorserDesignation = currentData.endorserInfo?.department
+    || currentData.endorserInfo?.designation
+    || currentData.endorserDesignation
+    || 'N/A';
   const endorserEmail = currentData.endorserEmail || 'N/A';
   const endorserDynamicAttributes = getReservationDynamicAttributes(
     currentData,
     'endorser',
     signupConfiguration
   );
-  const endorsedBy = currentData.endorserName ? `${endorserName} (${currentData.endorserDesignation})` : 'N/A';
+  const endorsedBy = currentData.endorserName ? `${endorserName} (${endorserDesignation})` : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
   const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'
@@ -468,7 +471,11 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
       const newLog = {
         id: Date.now().toString() + Math.random().toString(36).substring(2, 9),
         role: approvalRoleLabel,
-        approvalRoleKey: approver.roleKey,
+        approvalRoleKey,
+        approverRoleKey: approver.roleKey,
+        approverId: approver.id,
+        approverEmail: approver.email,
+        approverCollection: approver.collection,
         badge: isApprove ? 'Approved' : isReject ? 'Rejected' : 'To Modify',
         timestamp: now.toISOString(),
         date: dateTimeString,
@@ -486,7 +493,12 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             ? currentApprovalRecord
             : {}),
           status: isApprove ? 'approved' : 'rejected',
-          date: dateString
+          date: dateString,
+          approverName: approver.name,
+          approverId: approver.id,
+          approverEmail: approver.email,
+          approverCollection: approver.collection,
+          approverRoleKey: approver.roleKey
         }
       };
 
@@ -500,6 +512,11 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
       } else {
         updatePayload[`approvals.${approvalRoleKey}.status`] = isApprove ? 'approved' : 'rejected';
         updatePayload[`approvals.${approvalRoleKey}.date`] = dateString;
+        updatePayload[`approvals.${approvalRoleKey}.approverName`] = approver.name;
+        updatePayload[`approvals.${approvalRoleKey}.approverId`] = approver.id;
+        updatePayload[`approvals.${approvalRoleKey}.approverEmail`] = approver.email;
+        updatePayload[`approvals.${approvalRoleKey}.approverCollection`] = approver.collection;
+        updatePayload[`approvals.${approvalRoleKey}.approverRoleKey`] = approver.roleKey;
       }
 
       if (isReject) {
@@ -682,8 +699,8 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                 <div className="val">{contactNumber}</div>
               </div>
               <div>
-                <label>REQUESTOR TYPE</label>
-                <div className="val">{requestorTypeDisplay}</div>
+                <label>ACCOUNT TYPE</label>
+                <div className="val">{requestorAccountType}</div>
               </div>
               <div>
                 <label>EMAIL ADDRESS</label>

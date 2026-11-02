@@ -15,6 +15,7 @@ import {
   updateDoc
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
+import MonthYearPicker from '../components/MonthYearPicker';
 import { sendReservationEmail } from '../services/emailService'; 
 import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
@@ -534,6 +535,10 @@ const Reservation = ({ currentUserRole }) => {
               (type) => type.value === accountType
             );
             const requestorAttributes = getRequestorAttributes(userData, configuredAccountType);
+            const profileDepartment = requestorAttributes['dropdown:departments']
+              || (userData.signupDropdown?.id === 'departments' ? userData.signupDropdown.value : '')
+              || userData.department
+              || '';
             
             const profileName = [
               userData.firstName,
@@ -554,7 +559,7 @@ const Reservation = ({ currentUserRole }) => {
                 ...prev.requestorAttributes
               },
               studentNumber: userData.studentNumber || prev.studentNumber,
-              department: userData.department || prev.department,
+              department: profileDepartment || prev.department,
               contactNumber: prev.contactNumber !== '09'
                 ? prev.contactNumber
                 : normalizeContactNumber(userData.phone),
@@ -644,7 +649,12 @@ const Reservation = ({ currentUserRole }) => {
             ...(reservation.requestorAttributes || {})
           },
           studentNumber: reservation.studentNumber || userData.studentNumber || '',
-          department: reservation.department || userData.department || '',
+          department: getRequestorAttributes(userData, configuredAccountType)['dropdown:departments']
+            || (userData.signupDropdown?.id === 'departments' ? userData.signupDropdown.value : '')
+            || userData.department
+            || reservation.requestorAttributes?.['dropdown:departments']
+            || reservation.department
+            || '',
           contactNumber: normalizeContactNumber(reservation.contactNumber),
           emailAddress: reservation.emailAddress || '',
           eventName: sanitizeEventName(reservation.eventName).slice(0, 40),
@@ -662,9 +672,17 @@ const Reservation = ({ currentUserRole }) => {
           airconOnTime: reservation.airconOnTime || '',
           airconOffTime: reservation.airconOffTime || '',
           endorserName: sanitizeAlphabeticName(reservation.endorserName || ''),
-          endorserDesignation: reservation.endorserDesignation || '',
-          endorserAccountType: reservation.endorserAccountType || '',
-          endorserAttributes: reservation.endorserAttributes || {},
+          endorserDesignation: reservation.endorserInfo?.department
+            || reservation.endorserInfo?.designation
+            || reservation.endorserDesignation
+            || '',
+          endorserAccountType: reservation.endorserInfo?.accountType
+            || reservation.endorserAccountType
+            || '',
+          endorserAttributes: {
+            ...(reservation.endorserAttributes || {}),
+            ...(reservation.endorserInfo?.customAttributes || {})
+          },
           endorserEmail: reservation.endorserEmail || ''
         });
         setFacilityParticipants(
@@ -1728,13 +1746,53 @@ const Reservation = ({ currentUserRole }) => {
         ? editingReservation.refNo
         : `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
 
+      const {
+        endorserDesignation: _endorserDesignation,
+        endorserAccountType: _endorserAccountType,
+        endorserAttributes: _endorserAttributes,
+        ...reservationFormData
+      } = formData;
+      const endorserInfo = {
+        accountType: formData.endorserAccountType || selectedEndorser?.accountType || '',
+        studentNumber: selectedEndorser?.studentNumber || '',
+        course: selectedEndorserAttributes['dropdown:courses'] || '',
+        department: selectedEndorserAttributes['dropdown:departments']
+          || formData.endorserDesignation
+          || selectedEndorser?.department
+          || '',
+        signupDropdown: selectedEndorserAccountType?.dropdown ? {
+          id: selectedEndorserAccountType.dropdown,
+          label: selectedEndorserDropdownType?.label || selectedEndorserAccountType.dropdown,
+          value: selectedEndorserAttributes[`dropdown:${selectedEndorserAccountType.dropdown}`]
+            || (selectedEndorserAccountType.dropdown === 'departments' ? formData.endorserDesignation : '')
+        } : null,
+        customAttributes: selectedEndorserAttributes
+      };
       const reservationUpdate = {
         refNo: generatedRefNo,
-        ...formData,
+        ...reservationFormData,
+        requestorInfo: {
+          accountType: formData.requestorTypes[0] || '',
+          studentNumber: formData.studentNumber || '',
+          course: formData.requestorAttributes['dropdown:courses'] || '',
+          department: formData.requestorAttributes['dropdown:departments'] || formData.department || '',
+          signupDropdown: selectedRequestorAccountType?.dropdown ? {
+            id: selectedRequestorAccountType.dropdown,
+            label: selectedRequestorDropdownType?.label || selectedRequestorAccountType.dropdown,
+            value: formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]
+              || (selectedRequestorAccountType.dropdown === 'departments' ? formData.department : '')
+          } : null,
+          customAttributes: {
+            ...formData.requestorAttributes,
+            ...(formData.department && !formData.requestorAttributes['dropdown:departments']
+              ? { 'dropdown:departments': formData.department }
+              : {})
+          }
+        },
+        endorserInfo,
         requestorTypes: editingReservation
           ? formData.requestorTypes
           : userRole === 'requestor' ? formData.requestorTypes : [],
-        endorserDesignation: formData.endorserDesignation || selectedEndorser?.department || '',
         endorserEmail,
         userId: editingReservation?.userId || currentUser.uid,
         userEmail: editingReservation?.userEmail || currentUser.email,
@@ -1937,12 +1995,12 @@ const Reservation = ({ currentUserRole }) => {
                   className={`input-group requestor-type-input ${missingFields.requestorTypes ? 'field-missing' : ''}`}
                   ref={el => fieldRefs.current.requestorTypes = el}
                 >
-                  <label>Requestor Type <span className="req">*</span></label>
+                  <label>Account Type <span className="req">*</span></label>
                   <input
                     type="text"
                     value={formData.requestorTypes[0] || ''}
                     readOnly
-                    aria-label="Requestor type from profile"
+                    aria-label="Account type from profile"
                     className={missingFields.requestorTypes ? 'input-error' : ''}
                   />
                 </div>
@@ -2084,15 +2142,42 @@ const Reservation = ({ currentUserRole }) => {
             )}
           </div>
           {showProfileDepartment && (
-            <div className="input-group">
-              <label>Department</label>
-              <input
-                type="text"
-                value={formData.department}
-                readOnly
-                placeholder="No department listed on profile"
-              />
-            </div>
+            <>
+              {formData.requestorTypes[0] && (
+                <div className="input-group">
+                  <label>Account Type</label>
+                  <input type="text" value={formData.requestorTypes[0]} readOnly />
+                </div>
+              )}
+              {selectedRequestorAccountType?.dropdown && (
+                <div className="input-group">
+                  <label>{selectedRequestorDropdownType?.label || selectedRequestorAccountType.dropdown}</label>
+                  <input
+                    type="text"
+                    value={
+                      (selectedRequestorAccountType.options || []).find(
+                        (option) => option.value === formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]
+                      )?.label
+                      || formData.requestorAttributes[`dropdown:${selectedRequestorAccountType.dropdown}`]
+                      || (selectedRequestorAccountType.dropdown === 'departments' ? formData.department : '')
+                    }
+                    readOnly
+                    placeholder={`No ${selectedRequestorDropdownType?.label || 'value'} listed on profile`}
+                  />
+                </div>
+              )}
+              {(selectedRequestorAccountType?.customFields || []).map((field) => (
+                <div className="input-group" key={`profile-${field.id}`}>
+                  <label>{field.label}</label>
+                  <input
+                    type={field.type || 'text'}
+                    value={formData.requestorAttributes[`field:${field.id}`] || ''}
+                    readOnly
+                    placeholder={`No ${field.label.toLowerCase()} listed on profile`}
+                  />
+                </div>
+              ))}
+            </>
           )}
           <div 
             className={`input-group requestor-email-group ${missingFields.emailAddress ? 'field-missing' : ''}`}
@@ -2121,7 +2206,7 @@ const Reservation = ({ currentUserRole }) => {
             <div className="section-header">
               Endorser Information
             </div>
-            <div className="form-grid col-2">
+            <div className="form-grid col-3">
               <div 
                 className={`input-group endorser-autocomplete ${missingFields.endorserName ? 'field-missing' : ''}`}
                 ref={el => fieldRefs.current.endorserName = el}
@@ -2186,7 +2271,7 @@ const Reservation = ({ currentUserRole }) => {
                 </div>
               ))}
               <div 
-                className={`input-group full-width ${missingFields.endorserEmail ? 'field-missing' : ''}`}
+                className={`input-group ${missingFields.endorserEmail ? 'field-missing' : ''}`}
                 ref={el => fieldRefs.current.endorserEmail = el}
               >
                 <label>Endorser's Contact Email <span className="req">*</span></label>
@@ -2673,7 +2758,7 @@ const Reservation = ({ currentUserRole }) => {
                     <div className="custom-calendar-popup">
                       <div className="calendar-header">
                         <button type="button" onClick={handlePrevMonth}><i className="ph ph-caret-left"></i></button>
-                        <span>{calendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                        <MonthYearPicker date={calendarView} onChange={setCalendarView} />
                         <button type="button" onClick={handleNextMonth}><i className="ph ph-caret-right"></i></button>
                       </div>
                       <div className="calendar-grid">
@@ -2731,7 +2816,7 @@ const Reservation = ({ currentUserRole }) => {
                     <div className="custom-calendar-popup">
                       <div className="calendar-header">
                         <button type="button" onClick={handleDaysPrevMonth}><i className="ph ph-caret-left"></i></button>
-                        <span>{daysCalendarView.toLocaleString('default', { month: 'long', year: 'numeric' })}</span>
+                        <MonthYearPicker date={daysCalendarView} onChange={setDaysCalendarView} />
                         <button type="button" onClick={handleDaysNextMonth}><i className="ph ph-caret-right"></i></button>
                       </div>
                       <div className="calendar-grid">

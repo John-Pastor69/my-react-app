@@ -615,6 +615,13 @@ $charcoal: #364152;
         .date { background: $blue-main; color: white; border-radius: 50%; }
       }
 
+      &.today-day {
+        position: relative;
+        z-index: 1;
+        outline: 2px solid $blue-main;
+        outline-offset: -2px;
+      }
+
       /* Clean stacked pill format with left border block */
       .event-pill {
         display: flex;

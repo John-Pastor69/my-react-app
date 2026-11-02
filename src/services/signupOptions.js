@@ -161,26 +161,42 @@ export const getSignupConfiguration = (data = {}) => {
 
 export const getReservationDynamicAttributes = (reservation, person, configuration) => {
   const isEndorser = person === 'endorser';
+  const requestorInfo = reservation.requestorInfo || {};
+  const endorserInfo = reservation.endorserInfo || {};
   const accountTypeValue = isEndorser
-    ? reservation.endorserAccountType
-    : reservation.requestorTypes?.[0];
+    ? endorserInfo.accountType || reservation.endorserAccountType
+    : requestorInfo.accountType || reservation.requestorTypes?.[0];
   const accountType = configuration.accountTypes.find(({ value }) => value === accountTypeValue);
   if (!accountType) return [];
 
   const attributes = isEndorser
-    ? reservation.endorserAttributes || {}
-    : reservation.requestorAttributes || {};
+    ? {
+      ...(reservation.endorserAttributes || {}),
+      ...(endorserInfo.customAttributes || {})
+    }
+    : {
+      ...(reservation.requestorAttributes || {}),
+      ...(requestorInfo.customAttributes || {})
+    };
   const entries = [];
 
   if (accountType.dropdown) {
     const key = `dropdown:${accountType.dropdown}`;
     const rawValue = attributes[key]
-      ?? (reservation.signupDropdown?.id === accountType.dropdown
+      ?? (isEndorser && endorserInfo.signupDropdown?.id === accountType.dropdown
+        ? endorserInfo.signupDropdown.value
+        : !isEndorser && requestorInfo.signupDropdown?.id === accountType.dropdown
+        ? requestorInfo.signupDropdown.value
+        : reservation.signupDropdown?.id === accountType.dropdown
         ? reservation.signupDropdown.value
         : accountType.dropdown === 'courses'
-          ? reservation.course || ''
+          ? (isEndorser
+            ? endorserInfo.course || reservation.course
+            : requestorInfo.course || reservation.course) || ''
           : accountType.dropdown === 'departments'
-            ? reservation.department || ''
+            ? isEndorser
+              ? endorserInfo.department || endorserInfo.designation || reservation.endorserDesignation || ''
+              : requestorInfo.department || reservation.department || ''
             : '');
     if (rawValue) {
       const option = (accountType.options || []).find(({ value }) => value === rawValue);
@@ -204,14 +220,13 @@ export const getReservationDynamicAttributes = (reservation, person, configurati
     }
   });
 
-  if (!isEndorser
-    && accountType.dropdown === 'courses'
-    && reservation.studentNumber
-    && String(reservation.studentNumber).trim()) {
+  const profileInfo = isEndorser ? endorserInfo : requestorInfo;
+  const studentNumber = profileInfo.studentNumber || (!isEndorser ? reservation.studentNumber : '');
+  if (accountType.dropdown === 'courses' && studentNumber && String(studentNumber).trim()) {
     entries.push({
       key: 'studentNumber',
       label: 'Student Number',
-      value: String(reservation.studentNumber)
+      value: String(studentNumber)
     });
   }
 

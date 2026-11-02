@@ -38,6 +38,47 @@ const formatEventDateRange = (startDateStr, numDays) => {
   return `${startFormatted} - ${endFormatted}`;
 };
 
+// --- DATE CONDENSER FOR PDF (Groups consecutive dates & hides years) ---
+const condenseDateList = (dateStrings) => {
+  if (!dateStrings || dateStrings.length === 0) return "";
+
+  const sortedDates = dateStrings
+    .map(dStr => {
+      const parsed = new Date(dStr.includes('T') ? dStr : `${dStr}T00:00:00`);
+      return Number.isNaN(parsed.getTime()) ? new Date(dStr) : parsed;
+    })
+    .filter(d => !Number.isNaN(d.getTime()))
+    .sort((a, b) => a - b);
+
+  if (sortedDates.length === 0) return dateStrings.join(', ');
+
+  const ranges = [];
+  let rangeStart = sortedDates[0];
+  let prevDate = sortedDates[0];
+
+  const formatDay = (d) => d.toLocaleString('en-US', { month: 'short', day: 'numeric' });
+
+  for (let i = 1; i <= sortedDates.length; i++) {
+    const currDate = sortedDates[i];
+    
+    // Check if consecutive (difference of 1 day)
+    if (currDate && Math.round((currDate - prevDate) / 86400000) === 1) {
+      prevDate = currDate;
+    } else {
+      if (rangeStart.getTime() === prevDate.getTime()) {
+        ranges.push(formatDay(rangeStart));
+      } else if (rangeStart.getMonth() === prevDate.getMonth()) {
+        ranges.push(`${formatDay(rangeStart)}-${prevDate.getDate()}`); 
+      } else {
+        ranges.push(`${formatDay(rangeStart)} - ${formatDay(prevDate)}`);
+      }
+      rangeStart = currDate;
+      prevDate = currDate;
+    }
+  }
+  return ranges.join(', ');
+};
+
 const ReservationDetails = ({
   data,
   additionalActions = null,
@@ -49,7 +90,9 @@ const ReservationDetails = ({
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
   const [utilitiesMap, setUtilitiesMap] = useState({});
+  const [approverProfiles, setApproverProfiles] = useState({});
   const [requestorRole, setRequestorRole] = useState('requestor');
+  const [requestorAccountType, setRequestorAccountType] = useState('N/A');
   const [expandedTimeGroups, setExpandedTimeGroups] = useState({});
   const [showFacilityParticipants, setShowFacilityParticipants] = useState(false);
   const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
@@ -115,10 +158,82 @@ const ReservationDetails = ({
     return () => unsubscribe();
   }, [currentUser, data?.id]);
 
+  useEffect(() => {
+    let isCurrent = true;
+    const approvalLogs = Array.isArray(currentData?.historyLogs) ? currentData.historyLogs : [];
+    const approvalRecords = Object.values(currentData?.approvals || {});
+    const approvers = [...approvalLogs, ...approvalRecords]
+      .filter((record) => record && (record.approverId || record.approverEmail))
+      .map((record) => ({
+        id: record.approverId || '',
+        email: record.approverEmail || '',
+        collection: record.approverCollection || ''
+      }));
+
+    const uniqueApprovers = [...new Map(
+      approvers.map((approver) => [
+        `${approver.collection}:${approver.id || approver.email}`,
+        approver
+      ])
+    ).values()];
+
+    const loadApproverProfiles = async () => {
+      try {
+        const profileEntries = await Promise.all(uniqueApprovers.map(async (approver) => {
+          const collections = approver.collection
+            ? [approver.collection]
+            : ['super_users', 'users'];
+          for (const collectionName of collections) {
+            if (!['super_users', 'users'].includes(collectionName)) continue;
+            const profileRef = approver.id
+              ? doc(db, collectionName, approver.id)
+              : null;
+            const profileSnap = profileRef ? await getDoc(profileRef) : null;
+            if (profileSnap?.exists()) {
+              const profile = profileSnap.data();
+              const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ')
+                || profile.name
+                || '';
+              return [`${collectionName}:${approver.id}`, name];
+            }
+
+            if (approver.email) {
+              const profileQuery = query(
+                collection(db, collectionName),
+                where('email', '==', approver.email)
+              );
+              const profileResults = await getDocs(profileQuery);
+              if (!profileResults.empty) {
+                const profile = profileResults.docs[0].data();
+                const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ')
+                  || profile.name
+                  || '';
+                return [`${collectionName}:${approver.id || approver.email}`, name];
+              }
+            }
+          }
+          return [`${approver.collection}:${approver.id || approver.email}`, ''];
+        }));
+
+        if (isCurrent) {
+          setApproverProfiles(Object.fromEntries(profileEntries));
+        }
+      } catch (error) {
+        console.error('Failed to load approver profiles for reservation PDF:', error);
+      }
+    };
+
+    loadApproverProfiles();
+    return () => {
+      isCurrent = false;
+    };
+  }, [currentData]);
+
   // Fetch requestor's actual role to determine if endorser should be skipped
   useEffect(() => {
     const fetchRequestorRole = async () => {
       if (!currentData) return;
+      setRequestorAccountType('N/A');
       try {
         let userDoc = null;
         if (currentData.userId) {
@@ -135,6 +250,7 @@ const ReservationDetails = ({
             userDoc = querySnap.docs[0].data();
           }
         }
+        setRequestorAccountType(userDoc?.accountType || currentData.requestorInfo?.accountType || 'N/A');
         if (userDoc && userDoc.role) {
           setRequestorRole(userDoc.role.toLowerCase().trim());
         }
@@ -182,6 +298,7 @@ const ReservationDetails = ({
       || ''
   )).filter(Boolean));
   const includeYearInScheduleDates = scheduledYears.size > 1;
+  
   const dailyTimeEntries = Array.isArray(currentData.schedule)
     ? currentData.schedule.reduce((groups, entry) => {
       const parsedDate = new Date(`${entry.date}T00:00:00`);
@@ -192,23 +309,25 @@ const ReservationDetails = ({
           day: 'numeric',
           ...(includeYearInScheduleDates ? { year: 'numeric' } : {})
         });
-      const pdfDateLabel = Number.isNaN(parsedDate.getTime())
-        ? entry.date
-        : parsedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+      
       const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
       const existingGroup = groups.find((group) => group.time === time);
+      
       if (existingGroup) {
         existingGroup.dates.push(dateLabel);
-        existingGroup.pdfDates.push(pdfDateLabel);
+        existingGroup.rawDates.push(entry.date);
       } else {
-        groups.push({ dates: [dateLabel], pdfDates: [pdfDateLabel], time });
+        groups.push({ dates: [dateLabel], rawDates: [entry.date], time });
       }
       return groups;
     }, [])
     : [];
+
+  // Replaced generic pdfDates mapping with condenseDateList for cleaner PDF Output
   const eventTime = dailyTimeEntries.length > 0
-    ? dailyTimeEntries.map(({ pdfDates, time }) => `${time} [${pdfDates.join(', ')}]`).join('\n')
+    ? dailyTimeEntries.map(({ rawDates, time }) => `${time} [${condenseDateList(rawDates)}]`).join('\n')
     : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+
   const renderDailyTimeDisplay = (variant) => {
     if (dailyTimeEntries.length === 0) return eventTime;
 
@@ -320,12 +439,6 @@ const ReservationDetails = ({
   const utilityRequested = utilityNames.length > 0 ? utilityNames.join(', ') : 'None';
 
   const requestorName = formatName(currentData.fullName);
-  const requestorTypes = Array.isArray(currentData.requestorTypes)
-    ? currentData.requestorTypes
-    : [];
-  const requestorTypeDisplay = requestorTypes.length > 0
-    ? requestorTypes.join(', ')
-    : 'None selected';
   const requestorDynamicAttributes = getReservationDynamicAttributes(
     currentData,
     'requestor',
@@ -341,14 +454,17 @@ const ReservationDetails = ({
 
   const hasEndorser = !!currentData.endorserName;
   const endorserName = currentData.endorserName ? formatName(currentData.endorserName) : 'N/A';
-  const endorserDesignation = currentData.endorserDesignation || 'N/A';
+  const endorserDesignation = currentData.endorserInfo?.department
+    || currentData.endorserInfo?.designation
+    || currentData.endorserDesignation
+    || 'N/A';
   const endorserEmail = currentData.endorserEmail || 'N/A';
   const endorserDynamicAttributes = getReservationDynamicAttributes(
     currentData,
     'endorser',
     signupConfiguration
   );
-  const endorsedBy = currentData.endorserName ? `${endorserName} (${currentData.endorserDesignation})` : 'N/A';
+  const endorsedBy = currentData.endorserName ? `${endorserName} (${endorserDesignation})` : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
   const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'
@@ -403,7 +519,7 @@ const ReservationDetails = ({
     const pageHeight = pdf.internal.pageSize.getHeight();
     const margin = 15;
     const contentWidth = pageWidth - margin * 2;
-    const colWidth = (contentWidth - 8) / 2;
+    const columnWidth = contentWidth / 3;
     let y = 18;
 
     const checkPageBreak = (neededHeight) => {
@@ -426,11 +542,9 @@ const ReservationDetails = ({
       const text = 'APPROVED';
       const textWidth = pdf.getStringUnitWidth(text) * pdf.internal.getFontSize() / pdf.internal.scaleFactor;
       
-      // Calculate center position
       const centerX = (pageWidth / 2) + 30;
       const centerY = (pageHeight / 2) + 45;
 
-      // Rotate and draw text at center
       pdf.text(text, centerX, centerY, { 
         align: 'center', 
         angle: 45, 
@@ -439,7 +553,6 @@ const ReservationDetails = ({
       pdf.restoreGraphicsState();
     };
 
-    // Draw watermark on first page
     drawWatermark();
 
     // 1. Formal Institutional Header
@@ -456,119 +569,194 @@ const ReservationDetails = ({
     pdf.setDrawColor(15, 23, 42);
     pdf.setLineWidth(0.6);
     pdf.line(margin, y, pageWidth - margin, y);
-    y += 7;
+    y += 4;
 
-    // 2. Top Reference Bar (Box removed, text only)
+    // 2. Top Reference Bar
     pdf.setFont('helvetica', 'bold');
     pdf.setFontSize(9.5);
     pdf.setTextColor(6, 95, 70);
     pdf.text(`REFERENCE NO: ${refNo}`, margin, y);
-    y += 14;
+    y += 6;
 
-    // Helper: Draw Plain Section Title
     const drawSectionHeader = (title) => {
-      checkPageBreak(12);
+      checkPageBreak(7);
       pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(10);
+      pdf.setFontSize(9.5);
       pdf.setTextColor(30, 41, 59);
       pdf.text(title.toUpperCase(), margin, y);
-      y += 8;
-    };
-
-    // Helper: Draw Plain 2-Column Row
-    const drawTwoColRow = (label1, val1, label2, val2) => {
-      const text1 = pdf.splitTextToSize(String(val1 || 'N/A'), colWidth - 2);
-      const text2 = label2 ? pdf.splitTextToSize(String(val2 || 'N/A'), colWidth - 2) : [];
-      const maxLines = Math.max(text1.length, text2.length, 1);
-      const rowHeight = 4.5 + maxLines * 4.5 + 3;
-
-      checkPageBreak(rowHeight);
-
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8);
-      pdf.setTextColor(100, 116, 139);
-      pdf.text(label1.toUpperCase(), margin, y);
-      if (label2) {
-        pdf.text(label2.toUpperCase(), margin + colWidth + 4, y);
-      }
-
       y += 4.5;
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9.5);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text(text1, margin, y);
-      if (label2) {
-        pdf.text(text2, margin + colWidth + 4, y);
-      }
-
-      y += maxLines * 4.5 + 3;
     };
 
-    // Helper: Draw Plain Full-Width Row
-    const drawFullRow = (label, val) => {
-      const textLines = pdf.splitTextToSize(String(val || 'N/A'), contentWidth - 4);
-      const rowHeight = 4.5 + textLines.length * 4.5 + 3;
+    const drawGrid = (items) => {
+      let row = [];
+      let usedColumns = 0;
+      const rows = [];
 
-      checkPageBreak(rowHeight);
+      const flushRow = () => {
+        if (row.length) rows.push(row);
+        row = [];
+        usedColumns = 0;
+      };
 
-      pdf.setFont('helvetica', 'bold');
-      pdf.setFontSize(8);
-      pdf.setTextColor(100, 116, 139);
-      pdf.text(label.toUpperCase(), margin, y);
+      items.forEach((item) => {
+        const span = item.span || 1;
+        if (span === 3) {
+          flushRow();
+          rows.push([item]);
+          return;
+        }
+        if (usedColumns + span > 3) flushRow();
+        row.push(item);
+        usedColumns += span;
+        if (usedColumns === 3) flushRow();
+      });
+      flushRow();
 
-      y += 4.5;
-      pdf.setFont('helvetica', 'normal');
-      pdf.setFontSize(9.5);
-      pdf.setTextColor(15, 23, 42);
-      pdf.text(textLines, margin, y);
+      rows.forEach((gridRow) => {
+        const rowHeight = Math.max(...gridRow.map((item) => {
+          const itemWidth = columnWidth * (item.span || 1);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(7.2);
+          const labelLines = pdf.splitTextToSize(String(item.label).toUpperCase(), itemWidth - 3);
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8.5);
+          const valueLines = pdf.splitTextToSize(String(item.value || 'N/A'), itemWidth - 3);
+          return labelLines.length * 2.8 + 0.5 + valueLines.length * 3.2 + 1;
+        }));
+        checkPageBreak(rowHeight);
 
-      y += textLines.length * 4.5 + 4;
+        let currentColumn = 0;
+        gridRow.forEach((item) => {
+          const span = item.span || 1;
+          const itemWidth = columnWidth * span;
+          const itemX = margin + currentColumn * columnWidth;
+
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(7.2);
+          pdf.setTextColor(100, 116, 139);
+          const labelLines = pdf.splitTextToSize(String(item.label).toUpperCase(), itemWidth - 3);
+          pdf.text(labelLines, itemX, y);
+
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(15, 23, 42);
+          const valueLines = pdf.splitTextToSize(String(item.value || 'N/A'), itemWidth - 3);
+          const valueY = y + labelLines.length * 2.8 + 0.5;
+          pdf.text(valueLines, itemX, valueY);
+          currentColumn += span;
+        });
+
+        y += rowHeight + 1;
+      });
     };
 
-    // 3. Section: Event Information (No Numbering)
-    drawSectionHeader('Event Information');
-    drawTwoColRow('Event Name', eventName, 'Event Type', eventType);
-    drawTwoColRow('Event Date', eventDate, 'Time', eventTime.replace('–', '-'));
-    drawTwoColRow('Expected Attendees', expectedAttendees, '', '');
-    if (participantBreakdown.length > 0) {
-      drawFullRow(
-        'Participant Breakdown',
-        participantBreakdown.map(({ name, participants }) => `${name}: ${participants} attendees`).join('; ')
-      );
-    }
-    drawFullRow('Event Description / Purpose', description);
-    y += 4;
-
-    // 4. Section: Facility & Equipment Details
-    drawSectionHeader('Facility & Equipment Details');
-    drawTwoColRow('Facility Name', facilityDisplay, 'Room Capacity', capacityDisplay);
-    drawTwoColRow('Floor / Location', locationDisplay, 'Specific Room', specificRoomDisplay);
-    drawTwoColRow('Air Conditioning', airconDisplay);
-    drawFullRow('Utility Requested', utilityRequested);
-    drawFullRow('Equipment Requested', equipmentRequested);
-    y += 4;
-
-    // 5. Section: Requestor Information
+    // 3. Section: Requestor Information
     drawSectionHeader('Requestor Information');
-    drawTwoColRow('Full Name', requestorName, 'Contact Number', contactNumber);
-    drawFullRow('Requestor Type', requestorTypeDisplay);
-    requestorDynamicAttributes.forEach(({ label, value }) => drawFullRow(label, value));
-    drawTwoColRow('Email Address', email, 'Date Submitted', dateSubmitted);
-    y += 4;
+    drawGrid([
+      { label: 'Full Name', value: requestorName },
+      { label: 'Contact Number', value: contactNumber },
+      { label: 'Account Type', value: requestorAccountType },
+      ...requestorDynamicAttributes,
+      { label: 'Email Address', value: email },
+      { label: 'Date Submitted', value: dateSubmitted }
+    ]);
 
-    // 6. Section: Endorser Information (if applicable)
+    // 4. Section: Endorser Information
     if (hasEndorser) {
       drawSectionHeader('Endorser Information');
-      drawTwoColRow("Endorser's Full Name", endorserName, 'Designation', endorserDesignation);
-      drawFullRow('Contact Email', endorserEmail);
-      endorserDynamicAttributes.forEach(({ label, value }) => drawFullRow(label, value));
-      y += 4;
+      drawGrid([
+        { label: "Endorser's Full Name", value: endorserName },
+        { label: 'Contact Email', value: endorserEmail },
+        ...endorserDynamicAttributes
+      ]);
     }
 
-    // 7. Footer Timestamp
+    // 5. Section: Event Information
+    drawSectionHeader('Event Information');
+    const eventItems = [
+      { label: 'Event Name', value: eventName },
+      { label: 'Event Type', value: eventType },
+      { label: 'Event Date', value: eventDate },
+      { label: 'Time', value: eventTime.replace('–', '-') },
+      { label: 'Expected Attendees', value: expectedAttendees }
+    ];
+    if (participantBreakdown.length > 0) {
+      eventItems.push({
+        label: 'Participant Breakdown',
+        value: participantBreakdown.map(({ name, participants }) => `${name}: ${participants} attendees`).join('; ')
+      });
+    }
+    eventItems.push({ label: 'Event Description / Purpose', value: description });
+    drawGrid(eventItems);
+
+    // 6. Section: Facility & Equipment Details
+    drawSectionHeader('Facility & Equipment Details');
+    drawGrid([
+      { label: 'Facility Name', value: facilityDisplay },
+      { label: 'Room Capacity', value: capacityDisplay },
+      { label: 'Floor / Location', value: locationDisplay },
+      { label: 'Specific Room', value: specificRoomDisplay },
+      { label: 'Air Conditioning', value: airconDisplay },
+      { label: 'Utility Requested', value: utilityRequested },
+      { label: 'Equipment Requested', value: equipmentRequested }
+    ]);
+
+    // 7. Section: Approvals
+    const approvalHistory = Array.isArray(currentData.historyLogs) ? currentData.historyLogs : [];
+    const approverSteps = trackerSteps
+      .filter(step => step.state === 'approved' && step.key !== 'requestor' && step.status !== 'Skipped')
+      .map((step) => {
+        const approvalLog = [...approvalHistory].reverse().find((log) => (
+          log.state === 'approved'
+          && (
+            normalizeApprovalRoleKey(log.approvalRoleKey) === step.key
+            || normalizeApprovalRoleKey(log.role) === step.key
+            || normalizeApprovalRoleKey(log.role).startsWith(`${step.key} (`)
+          )
+        ));
+        const approvalRecord = currentData.approvals?.[step.key];
+        const approverId = approvalLog?.approverId || approvalRecord?.approverId || '';
+        const approverEmail = approvalLog?.approverEmail || approvalRecord?.approverEmail || '';
+        const approverIdentity = approverId || approverEmail;
+        const approverCollection = approvalLog?.approverCollection
+          || approvalRecord?.approverCollection
+          || '';
+        const profileName = approverProfiles[`${approverCollection}:${approverIdentity}`]
+          || approverProfiles[`super_users:${approverId}`]
+          || approverProfiles[`users:${approverId}`]
+          || approverProfiles[`super_users:${approverEmail}`]
+          || approverProfiles[`users:${approverEmail}`]
+          || '';
+
+        return {
+          ...step,
+          approverName: approvalLog?.approverName
+            || approvalRecord?.approverName
+            || profileName
+            || (step.key === 'endorser' ? endorserName : 'Name unavailable'),
+          approvalDate: approvalLog?.date || approvalRecord?.date || step.date
+        };
+      });
+
+    drawSectionHeader('Approvals');
+    if (approverSteps.length > 0) {
+      drawGrid(approverSteps.map((step) => ({
+        label: 'Approved by',
+        value: `${step.approverName}\nRole: ${step.label}\nDate: ${step.approvalDate}`
+      })));
+    } else {
+      pdf.setFont('helvetica', 'italic');
+      pdf.setFontSize(8);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text('No approvals recorded.', margin, y);
+      y += 6;
+    }
+
+    // 8. Footer Timestamp
     checkPageBreak(15);
-    y += 4;
+    y += 2;
     pdf.setDrawColor(203, 213, 225);
+    pdf.setLineWidth(0.6);
     pdf.line(margin, y, pageWidth - margin, y);
     y += 5;
     pdf.setFont('helvetica', 'italic');
@@ -710,8 +898,8 @@ const ReservationDetails = ({
                   <div className="val word-break">{contactNumber}</div>
                 </div>
                 <div>
-                  <label>REQUESTOR TYPE</label>
-                  <div className="val word-break">{requestorTypeDisplay}</div>
+                  <label>ACCOUNT TYPE</label>
+                  <div className="val word-break">{requestorAccountType}</div>
                 </div>
                 <div>
                   <label>EMAIL ADDRESS</label>

@@ -2,6 +2,7 @@ import React, { lazy, Suspense, useEffect, useMemo, useRef, useState } from 'rea
 import { collection, onSnapshot } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase';
+import MonthYearPicker from '../components/MonthYearPicker';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationActive } from '../services/reservationStatus';
 import "../styles/Dashboard.scss";
@@ -66,6 +67,112 @@ const parseTime = (value) => {
 const formatDate = (date) => date
   ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   : 'Date unavailable';
+
+const DashboardDatePicker = ({ id, value, min, max, label, onChange }) => {
+  const [isOpen, setIsOpen] = useState(false);
+  const [viewDate, setViewDate] = useState(() => parseDate(value) || new Date());
+  const pickerRef = useRef(null);
+  const selectedDate = parseDate(value);
+  const firstDay = new Date(viewDate.getFullYear(), viewDate.getMonth(), 1).getDay();
+  const daysInMonth = new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 0).getDate();
+  const calendarCells = Array.from({ length: 42 }, (_, index) => {
+    const day = index - firstDay + 1;
+    if (day < 1 || day > daysInMonth) return null;
+
+    const date = new Date(viewDate.getFullYear(), viewDate.getMonth(), day);
+    const dateValue = toDateInputValue(date);
+    return {
+      day,
+      date,
+      dateValue,
+      isDisabled: Boolean((min && dateValue < min) || (max && dateValue > max))
+    };
+  });
+
+  useEffect(() => {
+    if (!isOpen) return undefined;
+
+    const closeOnOutsideClick = (event) => {
+      if (!pickerRef.current?.contains(event.target)) setIsOpen(false);
+    };
+    const closeOnEscape = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+
+    document.addEventListener('mousedown', closeOnOutsideClick);
+    document.addEventListener('touchstart', closeOnOutsideClick);
+    document.addEventListener('keydown', closeOnEscape);
+    return () => {
+      document.removeEventListener('mousedown', closeOnOutsideClick);
+      document.removeEventListener('touchstart', closeOnOutsideClick);
+      document.removeEventListener('keydown', closeOnEscape);
+    };
+  }, [isOpen]);
+
+  return (
+    <div className="dashboard-date-picker" ref={pickerRef}>
+      <button
+        id={id}
+        type="button"
+        className="dashboard-date-trigger"
+        aria-label={`${label}: ${selectedDate?.toLocaleDateString() || 'Select date'}`}
+        aria-haspopup="dialog"
+        aria-expanded={isOpen}
+        onClick={() => {
+          setViewDate(selectedDate || new Date());
+          setIsOpen((open) => !open);
+        }}
+      >
+        <i className="ph ph-calendar-blank" aria-hidden="true"></i>
+        <span className={selectedDate ? '' : 'is-placeholder'}>
+          {selectedDate?.toLocaleDateString(undefined, { month: '2-digit', day: '2-digit', year: 'numeric' }) || 'mm/dd/yyyy'}
+        </span>
+      </button>
+      {isOpen && (
+        <div className="dashboard-date-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
+          <div className="dashboard-date-calendar-header">
+            <button
+              type="button"
+              aria-label="Previous month"
+              onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() - 1, 1))}
+            >
+              &#10094;
+            </button>
+            <MonthYearPicker date={viewDate} onChange={setViewDate} />
+            <button
+              type="button"
+              aria-label="Next month"
+              onClick={() => setViewDate(new Date(viewDate.getFullYear(), viewDate.getMonth() + 1, 1))}
+            >
+              &#10095;
+            </button>
+          </div>
+          <div className="dashboard-date-calendar-grid">
+            {['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'].map((day) => (
+              <span className="dashboard-date-weekday" key={day}>{day}</span>
+            ))}
+            {calendarCells.map((cell, index) => cell ? (
+              <button
+                type="button"
+                key={cell.dateValue}
+                disabled={cell.isDisabled}
+                aria-label={cell.date.toLocaleDateString()}
+                aria-pressed={cell.dateValue === value}
+                className={cell.dateValue === value ? 'is-selected' : ''}
+                onClick={() => {
+                  onChange(cell.dateValue);
+                  setIsOpen(false);
+                }}
+              >
+                {cell.day}
+              </button>
+            ) : <span className="is-empty" key={`empty-${index}`} />)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
 
 // Display helpers keep status badges and requestor names consistent.
 const getStatusClass = (status) => {
@@ -224,26 +331,26 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
       </button>
     </div>
     <div className="filter-fields">
-      <label>
-        <span>Date from</span>
-        <input
-          type="date"
-          inputMode="none"
+      <div className="dashboard-date-field">
+        <label htmlFor="dashboard-filter-date-from">Date from</label>
+        <DashboardDatePicker
+          id="dashboard-filter-date-from"
           value={filters.startDate}
-          max={filters.endDate || undefined}
-          onChange={(event) => setFilters((current) => ({ ...current, startDate: event.target.value }))}
+          max={filters.endDate}
+          label="Date from"
+          onChange={(date) => setFilters((current) => ({ ...current, startDate: date }))}
         />
-      </label>
-      <label>
-        <span>Date to</span>
-        <input
-          type="date"
-          inputMode="none"
+      </div>
+      <div className="dashboard-date-field">
+        <label htmlFor="dashboard-filter-date-to">Date to</label>
+        <DashboardDatePicker
+          id="dashboard-filter-date-to"
           value={filters.endDate}
-          min={filters.startDate || undefined}
-          onChange={(event) => setFilters((current) => ({ ...current, endDate: event.target.value }))}
+          min={filters.startDate}
+          label="Date to"
+          onChange={(date) => setFilters((current) => ({ ...current, endDate: date }))}
         />
-      </label>
+      </div>
       <label>
         <span>Start time from</span>
         <DashboardTimePicker
@@ -294,39 +401,51 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
 );
 
 // Summary metrics shown to staff and administrators.
-const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboard }) => (
-  <section className="dashboard-kpis admin-dashboard-kpis" aria-label="Key analytics">
-    <article className="kpi-card kpi-primary">
-      <span className="kpi-label">Reservations in range</span>
-      <strong>{metrics.total}</strong>
-      <span className="kpi-footnote">Across the selected filters</span>
-    </article>
-    <article className="kpi-card">
-      <span className="kpi-label">Approved reservation</span>
-      <strong>{metrics.approved}</strong>
-      <span className="kpi-footnote">{metrics.reservedUnits} equipment units requested</span>
-    </article>
-    <article className="kpi-card">
+const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboard, canReviewApprovals }) => {
+  const awaitingReviewCard = (
+    <>
       <span className="kpi-label">Awaiting review</span>
       <strong>{metrics.pending}</strong>
       <span className="kpi-footnote">{pendingApprovals} assigned to your approval role</span>
-    </article>
-    {isAdminDashboard && (
-      <article className="kpi-card">
-        <span className="kpi-label">Available equipment</span>
-        <strong>{metrics.availableUnits}</strong>
-        <span className="kpi-footnote">Units available in current inventory</span>
+    </>
+  );
+
+  return (
+    <section className="dashboard-kpis admin-dashboard-kpis" aria-label="Key analytics">
+      <article className="kpi-card kpi-primary">
+        <span className="kpi-label">Reservations in range</span>
+        <strong>{metrics.total}</strong>
+        <span className="kpi-footnote">Across the selected filters</span>
       </article>
-    )}
-    {isAdminDashboard && (
-      <Link className="kpi-card pending-users-kpi" to="/user?filter=pending">
-        <span className="kpi-label">Pending users</span>
-        <strong>{pendingUsers}</strong>
-        <span className="kpi-footnote">View accounts with pending roles</span>
-      </Link>
-    )}
-  </section>
-);
+      <article className="kpi-card">
+        <span className="kpi-label">Approved reservation</span>
+        <strong>{metrics.approved}</strong>
+        <span className="kpi-footnote">{metrics.reservedUnits} equipment units requested</span>
+      </article>
+      {canReviewApprovals ? (
+        <Link className="kpi-card kpi-card-link" to="/approval">
+          {awaitingReviewCard}
+        </Link>
+      ) : (
+        <article className="kpi-card">{awaitingReviewCard}</article>
+      )}
+      {isAdminDashboard && (
+        <Link className="kpi-card kpi-card-link" to="/equipment">
+          <span className="kpi-label">Available equipment</span>
+          <strong>{metrics.availableUnits}</strong>
+          <span className="kpi-footnote">Units available in current inventory</span>
+        </Link>
+      )}
+      {isAdminDashboard && (
+        <Link className="kpi-card kpi-card-link" to="/user?filter=pending">
+          <span className="kpi-label">Pending users</span>
+          <strong>{pendingUsers}</strong>
+          <span className="kpi-footnote">View accounts with pending roles</span>
+        </Link>
+      )}
+    </section>
+  );
+};
 
 // Restricted landing page for accounts awaiting review.
 const PendingAccountDashboard = () => (
@@ -1065,6 +1184,7 @@ const DashboardContent = ({ currentUserRole }) => {
             pendingApprovals={pendingApprovals}
             pendingUsers={pendingUserCount}
             isAdminDashboard={isAdminDashboard}
+            canReviewApprovals={canReviewApprovals}
           />
         )}
 

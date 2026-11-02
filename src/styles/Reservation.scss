@@ -1574,6 +1574,74 @@ $orange-main: #F59E0B;
         background: #E2E8F0; 
       } 
     }
+
+    .month-year-picker {
+      position: relative;
+      min-width: 0;
+    }
+
+    .month-year-picker > summary {
+      color: $text-dark;
+      font-size: var(--font-body);
+      font-weight: 700;
+      list-style: none;
+      white-space: nowrap;
+      cursor: pointer;
+
+      &::-webkit-details-marker {
+        display: none;
+      }
+
+      &:focus-visible {
+        outline: 2px solid $blue-main;
+        outline-offset: 2px;
+      }
+    }
+
+    .month-year-picker-menu {
+      position: absolute;
+      top: calc(100% + 0.5rem);
+      left: 50%;
+      z-index: 2;
+      display: grid;
+      grid-template-columns: 1fr 0.7fr;
+      gap: 0.5rem;
+      width: 16rem;
+      padding: 0.7rem;
+      border: 1px solid $border-color;
+      border-radius: 0.5rem;
+      background: #fff;
+      box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+      transform: translateX(-50%);
+
+      > div {
+        display: flex;
+        min-width: 0;
+        flex-direction: column;
+        gap: 0.25rem;
+        color: $text-muted;
+        font-size: var(--font-small);
+        font-weight: 600;
+      }
+
+      span {
+        color: $text-muted;
+        font-size: var(--font-small);
+        font-weight: 600;
+      }
+
+      select {
+        width: 100%;
+        min-width: 0;
+        height: 2.25rem;
+        padding: 0 0.4rem;
+        border: 1px solid $border-color;
+        border-radius: 0.35rem;
+        background: #fff;
+        color: $text-dark;
+        font: inherit;
+      }
+    }
   }
 
   .calendar-grid { 

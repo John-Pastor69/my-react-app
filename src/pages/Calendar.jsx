@@ -469,6 +469,8 @@ const Calendar = ({ currentUserRole }) => {
   };
 
   const calendarDays = generateCalendar();
+  const today = new Date();
+  const todayDate = `${String(today.getMonth() + 1).padStart(2, '0')}/${String(today.getDate()).padStart(2, '0')}/${today.getFullYear()}`;
   const currentMonthYearString = currentDate.toLocaleString('default', { month: 'long', year: 'numeric' });
   const firstYearOption = Math.min(1950, currentDate.getFullYear() - 20);
   const lastYearOption = Math.max(new Date().getFullYear() + 20, currentDate.getFullYear() + 20);
@@ -654,7 +656,7 @@ const Calendar = ({ currentUserRole }) => {
                 <div 
                   key={index} 
                   onClick={() => handleDateClick(day.date)}
-                  className={`day-cell ${isEmpty ? 'empty-day' : ''} ${unavailableDate ? 'unavailable-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''}`}
+                  className={`day-cell ${isEmpty ? 'empty-day' : ''} ${unavailableDate ? 'unavailable-day' : ''} ${day.isGrayedOut ? 'prev-month' : ''} ${selectedDate === day.date ? 'active-day' : ''} ${todayDate === day.date ? 'today-day' : ''}`}
                 >
                   <span className="date"><span>{day.name}</span> {day.num}</span>
                   {unavailableDate && (
@@ -940,7 +942,7 @@ const Calendar = ({ currentUserRole }) => {
                       </h3>
                       <div className="details-grid">
                         <div><div className="details-label">Endorser's Full Name</div><div className="details-value">{historySelectedRequest.endorser || 'N/A'}</div></div>
-                        <div><div className="details-label">Designation</div><div className="details-value">{historySelectedRequest.fullData.endorserDesignation || 'N/A'}</div></div>
+                        <div><div className="details-label">Designation</div><div className="details-value">{historySelectedRequest.fullData.endorserInfo?.department || historySelectedRequest.fullData.endorserInfo?.designation || historySelectedRequest.fullData.endorserDesignation || 'N/A'}</div></div>
                         <div className="details-full-width"><div className="details-label">Contact Email</div><div className="details-value">{historySelectedRequest.fullData.endorserEmail || 'N/A'}</div></div>
                       </div>
                     </div>
@@ -1025,7 +1027,7 @@ const Calendar = ({ currentUserRole }) => {
                     </div>
                     <div><div className="details-label">Duration</div><div className="details-value">{historySelectedRequest.fullData.durationHours ? `${historySelectedRequest.fullData.durationHours} Hours` : 'N/A – N/A'}</div></div>
                     <div><div className="details-label">Attendees</div><div className="details-value">{historySelectedRequest.fullData.expectedParticipants || 'N/A'}</div></div>
-                    <div><div className="details-label">Endorsed By</div><div className="details-value">{historySelectedRequest.endorser !== 'N/A' ? `${historySelectedRequest.endorser} (${historySelectedRequest.fullData.endorserDesignation || 'N/A'})` : 'N/A'}</div></div>
+                    <div><div className="details-label">Endorsed By</div><div className="details-value">{historySelectedRequest.endorser !== 'N/A' ? `${historySelectedRequest.endorser} (${historySelectedRequest.fullData.endorserInfo?.department || historySelectedRequest.fullData.endorserInfo?.designation || historySelectedRequest.fullData.endorserDesignation || 'N/A'})` : 'N/A'}</div></div>
                   </div>
                 </div>
               </div>
