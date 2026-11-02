@@ -18,6 +18,24 @@ $blue-main: #3B82F6;
     box-sizing: border-box;
   }
 
+  .schedule-header {
+    display: flex;
+    align-items: center;
+    margin-bottom: 1.067rem;
+
+    h1 {
+      margin: 0;
+      color: #172033;
+      font-size: 1.333rem;
+      font-weight: 700;
+      line-height: 1.25;
+
+      @media (min-width: 46.667rem) {
+        font-size: 1.467rem;
+      }
+    }
+  }
+
   .schedule-main-card {
     width: 100%;
     margin: 0 auto;

@@ -1156,7 +1156,7 @@ const MisUserManagement = ({ currentUserRole }) => {
                           <td>{formatTimeCreated(user.timeCreated || user.createdAt)}</td>
                         ) : (
                           <td>
-                            <span className={`status-dot ${isActive ? 'status-active' : 'status-inactive'}`}>
+                            <span className={`user-status ${isActive ? 'status-active' : 'status-inactive'}`}>
                               {status}
                             </span>
                           </td>

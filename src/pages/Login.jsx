@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
+import { BadgeCheck, CalendarDays, ClipboardList, FileDown, ShieldCheck } from 'lucide-react';
 import { auth, db } from '../Firebase'; 
 import { NEW_LOGIN_KEY } from '../services/browserSession';
 import {
@@ -112,6 +113,15 @@ export default function Login({ error, setError }) {
     setShowForm(true);
     if (setError) setError('');
     setResetMessage('');
+  };
+
+  const scrollToHowItWorks = () => {
+    const section = document.getElementById('how-it-works');
+    if (section) {
+      section.scrollIntoView({
+        behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'auto' : 'smooth'
+      });
+    }
   };
 
   const closeModal = () => {
@@ -428,8 +438,8 @@ export default function Login({ error, setError }) {
         <section className="hero-section">
           <div className="hero-copy">
             <p className="eyebrow">Campus operations made simple</p>
-            <h2>Streamline your campus events or STI facility reservation system.</h2>
-            <p className="subheadline">Book rooms, request equipment, and manage your campus activities all in one place.</p>
+            <h2>Streamline your campus events with the STI facility reservation system.</h2>
+            <p className="subheadline">Reserve rooms, request equipment, and manage your campus activities all in one place.</p>
             <div className="hero-actions">
               <button type="button" className="primary-btn" onClick={openModal}>Get Started</button>
               <button type="button" className="secondary-btn" onClick={openModal}>Make a Reservation</button>
@@ -443,23 +453,107 @@ export default function Login({ error, setError }) {
                 <span>Campus Venue Planner</span>
               </div>
               <div className="visual-body">
-                <div className="mini-schedule">
-                  <span className="schedule-block schedule-highlight" />
-                  <span className="schedule-block" />
-                  <span className="schedule-block" />
-                </div>
-                <div className="meta-row">
-                  <span>14 rooms available</span>
-                  <span>8 equipment requests</span>
+                <div className="reservation-preview">
+                  <div className="reservation-preview-top">
+                    <span className="reservation-preview-label">Sample reservation</span>
+                    <span className="reservation-approved">Approved</span>
+                  </div>
+                  <h3>Campus event</h3>
+                  <div className="reservation-preview-details">
+                    <div>
+                      <span>Facility</span>
+                      <strong>Multi-purpose Hall</strong>
+                    </div>
+                    <div>
+                      <span>Schedule</span>
+                      <strong>9:00 AM – 12:00 PM</strong>
+                    </div>
+                  </div>
+                  <div className="reservation-preview-footer">
+                    <span className="reservation-preview-check" aria-hidden="true">✓</span>
+                    Ready for your event
+                  </div>
                 </div>
               </div>
             </div>
           </div>
         </section>
 
-        <div className="scroll-indicator" aria-hidden="true">
-          <span>↓</span>
-        </div>
+        <a
+          className="scroll-indicator"
+          href="#how-it-works"
+          aria-label="Scroll to how it works"
+          onClick={(event) => {
+            event.preventDefault();
+            scrollToHowItWorks();
+          }}
+        >
+          <span aria-hidden="true">↓</span>
+        </a>
+
+        <section className="landing-section workflow-section" id="how-it-works" aria-labelledby="workflow-title">
+          <div className="section-heading">
+            <p className="eyebrow">A simple process</p>
+            <h2 id="workflow-title">How it works</h2>
+            <p>From checking availability to getting your event approved, keep your reservation moving in one place.</p>
+          </div>
+          <ol className="workflow-grid">
+            <li className="workflow-card">
+              <span className="workflow-icon"><CalendarDays size={22} aria-hidden="true" /></span>
+              <span className="workflow-step">Step 1</span>
+              <h3>Check availability</h3>
+              <p>Browse the calendar to find a suitable date and facility.</p>
+            </li>
+            <li className="workflow-card">
+              <span className="workflow-icon"><ClipboardList size={22} aria-hidden="true" /></span>
+              <span className="workflow-step">Step 2</span>
+              <h3>Submit a request</h3>
+              <p>Share your event details, schedule, and facility or equipment needs.</p>
+            </li>
+            <li className="workflow-card">
+              <span className="workflow-icon"><BadgeCheck size={22} aria-hidden="true" /></span>
+              <span className="workflow-step">Step 3</span>
+              <h3>Follow the review</h3>
+              <p>Authorized reviewers process the request through the approval workflow.</p>
+            </li>
+            <li className="workflow-card">
+              <span className="workflow-icon"><FileDown size={22} aria-hidden="true" /></span>
+              <span className="workflow-step">Step 4</span>
+              <h3>Get event-ready</h3>
+              <p>Download the reservation slip for your approved Reservation.</p>
+            </li>
+          </ol>
+        </section>
+
+        <section className="landing-section features-section" aria-labelledby="features-title">
+          <div className="section-heading">
+            <p className="eyebrow">Built for campus operations</p>
+            <h2 id="features-title">Everything you need to coordinate a reservation</h2>
+            <p>Helpful tools for requestors, reviewers, and campus administrators.</p>
+          </div>
+          <div className="features-grid">
+            <article className="feature-card">
+              <span className="feature-icon"><ShieldCheck size={22} aria-hidden="true" /></span>
+              <h3>Role-based access</h3>
+              <p>Relevant tools and views are available based on each account’s assigned role.</p>
+            </article>
+            <article className="feature-card">
+              <span className="feature-icon"><CalendarDays size={22} aria-hidden="true" /></span>
+              <h3>Availability checks</h3>
+              <p>Review facility schedules and help prevent overlapping reservation requests.</p>
+            </article>
+            <article className="feature-card">
+              <span className="feature-icon"><BadgeCheck size={22} aria-hidden="true" /></span>
+              <h3>Approval tracking</h3>
+              <p>Requests move through the designated review and approval process.</p>
+            </article>
+            <article className="feature-card">
+              <span className="feature-icon"><FileDown size={22} aria-hidden="true" /></span>
+              <h3>Downloadable slips</h3>
+              <p>Get a PDF copy of the reservation details for approved bookings.</p>
+            </article>
+          </div>
+        </section>
 
         {showForm && (
           <div className="login-modal-overlay">
@@ -796,86 +890,100 @@ export default function Login({ error, setError }) {
               </div>
 
             </div>
-            {showTerms && (
-              <div
-                role="dialog"
-                aria-modal="true"
-                aria-labelledby="terms-title"
-                onClick={() => setShowTerms(false)}
-                style={{
-                  position: 'fixed',
-                  inset: 0,
-                  zIndex: 1100,
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  padding: '16px',
-                  backgroundColor: 'rgba(0, 0, 0, 0.55)'
-                }}
-              >
-                <div
-                  onClick={(e) => e.stopPropagation()}
+          </div>
+        )}
+        {showTerms && (
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="terms-title"
+            onClick={() => setShowTerms(false)}
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 1100,
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              padding: '16px',
+              backgroundColor: 'rgba(0, 0, 0, 0.55)'
+            }}
+          >
+            <div
+              onClick={(e) => e.stopPropagation()}
+              style={{
+                width: '100%',
+                maxWidth: '600px',
+                maxHeight: '85vh',
+                overflowY: 'auto',
+                padding: '24px',
+                borderTop: `6px solid ${themeBlue}`,
+                borderRadius: '8px',
+                backgroundColor: '#FFFFFF',
+                color: '#334155',
+                lineHeight: 1.5
+              }}
+            >
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
+                <h2 id="terms-title" style={{ margin: 0, color: themeBlue }}>Terms and Conditions</h2>
+                <button
+                  type="button"
+                  aria-label="Close Terms and Conditions"
+                  onClick={() => setShowTerms(false)}
                   style={{
-                    width: '100%',
-                    maxWidth: '600px',
-                    maxHeight: '85vh',
-                    overflowY: 'auto',
-                    padding: '24px',
-                    borderTop: `6px solid ${themeBlue}`,
-                    borderRadius: '8px',
-                    backgroundColor: '#FFFFFF',
-                    color: '#334155',
-                    lineHeight: 1.5
+                    border: 'none',
+                    background: 'none',
+                    color: themeBlue,
+                    fontSize: '24px',
+                    cursor: 'pointer'
                   }}
                 >
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-                    <h2 id="terms-title" style={{ margin: 0, color: themeBlue }}>Terms and Conditions</h2>
-                    <button
-                      type="button"
-                      aria-label="Close Terms and Conditions"
-                      onClick={() => setShowTerms(false)}
-                      style={{
-                        border: 'none',
-                        background: 'none',
-                        color: themeBlue,
-                        fontSize: '24px',
-                        cursor: 'pointer'
-                      }}
-                    >
-                      &times;
-                    </button>
-                  </div>
-
-                  <p>By creating an account and using the STI Global City Reservation System, you agree to the following terms and consent to the processing of your personal data in accordance with Republic Act No. 10173 (Data Privacy Act of 2012).</p>
-
-                  <h3>Information collected</h3>
-                  <p>The system collects information needed to manage your account and facility reservations, including:</p>
-                  <ul style={{ paddingLeft: '24px', margin: '0 0 16px' }}>
-                    <li>Your first name, middle initial, last name, email address, account type, and phone number. Your password is handled by Firebase Authentication and is not included in the user profile document created by this app.</li>
-                    <li>The account-type-specific dropdown selections and signup fields configured by system administrators. These may include course or program, department or office, student number, or other fields. Configured fields may have input limits or character restrictions.</li>
-                    <li>Profile images or banners you choose to upload, and two-factor authentication settings and secret if you choose to enable two-factor authentication.</li>
-                    <li>Account records generated by the system, such as your account ID, assigned role, email-verification status, and account creation time.</li>
-                    <li>When you submit a reservation: contact details, requestor information, endorser name/designation/email, event name and purpose, participant count, event type, requested dates and times, schedule, facilities or room, equipment and utilities, and air-conditioning requirements when applicable.</li>
-                    <li>Reservation records needed to process and track requests, such as reference number, status, timestamps, and approval or modification history.</li>
-                    <li>Calendar availability information, including unavailable dates and any administrator-provided remarks used to explain those dates.</li>
-                  </ul>
-
-                  <h3>How information is used</h3>
-                  <p>Your information is used to create and manage your account, verify your email, determine system access, display and manage your profile, prepare reservation requests, check calendar availability, and allow authorized staff and relevant approvers to review, process, and communicate about reservations. Account-type-specific fields may change as administrators update the signup configuration. Some profile fields can be edited by you; others may be read-only based on their configuration. The system uses Firebase services for authentication and data storage, Cloudinary for profile images or banners you upload, and email for verification and reservation-related communications.</p>
-
-                  <h3>Your responsibilities</h3>
-                  <p>Provide accurate information, keep your sign-in credentials private, and use the system only for legitimate facility reservation purposes. Do not use another person’s account or submit information about others unless it is needed for a reservation and you are authorized to provide it.</p>
-
-                  <h3>Access and retention</h3>
-                  <p>Account and reservation information may be accessed by authorized system personnel and the relevant reviewers or approvers to perform their duties. Records are retained as needed to operate the reservation system and meet applicable institutional recordkeeping requirements. Contact the system administrator for questions or requests about your information.</p>
-
-                  <p>By checking the agreement box, you confirm that you have read these terms and consent to the collection, processing, and use of your personal information as described above, in compliance with Republic Act No. 10173, for operating the account and reservation system.</p>
-                </div>
+                  &times;
+                </button>
               </div>
-            )}
+
+              <p>By creating an account and using the STI Global City Reservation System, you agree to the following terms and consent to the processing of your personal data in accordance with Republic Act No. 10173 (Data Privacy Act of 2012).</p>
+
+              <h3>Information collected</h3>
+              <p>The system collects information needed to manage your account and facility reservations, including:</p>
+              <ul style={{ paddingLeft: '24px', margin: '0 0 16px' }}>
+                <li>Your first name, middle initial, last name, email address, account type, and phone number. Your password is handled by Firebase Authentication and is not included in the user profile document created by this app.</li>
+                <li>The account-type-specific dropdown selections and signup fields configured by system administrators. These may include course or program, department or office, student number, or other fields. Configured fields may have input limits or character restrictions.</li>
+                <li>Profile images or banners you choose to upload, and two-factor authentication settings and secret if you choose to enable two-factor authentication.</li>
+                <li>Account records generated by the system, such as your account ID, assigned role, email-verification status, and account creation time.</li>
+                <li>When you submit a reservation: contact details, requestor information, endorser name/designation/email, event name and purpose, participant count, event type, requested dates and times, schedule, facilities or room, equipment and utilities, and air-conditioning requirements when applicable.</li>
+                <li>Reservation records needed to process and track requests, such as reference number, status, timestamps, and approval or modification history.</li>
+                <li>Calendar availability information, including unavailable dates and any administrator-provided remarks used to explain those dates.</li>
+              </ul>
+
+              <h3>How information is used</h3>
+              <p>Your information is used to create and manage your account, verify your email, determine system access, display and manage your profile, prepare reservation requests, check calendar availability, and allow authorized staff and relevant approvers to review, process, and communicate about reservations. Account-type-specific fields may change as administrators update the signup configuration. Some profile fields can be edited by you; others may be read-only based on their configuration. The system uses Firebase services for authentication and data storage, Cloudinary for profile images or banners you upload, and email for verification and reservation-related communications.</p>
+
+              <h3>Your responsibilities</h3>
+              <p>Provide accurate information, keep your sign-in credentials private, and use the system only for legitimate facility reservation purposes. Do not use another person’s account or submit information about others unless it is needed for a reservation and you are authorized to provide it.</p>
+
+              <h3>Access and retention</h3>
+              <p>Account and reservation information may be accessed by authorized system personnel and the relevant reviewers or approvers to perform their duties. Records are retained as needed to operate the reservation system and meet applicable institutional recordkeeping requirements. Contact the system administrator for questions or requests about your information.</p>
+
+              <p>By checking the agreement box, you confirm that you have read these terms and consent to the collection, processing, and use of your personal information as described above, in compliance with Republic Act No. 10173, for operating the account and reservation system.</p>
+            </div>
           </div>
         )}
       </div>
+      <footer className="landing-footer">
+        <div className="footer-inner">
+          <p>© {new Date().getFullYear()} STI College Global City <span aria-hidden="true">·</span> Facility Reservation System</p>
+          <div className="footer-links">
+            <span>For assistance, contact the campus MIS office.</span>
+            <button
+              type="button"
+              onClick={() => setShowTerms(true)}
+            >
+              Terms and Conditions
+            </button>
+          </div>
+        </div>
+      </footer>
     </div>
   );
 }

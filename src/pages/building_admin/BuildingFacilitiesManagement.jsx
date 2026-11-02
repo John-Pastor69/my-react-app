@@ -248,7 +248,6 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         <div>
           <h1>All Facilities</h1>
         </div>
-        <button className="btn-primary" onClick={handleAddClick}>+ Add Facility</button>
       </div>
 
       {/* Top Metric Cards */}
@@ -311,6 +310,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
               <span>Delete</span>
               {selectedIds.length > 0 && <span>({selectedIds.length})</span>}
             </button>
+            <button className="btn-primary" onClick={handleAddClick}>+ Add Facility</button>
           </div>
         </div>
 

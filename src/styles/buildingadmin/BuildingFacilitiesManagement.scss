@@ -67,7 +67,7 @@ main,
 
     h1 {
       margin: 0 0 0.267rem 0;
-      font-size: var(--font-h3);
+      font-size: var(--font-h1);
       font-weight: 700;
     }
 
@@ -244,6 +244,22 @@ main,
           }
         }
 
+        .btn-primary {
+          background: $primary-color;
+          color: #ffffff;
+          border: none;
+          padding: 0.5333rem 1.0667rem;
+          border-radius: 0.533rem;
+          font-size: var(--font-body);
+          font-weight: 600;
+          cursor: pointer;
+          white-space: nowrap;
+
+          &:hover {
+            background: color.adjust($primary-color, $lightness: -8%);
+          }
+        }
+
         .btn-secondary {
           background: #ffffff;
           border: 0.067rem solid $border-color;
@@ -262,7 +278,7 @@ main,
           background: $red-bg;
           color: $red-fg;
           border: 0.067rem solid color.adjust($red-fg, $lightness: 35%);
-          padding: 0.667rem 0.933rem;
+          padding: 0.5333rem 0.933rem;
           border-radius: 0.533rem;
           font-size: var(--font-body);
           font-weight: 600;

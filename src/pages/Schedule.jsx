@@ -192,10 +192,12 @@ const Schedule = ({ currentUserRole = '' }) => {
 
   return (
     <div className="schedule-container">
+      <div className="schedule-header">
+        <h1>Schedule</h1>
+      </div>
       <div className="schedule-main-card">
         <div className="card-header">
           <div className="title-group">
-            <h3>Schedule</h3>
             <div className="schedule-status-legend" aria-label="Reservation status legend">
               <span><i className="status-legend-dot pending" /> Pending</span>
               <span><i className="status-legend-dot approved" /> Approved</span>
