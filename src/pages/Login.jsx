@@ -56,9 +56,6 @@ export default function Login({ error, setError }) {
   });
   const [signupOptionsError, setSignupOptionsError] = useState('');
 
-  const themeBlue = '#0033A0';
-  const lightBlueBorder = '#93C5FD';
-
   useEffect(() => {
     const unsubscribe = onSnapshot(
       doc(db, 'app_settings', 'signupOptions'),
@@ -389,25 +386,6 @@ export default function Login({ error, setError }) {
     }
   }, [error, isLogin, showForm]);
 
-  const inputStyle = { 
-    padding: '10px', 
-    borderRadius: '6px', 
-    border: `1px solid ${lightBlueBorder}`, 
-    fontSize: '14px', 
-    width: '100%', 
-    boxSizing: 'border-box',
-    backgroundColor: '#FAFAFA',
-    color: themeBlue
-  };
-
-  const labelStyle = {
-    fontSize: '13px',
-    fontWeight: '600',
-    color: '#475569',
-    marginBottom: '4px',
-    textAlign: 'left',
-    display: 'block'
-  };
   const selectedSignupAccountType = signupOptions.accountTypes.find((accountType) => accountType.value === tag);
   const selectedSignupDropdownType = signupOptions.dropdownTypes.find(
     (dropdown) => dropdown.value === selectedSignupAccountType?.dropdown
@@ -427,8 +405,8 @@ export default function Login({ error, setError }) {
     <div className="landing-page">
       <div className="brand-header">
         <div className="sti-logo-container">
-          <h1 className="brand-title" style={{ color: themeBlue }}>STI Global City Reservation System</h1>
-          <button className="top-login-btn" onClick={openModal} style={{ backgroundColor: themeBlue, color: '#FFFFFF', fontWeight: 'bold' }}>
+          <h1 className="brand-title">STI Global City Reservation System</h1>
+          <button className="top-login-btn" onClick={openModal}>
             Log in
           </button>
         </div>
@@ -502,7 +480,7 @@ export default function Login({ error, setError }) {
               <span className="workflow-icon"><CalendarDays size={22} aria-hidden="true" /></span>
               <span className="workflow-step">Step 1</span>
               <h3>Check availability</h3>
-              <p>Browse the calendar to find a suitable date and facility.</p>
+              <p>Check the live schedule to find the perfect date and secure your preferred room.</p>
             </li>
             <li className="workflow-card">
               <span className="workflow-icon"><ClipboardList size={22} aria-hidden="true" /></span>
@@ -539,8 +517,8 @@ export default function Login({ error, setError }) {
             </article>
             <article className="feature-card">
               <span className="feature-icon"><CalendarDays size={22} aria-hidden="true" /></span>
-              <h3>Availability checks</h3>
-              <p>Review facility schedules and help prevent overlapping reservation requests.</p>
+              <h3>Automated Conflict Detection</h3>
+              <p>The system automatically blocks overlapping schedules and prevents facility capacity overloads in real-time before a request is submitted.</p>
             </article>
             <article className="feature-card">
               <span className="feature-icon"><BadgeCheck size={22} aria-hidden="true" /></span>
@@ -557,35 +535,30 @@ export default function Login({ error, setError }) {
 
         {showForm && (
           <div className="login-modal-overlay">
-            <div className="login-modal-content" onClick={(e) => e.stopPropagation()} style={{ borderTop: `6px solid ${themeBlue}` }}>
+            <div className="login-modal-content" onClick={(e) => e.stopPropagation()}>
               
               <div className="modal-header">
                 <i
-                  className="ph ph-x close-icon"
                   onClick={isSubmittingSignup ? undefined : closeModal}
                   aria-disabled={isSubmittingSignup}
-                  style={{
-                    color: isSubmittingSignup ? '#94a3b8' : themeBlue,
-                    cursor: isSubmittingSignup ? 'not-allowed' : 'pointer',
-                    opacity: isSubmittingSignup ? 0.75 : 1
-                  }}
+                  className={`ph ph-x close-icon${isSubmittingSignup ? ' is-submitting' : ''}`}
                 ></i>
               </div>
 
-              <div ref={modalBodyRef} className="modal-body" style={{ maxHeight: '80vh', overflowY: 'auto' }}>
-                {error && <div role="alert" aria-live="assertive" style={{color: '#dc2626', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{error}</div>}
-                {resetMessage && <div style={{color: '#16a34a', fontSize: '13px', fontWeight: 'bold', marginBottom: '12px', textAlign: 'center'}}>{resetMessage}</div>}
+              <div ref={modalBodyRef} className="modal-body">
+                {error && <div className="login-form-message login-form-error" role="alert" aria-live="assertive">{error}</div>}
+                {resetMessage && <div className="login-form-message login-form-success">{resetMessage}</div>}
                 
-                <h2 style={{ textAlign: 'center', marginBottom: '1rem', color: themeBlue }}>
+                <h2 className="login-form-title">
                   {isLogin ? 'Sign In' : 'Create Account'}
                 </h2>
 
-                <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                <form className="login-form" onSubmit={handleSubmit}>
                   {!isLogin && (
                     <>
-                      <div style={{ display: 'flex', gap: '8px' }}>
-                        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-                          <label style={labelStyle}>First Name</label>
+                      <div className="signup-name-row">
+                        <div className="login-form-field signup-first-name">
+                          <label>First Name</label>
                           <input 
                             type="text" 
                             placeholder="First Name" 
@@ -595,11 +568,11 @@ export default function Login({ error, setError }) {
                             pattern="[A-Za-z ]+"
                             title="Use letters and spaces only."
                             required
-                            style={inputStyle}
+                            className="login-input"
                           />
                         </div>
-                        <div style={{ width: '4.5rem', display: 'flex', flexDirection: 'column' }}>
-                          <label style={labelStyle}>MI</label>
+                        <div className="login-form-field signup-middle-initial">
+                          <label>MI</label>
                           <input
                             type="text" 
                             placeholder="MI"
@@ -609,12 +582,12 @@ export default function Login({ error, setError }) {
                             pattern="[A-Za-z]"
                             title="Enter one letter."
                             required
-                            style={inputStyle}
+                            className="login-input"
                           />
                         </div>
                       </div>
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <label style={labelStyle}>Last Name</label>
+                      <div className="login-form-field">
+                        <label>Last Name</label>
                         <input
                           type="text"
                           placeholder="Last Name"
@@ -624,12 +597,12 @@ export default function Login({ error, setError }) {
                           pattern="[A-Za-z]+"
                           title="Use letters only."
                           required
-                          style={inputStyle}
+                          className="login-input"
                         />
                       </div>
 
-                      <div style={{ display: 'flex', flexDirection: 'column' }}>
-                        <label style={labelStyle}>Account Type</label>
+                      <div className="login-form-field">
+                        <label>Account Type</label>
                         <select 
                           value={tag} 
                           onChange={(e) => {
@@ -639,7 +612,7 @@ export default function Login({ error, setError }) {
                             setCustomFieldValues({});
                           }}
                           required 
-                          style={inputStyle}
+                          className="login-input"
                         >
                           <option value="" disabled>e.g. Student</option>
                           {signupOptions.accountTypes.map((accountType) => (
@@ -649,11 +622,11 @@ export default function Login({ error, setError }) {
                       </div>
 
                       {(selectedSignupAccountType?.customFields || []).map((field) => (
-                        <div key={field.id} style={{ display: 'flex', flexDirection: 'column' }}>
-                          <label style={labelStyle}>{field.label}</label>
+                        <div key={field.id} className="login-form-field">
+                          <label>{field.label}</label>
                           <input
                             type={field.type || 'text'}
-                            className={field.type === 'number' ? 'signup-number-input' : undefined}
+                            className={`login-input${field.type === 'number' ? ' signup-number-input' : ''}`}
                             placeholder={`Enter ${field.label}`}
                             min={field.type === 'number' && field.min != null && field.min !== '' ? field.min : undefined}
                             max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
@@ -668,15 +641,14 @@ export default function Login({ error, setError }) {
                                 ? filterSignupTextValue(event.target.value, field.characterTypes)
                                 : event.target.value
                             }))}
-                            style={inputStyle}
                           />
                         </div>
                       ))}
 
                       {selectedSignupAccountType?.dropdown === 'courses' && (
                         <>
-                          <div style={{ display: 'flex', flexDirection: 'column' }}>
-                            <label style={labelStyle}>Student Number</label>
+                          <div className="login-form-field">
+                            <label>Student Number</label>
                             <input 
                               type="text" 
                               placeholder="e.g 02000212345" 
@@ -687,20 +659,20 @@ export default function Login({ error, setError }) {
                               maxLength={11}
                               title="Enter exactly 11 digits."
                               required
-                              style={inputStyle}
+                              className="login-input"
                             />
                           </div>
                         </>
                       )}
 
                       {selectedSignupDropdownType && (
-                        <div style={{ display: 'flex', flexDirection: 'column' }}>
-                          <label style={labelStyle}>{selectedSignupDropdownType.label}</label>
+                        <div className="login-form-field">
+                          <label>{selectedSignupDropdownType.label}</label>
                           <select 
                             value={signupDropdownValue}
                             onChange={(e) => setSignupDropdownValue(e.target.value)}
                             required 
-                            style={inputStyle}
+                            className="login-input"
                             disabled={Boolean(signupOptionsError)}
                           >
                             <option value="" disabled>Select {selectedSignupDropdownType.label}</option>
@@ -721,13 +693,13 @@ export default function Login({ error, setError }) {
                     </>
                   )}
                   {!isLogin && signupOptionsError && (
-                    <p role="alert" style={{ color: '#dc2626', fontSize: '13px', fontWeight: 'bold' }}>
+                    <p className="login-form-message login-form-error" role="alert">
                       {signupOptionsError}
                     </p>
                   )}
 
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <label style={labelStyle}>Email Address</label>
+                  <div className="login-form-field">
+                    <label>Email Address</label>
                     <input 
                       type="email" 
                       placeholder="Email" 
@@ -735,12 +707,12 @@ export default function Login({ error, setError }) {
                       onChange={(e) => setEmail(e.target.value)}
                       maxLength={isLogin ? undefined : 40}
                       required
-                      style={inputStyle}
+                      className="login-input"
                     />
                   </div>
                   
-                  <div style={{ display: 'flex', flexDirection: 'column' }}>
-                    <label style={labelStyle}>Password</label>
+                  <div className="login-form-field">
+                    <label>Password</label>
                     <div className="password-input-wrap">
                       <input 
                         type={showPassword ? 'text' : 'password'}
@@ -751,7 +723,7 @@ export default function Login({ error, setError }) {
                         pattern={isLogin ? undefined : '(?=.*[A-Z])(?=.*[a-z])(?=.*[^A-Za-z0-9\\s]).*'}
                         title={isLogin ? undefined : 'Include an uppercase letter, a lowercase letter, and a symbol.'}
                         required
-                        style={{ ...inputStyle, paddingRight: '42px' }}
+                        className="login-input has-password-toggle"
                       />
                       <button
                         type="button"
@@ -764,23 +736,12 @@ export default function Login({ error, setError }) {
                       </button>
                     </div>
                     {isLogin && (
-                      <div style={{ textAlign: 'right', marginTop: '6px' }}>
+                      <div className="forgot-password-row">
                         <button 
                           type="button" 
                           onClick={() => handleForgotPassword(email)}
                           disabled={resetCooldown > 0}
-                          style={{ 
-                            background: 'none', 
-                            border: 'none', 
-                            width: 'auto',
-                            padding: 0,
-                            borderRadius: 0,
-                            display: 'inline-flex',
-                            color: resetCooldown > 0 ? '#94A3B8' : '#64748B', 
-                            fontSize: '12px', 
-                            cursor: resetCooldown > 0 ? 'not-allowed' : 'pointer', 
-                            textDecoration: resetCooldown > 0 ? 'none' : 'underline' 
-                          }}
+                          className={`forgot-password-btn${resetCooldown > 0 ? ' is-disabled' : ''}`}
                         >
                           {resetCooldown > 0 ? `Wait ${resetCooldown}s to resend` : 'Forgot password?'}
                         </button>
@@ -789,8 +750,8 @@ export default function Login({ error, setError }) {
                   </div>
 
                   {!isLogin && (
-                    <div style={{ display: 'flex', flexDirection: 'column' }}>
-                      <label style={labelStyle}>Confirm Password</label>
+                    <div className="login-form-field">
+                      <label>Confirm Password</label>
                       <div className="password-input-wrap">
                         <input 
                           type={showConfirmPassword ? 'text' : 'password'}
@@ -799,7 +760,7 @@ export default function Login({ error, setError }) {
                           onChange={(e) => setConfirmPassword(e.target.value)}
                           maxLength={30}
                           required
-                          style={{ ...inputStyle, paddingRight: '42px' }}
+                          className="login-input has-password-toggle"
                         />
                         <button
                           type="button"
@@ -816,29 +777,18 @@ export default function Login({ error, setError }) {
 
                   {/* TERMS AND CONDITIONS CHECKBOX FOR SIGN UP */}
                   {!isLogin && (
-                    <div style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginTop: '8px' }}>
+                    <div className="terms-consent">
                       <input 
                         type="checkbox" 
                         id="terms" 
                         required 
-                        style={{ marginTop: '2px', cursor: 'pointer' }} 
+                        className="terms-checkbox"
                       />
-                      <div style={{ fontSize: '12px', color: '#475569', lineHeight: '1.4' }}>
+                      <div className="terms-consent-copy">
                         I agree to the <button
                           type="button"
                           onClick={() => setShowTerms(true)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            padding: 0,
-                            width: 'auto',
-                            borderRadius: 0,
-                            display: 'inline',
-                            color: themeBlue,
-                            textDecoration: 'underline',
-                            cursor: 'pointer',
-                            font: 'inherit'
-                          }}
+                          className="terms-inline-link"
                         >Terms and Conditions</button> and consent to the collection of my data for the facility reservation system.
                       </div>
                     </div>
@@ -848,23 +798,13 @@ export default function Login({ error, setError }) {
                     type="submit"
                     disabled={!isLogin && isSubmittingSignup}
                     aria-busy={!isLogin && isSubmittingSignup}
-                    style={{
-                      padding: '12px',
-                      background: !isLogin && isSubmittingSignup ? '#94a3b8' : themeBlue,
-                      color: '#FFFFFF',
-                      borderRadius: '6px',
-                      border: 'none',
-                      fontWeight: 'bold',
-                      cursor: !isLogin && isSubmittingSignup ? 'not-allowed' : 'pointer',
-                      marginTop: '8px',
-                      opacity: !isLogin && isSubmittingSignup ? 0.75 : 1
-                    }}
+                    className={`login-submit-btn${!isLogin && isSubmittingSignup ? ' is-submitting' : ''}`}
                   >
                     {isLogin ? 'Log In' : isSubmittingSignup ? 'Signing Up…' : 'Sign Up'}
                   </button>
                 </form>
 
-                <div style={{ marginTop: '1rem', textAlign: 'center' }}>
+                <div className="login-switch-row">
                   <button 
                     type="button" 
                     disabled={!isLogin && isSubmittingSignup}
@@ -873,16 +813,7 @@ export default function Login({ error, setError }) {
                       if (setError) setError('');
                       setResetMessage('');
                     }}
-                    style={{
-                      background: 'none',
-                      border: 'none',
-                      color: !isLogin && isSubmittingSignup ? '#94a3b8' : themeBlue,
-                      fontSize: '13px',
-                      cursor: !isLogin && isSubmittingSignup ? 'not-allowed' : 'pointer',
-                      textDecoration: 'underline',
-                      fontWeight: 'bold',
-                      opacity: !isLogin && isSubmittingSignup ? 0.75 : 1
-                    }}
+                    className={`login-switch-btn${!isLogin && isSubmittingSignup ? ' is-disabled' : ''}`}
                   >
                     {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
                   </button>
@@ -898,45 +829,19 @@ export default function Login({ error, setError }) {
             aria-modal="true"
             aria-labelledby="terms-title"
             onClick={() => setShowTerms(false)}
-            style={{
-              position: 'fixed',
-              inset: 0,
-              zIndex: 1100,
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              padding: '16px',
-              backgroundColor: 'rgba(0, 0, 0, 0.55)'
-            }}
+            className="terms-modal-overlay"
           >
             <div
               onClick={(e) => e.stopPropagation()}
-              style={{
-                width: '100%',
-                maxWidth: '600px',
-                maxHeight: '85vh',
-                overflowY: 'auto',
-                padding: '24px',
-                borderTop: `6px solid ${themeBlue}`,
-                borderRadius: '8px',
-                backgroundColor: '#FFFFFF',
-                color: '#334155',
-                lineHeight: 1.5
-              }}
+              className="terms-modal-content"
             >
-              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '16px' }}>
-                <h2 id="terms-title" style={{ margin: 0, color: themeBlue }}>Terms and Conditions</h2>
+              <div className="terms-modal-header">
+                <h2 id="terms-title">Terms and Conditions</h2>
                 <button
                   type="button"
                   aria-label="Close Terms and Conditions"
                   onClick={() => setShowTerms(false)}
-                  style={{
-                    border: 'none',
-                    background: 'none',
-                    color: themeBlue,
-                    fontSize: '24px',
-                    cursor: 'pointer'
-                  }}
+                  className="terms-close-btn"
                 >
                   &times;
                 </button>
@@ -946,7 +851,7 @@ export default function Login({ error, setError }) {
 
               <h3>Information collected</h3>
               <p>The system collects information needed to manage your account and facility reservations, including:</p>
-              <ul style={{ paddingLeft: '24px', margin: '0 0 16px' }}>
+              <ul>
                 <li>Your first name, middle initial, last name, email address, account type, and phone number. Your password is handled by Firebase Authentication and is not included in the user profile document created by this app.</li>
                 <li>The account-type-specific dropdown selections and signup fields configured by system administrators. These may include course or program, department or office, student number, or other fields. Configured fields may have input limits or character restrictions.</li>
                 <li>Profile images or banners you choose to upload, and two-factor authentication settings and secret if you choose to enable two-factor authentication.</li>
