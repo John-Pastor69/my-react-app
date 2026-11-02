@@ -29,6 +29,9 @@ $grey-dark: #3F3F3F;
 }
 
 .brand-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   background-color: #ffffff;
   padding: 1.0667rem 1.3333rem;
   border-bottom: 0.0667rem solid #e2e8f0;

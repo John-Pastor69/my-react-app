@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { signInWithEmailAndPassword, createUserWithEmailAndPassword, updateProfile, sendEmailVerification, sendPasswordResetEmail } from 'firebase/auth';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { BadgeCheck, CalendarDays, ClipboardList, FileDown, ShieldCheck } from 'lucide-react';
+import { BadgeCheck, CalendarDays, ClipboardList, FileDown, Network, ShieldCheck } from 'lucide-react';
 import { auth, db } from '../Firebase'; 
 import { NEW_LOGIN_KEY } from '../services/browserSession';
 import {
@@ -110,6 +110,11 @@ export default function Login({ error, setError }) {
     setShowForm(true);
     if (setError) setError('');
     setResetMessage('');
+  };
+
+  const openSignupModal = () => {
+    setIsLogin(false);
+    openModal();
   };
 
   const scrollToHowItWorks = () => {
@@ -419,7 +424,7 @@ export default function Login({ error, setError }) {
             <h2>Streamline your campus events with the STI facility reservation system.</h2>
             <p className="subheadline">Reserve rooms, request equipment, and manage your campus activities all in one place.</p>
             <div className="hero-actions">
-              <button type="button" className="primary-btn" onClick={openModal}>Get Started</button>
+              <button type="button" className="primary-btn" onClick={openSignupModal}>Get Started</button>
               <button type="button" className="secondary-btn" onClick={openModal}>Make a Reservation</button>
             </div>
           </div>
@@ -521,14 +526,14 @@ export default function Login({ error, setError }) {
               <p>The system automatically blocks overlapping schedules and prevents facility capacity overloads in real-time before a request is submitted.</p>
             </article>
             <article className="feature-card">
-              <span className="feature-icon"><BadgeCheck size={22} aria-hidden="true" /></span>
-              <h3>Approval tracking</h3>
-              <p>Requests move through the designated review and approval process.</p>
+              <span className="feature-icon"><Network size={22} aria-hidden="true" /></span>
+              <h3>Multi-Tier Authorization</h3>
+              <p>Intelligently routes requests through a dynamic chain of command, from Endorsers and OSA to MIS and School Admins.</p>
             </article>
             <article className="feature-card">
-              <span className="feature-icon"><FileDown size={22} aria-hidden="true" /></span>
-              <h3>Downloadable slips</h3>
-              <p>Get a PDF copy of the reservation details for approved bookings.</p>
+              <span className="feature-icon"><ClipboardList size={22} aria-hidden="true" /></span>
+              <h3>Comprehensive Audit Trails</h3>
+              <p>Every approval, rejection, and modification is permanently logged with timestamps and remarks to ensure complete transparency.</p>
             </article>
           </div>
         </section>
