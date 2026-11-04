@@ -7,6 +7,7 @@ import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
+import { formatTimeRange } from '../services/timeFormatting';
 import '../styles/PendingRequest.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -231,7 +232,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
           day: 'numeric',
           ...(includeYearInScheduleDates ? { year: 'numeric' } : {})
         });
-      const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
+      const time = formatTimeRange(entry.startTime || 'N/A', entry.endTime || 'N/A');
       const existingGroup = groups.find((group) => (
         group.facilityName === entry.facilityName && group.time === time
       ));
@@ -285,7 +286,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
         })}
       </div>
     )
-    : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+    : formatTimeRange(currentData.startTime, currentData.endTime);
   const eventTime = renderDailyTimeDisplay('details');
   const summaryTime = renderDailyTimeDisplay('summary');
   const specificRoomParticipantCount = Number(currentData.specificRoomParticipants) || 0;

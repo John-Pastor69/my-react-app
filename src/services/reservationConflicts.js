@@ -75,7 +75,7 @@ const createScheduleEntry = (date, startTime, endTime) => {
     dateOrdinal === null
     || startMinute === null
     || endMinute === null
-    || startMinute === endMinute
+    || endMinute <= startMinute
   ) return null;
 
   return {
@@ -84,7 +84,7 @@ const createScheduleEntry = (date, startTime, endTime) => {
     startTime,
     endTime,
     startMinute,
-    endMinute: endMinute <= startMinute ? endMinute + 1440 : endMinute
+    endMinute
   };
 };
 
@@ -317,6 +317,18 @@ export const findFacilityConflict = (reservations, request, facilities) => {
       conflictFacilityName: facility?.name || facilityId,
       conflictType: 'schedule'
     };
+
+    if (facility?.exclusiveScheduling) {
+      const overlappingDetails = getOverlappingReservationDetails(
+        reservations,
+        request,
+        facilityId
+      );
+      if (overlappingDetails.length > 0) {
+        return createConflictResult(overlappingDetails[0], conflictDetails);
+      }
+      continue;
+    }
 
     if (maxCapacity !== null) {
       const availability = getFacilityCapacityAvailability(reservations, request, facility);

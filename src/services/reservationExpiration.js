@@ -62,10 +62,12 @@ const getScheduledReservationEndDateTime = (reservation) => {
     const endDateTime = getScheduleDateTime(entry, 'endTime');
     const startTime = parseReservationTime(entry.startTime);
     const endTime = parseReservationTime(entry.endTime);
-    if (!endDateTime || !startTime || !endTime) return null;
-    if (endTime.hours * 60 + endTime.minutes < startTime.hours * 60 + startTime.minutes) {
-      endDateTime.setDate(endDateTime.getDate() + 1);
-    }
+    if (
+      !endDateTime
+      || !startTime
+      || !endTime
+      || endTime.hours * 60 + endTime.minutes <= startTime.hours * 60 + startTime.minutes
+    ) return null;
     return endDateTime;
   }).filter(Boolean);
 

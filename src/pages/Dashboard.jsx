@@ -6,6 +6,7 @@ import MonthYearPicker from '../components/MonthYearPicker';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationActive } from '../services/reservationStatus';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
+import { formatTimeForDisplay } from '../services/timeFormatting';
 import "../styles/Dashboard.scss";
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
@@ -1155,7 +1156,7 @@ const DashboardContent = ({ currentUserRole }) => {
   const equipmentMaximum = Math.max(1, ...usageByEquipment.map((equipment) => equipment.quantity));
   const utilityMaximum = Math.max(1, ...utilityUsage.map((utility) => utility.quantity));
   const facilityMaximum = Math.max(1, ...facilityUsage.map((facility) => facility.count));
-  const formatTime = (time) => time || 'Time not set';
+  const formatTime = (time) => time ? formatTimeForDisplay(time) : 'Time not set';
 
   const setDatePreset = (days) => {
     const end = new Date();
@@ -1538,7 +1539,7 @@ const DashboardContent = ({ currentUserRole }) => {
                         </span>
                         <span>
                           {reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}
-                          {' · '}{reservation.startTime || 'Time not set'}
+                          {' · '}{formatTime(reservation.startTime)}
                           {' · '}{facilityNames.join(', ') || 'No facility'}
                         </span>
                         <span>{equipmentNames.join(', ') || 'No equipment listed'}</span>

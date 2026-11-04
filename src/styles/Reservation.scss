@@ -12,6 +12,8 @@ $orange-main: #F59E0B;
   .reservation-container {
   width: 100%;
   min-height: 100vh;
+  display: flex;
+  flex-direction: column;
   background: $bg-main;
   color: $text-dark;
   overflow-x: hidden;
@@ -65,6 +67,26 @@ $orange-main: #F59E0B;
     border: 1px solid $border-color;
     border-radius: 10px;
     box-shadow: 0 1px 3px rgba(15, 23, 42, .04);
+  }
+
+  > .event-information-card {
+    order: 1;
+  }
+
+  > .split-cards {
+    order: 2;
+  }
+
+  > .resubmission-remarks-card {
+    order: 3;
+  }
+
+  > .certification {
+    order: 4;
+  }
+
+  > .form-actions {
+    order: 5;
   }
 
   .section-header {
@@ -1885,6 +1907,12 @@ $orange-main: #F59E0B;
     font-weight: 600; 
     cursor: pointer; 
   }
+}
+
+.modal-overlay > .reservation-alert-modal {
+  width: min(28rem, 100%);
+  max-width: 28rem;
+  flex: 0 1 28rem;
 }
 
 .modal-overlay.reservation-success-overlay > .modal-card {

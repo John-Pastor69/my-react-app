@@ -8,6 +8,7 @@ import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/a
 import { isReservationEndReached } from '../services/reservationExpiration';
 import { getUnavailableDateId } from '../services/unavailableDates';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
+import { formatTimeForDisplay, formatTimeRange } from '../services/timeFormatting';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -251,9 +252,9 @@ const Calendar = ({ currentUserRole }) => {
           date: scheduleEntry.date,
           status: uiStatusColor, 
           time: (scheduleEntry.startTime && scheduleEntry.endTime)
-            ? `${scheduleEntry.startTime} - ${scheduleEntry.endTime}`
+            ? formatTimeRange(scheduleEntry.startTime, scheduleEntry.endTime, '-')
             : "N/A",
-          startTimeOnly: scheduleEntry.startTime,
+          startTimeOnly: formatTimeForDisplay(scheduleEntry.startTime),
           facility: scheduleEntry.facility,
           equipment: equipmentRequested,
           requestor: formatName(data.fullName),
@@ -359,7 +360,9 @@ const Calendar = ({ currentUserRole }) => {
     setHistorySelectedRequest({
       title: data.eventName || data.title || "Untitled Event",
       date: formatEventDateRange(data.eventDate, data.endDate, data.days),
-      time: (data.startTime && data.endTime) ? `${data.startTime} - ${data.endTime}` : "N/A",
+      time: (data.startTime && data.endTime)
+        ? formatTimeRange(data.startTime, data.endTime, '-')
+        : "N/A",
       facility: facilityDisplay,
       equipment: equipmentRequested,
       requestor: formatName(data.fullName),

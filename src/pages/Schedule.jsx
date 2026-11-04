@@ -5,6 +5,7 @@ import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 import { archiveReservation } from '../services/archiveReservation';
+import { formatTimeRange } from '../services/timeFormatting';
 
 const Schedule = ({ currentUserRole = '' }) => {
   const navigate = useNavigate();
@@ -135,8 +136,8 @@ const Schedule = ({ currentUserRole = '' }) => {
           : hasVaryingTimes
           ? 'Varies by day'
           : dailySchedule.length > 0
-            ? `${dailySchedule[0].startTime || ''} - ${dailySchedule[0].endTime || ''}`
-            : `${res.startTime || ''} - ${res.endTime || ''}`,
+            ? formatTimeRange(dailySchedule[0].startTime, dailySchedule[0].endTime, '-')
+            : formatTimeRange(res.startTime, res.endTime, '-'),
         scheduleStatus: getScheduleStatus(),
         iconClass: iconClass,
         icon: 'ph-calendar-check',

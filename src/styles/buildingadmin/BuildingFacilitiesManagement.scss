@@ -409,6 +409,24 @@ main,
             background: color.adjust($amber-bg, $lightness: -4%);
           }
         }
+
+        &.schedule-toggle-btn {
+          background: $primary-bg;
+          color: $blue-fg;
+
+          &:hover {
+            background: color.adjust($primary-bg, $lightness: -4%);
+          }
+
+          &.is-enabled {
+            background: $red-bg;
+            color: $red-fg;
+
+            &:hover {
+              background: color.adjust($red-bg, $lightness: -4%);
+            }
+          }
+        }
       }
 
       /* Empty State Inside Table */

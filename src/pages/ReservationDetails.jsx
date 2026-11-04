@@ -5,6 +5,7 @@ import { db, auth } from '../Firebase';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
+import { formatTimeRange } from '../services/timeFormatting';
 import '../styles/ReservationDetails.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -339,7 +340,7 @@ const ReservationDetails = ({
           ...(includeYearInScheduleDates ? { year: 'numeric' } : {})
         });
       
-      const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
+      const time = formatTimeRange(entry.startTime || 'N/A', entry.endTime || 'N/A');
       const existingGroup = groups.find((group) => (
         group.facilityName === entry.facilityName && group.time === time
       ));
@@ -358,7 +359,7 @@ const ReservationDetails = ({
     ? dailyTimeEntries.map(({ rawDates, time, facilityName }) => (
       `${facilityName ? `${facilityName}: ` : ''}${time} [${condenseDateList(rawDates)}]`
     )).join('\n')
-    : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
+    : formatTimeRange(currentData.startTime, currentData.endTime);
 
   const renderDailyTimeDisplay = (variant) => {
     if (dailyTimeEntries.length === 0) return eventTime;

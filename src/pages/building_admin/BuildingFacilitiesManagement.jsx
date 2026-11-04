@@ -113,6 +113,17 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
     }
   };
 
+  const handleToggleExclusiveScheduling = async (item) => {
+    try {
+      await updateDoc(doc(db, 'facilities', item.id), {
+        exclusiveScheduling: !item.exclusiveScheduling,
+        lastUpdated: getCurrentDateTime()
+      });
+    } catch (error) {
+      console.error('Failed to toggle exclusive facility scheduling:', error);
+    }
+  };
+
   const handleEditClick = (item) => {
     setEditingItem({
       ...item,
@@ -180,6 +191,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         minCapacity: newItem.minCapacity ? Number(newItem.minCapacity) : null,
         maxCapacity: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
         remainingCap: newItem.maxCapacity ? Number(newItem.maxCapacity) : null,
+        exclusiveScheduling: false,
         status: status,
         statusClass,
         lastUpdated: getCurrentDateTime()
@@ -378,6 +390,16 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
                         </button>
                         <button className="action-btn toggle-btn" onClick={() => handleToggleStatus(facility)}>
                           ⟳ Toggle
+                        </button>
+                        <button
+                          className={`action-btn schedule-toggle-btn ${facility.exclusiveScheduling ? 'is-enabled' : ''}`}
+                          onClick={() => handleToggleExclusiveScheduling(facility)}
+                          aria-pressed={Boolean(facility.exclusiveScheduling)}
+                          title={facility.exclusiveScheduling
+                            ? 'Disable exclusive scheduling and allow non-overlapping capacity bookings'
+                            : 'Enable exclusive scheduling and block any overlapping reservation'}
+                        >
+                          ⏱ Exclusive: {facility.exclusiveScheduling ? 'On' : 'Off'}
                         </button>
                       </div>
                     </td>

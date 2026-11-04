@@ -9,6 +9,7 @@ import {
     isApprovalStepReady,
     normalizeApprovalRoleKey
 } from '../services/approvalWorkflow';
+import { formatTimeRange } from '../services/timeFormatting';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -289,8 +290,8 @@ const Approval = ({ currentUserRole = '' }) => {
                 : hasVaryingTimes
                 ? 'Varies by day'
                 : dailySchedule.length > 0
-                    ? `${dailySchedule[0].startTime || ''} - ${dailySchedule[0].endTime || ''}`
-                    : `${res.startTime || ''} - ${res.endTime || ''}`,
+                    ? formatTimeRange(dailySchedule[0].startTime, dailySchedule[0].endTime, '-')
+                    : formatTimeRange(res.startTime, res.endTime, '-'),
             status: res.status || 'Pending',
             userActionStatus: determineUserStatus(),
             isCurrentApproval,

@@ -35,6 +35,7 @@ import {
 } from '../services/signupOptions';
 import ReservationDetails from './ReservationDetails';
 import { sanitizeEventName } from '../services/eventName';
+import { formatTimeRange } from '../services/timeFormatting';
 import '../styles/Reservation.scss';
 
 const initialFormState = {
@@ -104,8 +105,8 @@ const getReservationTimeSummary = (reservation) => {
   ))) return 'Varies by day';
 
   return schedule.length > 0
-    ? `${schedule[0].startTime || ''} - ${schedule[0].endTime || ''}`
-    : `${reservation.startTime || ''} - ${reservation.endTime || ''}`;
+    ? formatTimeRange(schedule[0].startTime, schedule[0].endTime, '-')
+    : formatTimeRange(reservation.startTime, reservation.endTime, '-');
 };
 
 const getEndorserNameWithoutFacultySuffix = (name) => (
@@ -198,6 +199,16 @@ const parseTimeToMinutes = (timeStr) => {
 const isWithinReservationHours = (time) => {
   const minutes = parseTimeToMinutes(time);
   return minutes !== null && minutes >= 7 * 60 && minutes <= 22 * 60;
+};
+
+const isValidReservationTimeRange = (startTime, endTime) => {
+  const start = parseTimeToMinutes(startTime);
+  const end = parseTimeToMinutes(endTime);
+  return isWithinReservationHours(startTime)
+    && isWithinReservationHours(endTime)
+    && start !== null
+    && end !== null
+    && end > start;
 };
 
 const getReservationTimeValue = (hour, minute, period) => {
@@ -1034,9 +1045,7 @@ const Reservation = ({ currentUserRole }) => {
     Object.entries(facilitySchedules).map(([facilityId, schedule]) => [
       facilityId,
       schedule.length === 0 || !schedule.every((entry) => (
-        isWithinReservationHours(entry.startTime)
-        && isWithinReservationHours(entry.endTime)
-        && parseTimeToMinutes(entry.startTime) !== parseTimeToMinutes(entry.endTime)
+        isValidReservationTimeRange(entry.startTime, entry.endTime)
       ))
     ])
   );
@@ -1095,19 +1104,18 @@ const Reservation = ({ currentUserRole }) => {
     && requestEndDate < requestStartDate;
   const blockedStartDate = findUnavailableDateInRange(eventDate, eventDate, unavailableDates);
   const isDailyScheduleValid = dailySchedule.length > 0 && dailySchedule.every((entry) => {
-    return isWithinReservationHours(entry.startTime)
-      && isWithinReservationHours(entry.endTime)
-      && parseTimeToMinutes(entry.startTime) !== parseTimeToMinutes(entry.endTime);
+    return isValidReservationTimeRange(entry.startTime, entry.endTime);
   });
   const isStartTimeValid = isWithinReservationHours(startTime);
-  const isEndTimeValid = isWithinReservationHours(endTime);
+  const isEndTimeValid = isWithinReservationHours(endTime)
+    && (!startTime || (parseTimeToMinutes(endTime) ?? 0) > (parseTimeToMinutes(startTime) ?? 0));
   const isAirconOnTimeValid = !aircon || isWithinReservationHours(formData.airconOnTime);
   const isAirconOffTimeValid = !aircon || isWithinReservationHours(formData.airconOffTime);
   const totalScheduledHours = Math.round(reservationSchedule.reduce((total, entry) => {
     const start = parseTimeToMinutes(entry.startTime);
     const end = parseTimeToMinutes(entry.endTime);
-    if (start === null || end === null || start === end) return total;
-    return total + ((end <= start ? end + 1440 : end) - start) / 60;
+    if (start === null || end === null || end <= start) return total;
+    return total + (end - start) / 60;
   }, 0) * 10) / 10;
   const liveConflict = reservationsLoaded
     && !dateError
@@ -1760,10 +1768,14 @@ const Reservation = ({ currentUserRole }) => {
 
     const submittedStartTime = parseTimeToMinutes(startTime);
     const submittedEndTime = parseTimeToMinutes(endTime);
-    if (submittedStartTime === null || submittedEndTime === null || submittedEndTime === submittedStartTime) {
+    if (
+      submittedStartTime === null
+      || submittedEndTime === null
+      || !isValidReservationTimeRange(startTime, endTime)
+    ) {
       setCustomAlert({
         title: 'Invalid Time Range',
-        message: 'Enter a valid time range. Start and end times cannot be the same.',
+        message: 'Reservations must start and end between 7:00 AM and 10:00 PM, and the end time must be later than the start time on the same day.',
         isSuccess: false
       });
       return;
@@ -1780,7 +1792,11 @@ const Reservation = ({ currentUserRole }) => {
         date: liveConflict.conflictDate
           ? formatScheduleDate(liveConflict.conflictDate)
           : liveConflict.eventDate || 'N/A',
-        time: `${liveConflict.conflictStartTime || liveConflict.startTime || 'N/A'} - ${liveConflict.conflictEndTime || liveConflict.endTime || 'N/A'}`
+        time: formatTimeRange(
+          liveConflict.conflictStartTime || liveConflict.startTime || 'N/A',
+          liveConflict.conflictEndTime || liveConflict.endTime || 'N/A',
+          '-'
+        )
       });
       setShowOverlapWarning(true);
       return;
@@ -1847,7 +1863,11 @@ const Reservation = ({ currentUserRole }) => {
             date: conflictingReservation.conflictDate
               ? formatScheduleDate(conflictingReservation.conflictDate)
               : conflictingReservation.eventDate || 'N/A',
-            time: `${conflictingReservation.conflictStartTime || conflictingReservation.startTime || 'N/A'} - ${conflictingReservation.conflictEndTime || conflictingReservation.endTime || 'N/A'}`
+            time: formatTimeRange(
+              conflictingReservation.conflictStartTime || conflictingReservation.startTime || 'N/A',
+              conflictingReservation.conflictEndTime || conflictingReservation.endTime || 'N/A',
+              '-'
+            )
           });
           setShowOverlapWarning(true);
           setIsSubmitting(false);
@@ -2485,9 +2505,9 @@ const Reservation = ({ currentUserRole }) => {
                               </span>
                               <div className="facility-schedule-list">
                                 {facilitySchedules[item.id].map((entry) => {
-                                  const hasSameTime = parseTimeToMinutes(entry.startTime) === parseTimeToMinutes(entry.endTime);
-                                  const startInvalid = !isWithinReservationHours(entry.startTime) || hasSameTime;
-                                  const endInvalid = !isWithinReservationHours(entry.endTime) || hasSameTime;
+                                  const invalidRange = !isValidReservationTimeRange(entry.startTime, entry.endTime);
+                                  const startInvalid = !isWithinReservationHours(entry.startTime) || invalidRange;
+                                  const endInvalid = !isWithinReservationHours(entry.endTime) || invalidRange;
                                   return (
                                     <div className="facility-schedule-row" key={entry.date}>
                                       <strong>{formatScheduleDate(entry.date)}</strong>
@@ -2540,7 +2560,7 @@ const Reservation = ({ currentUserRole }) => {
                               </div>
                               {facilityScheduleErrors[item.id] && (
                                 <span className="field-error">
-                                  This facility needs at least one valid date, with start and end times between 7:00 AM and 10:00 PM that differ.
+                                  Each facility date must start and end between 7:00 AM and 10:00 PM, with the end later than the start.
                                 </span>
                               )}
                             </>
@@ -2831,7 +2851,7 @@ const Reservation = ({ currentUserRole }) => {
                   }}
                 />
                 {aircon && formData.airconOnTime && !isAirconOnTimeValid && (
-                  <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+                  <span className="field-error">                  Choose a time between 7:00 AM and 10:00 PM, with the end later than the start.</span>
                 )}
               </div>
               <i className="ph ph-arrow-right arrow"></i>
@@ -2871,7 +2891,7 @@ const Reservation = ({ currentUserRole }) => {
       </div>
 
       {/* Event Information */}
-      <div className="form-card">
+      <div className="form-card event-information-card">
         <div className="section-header">
           Event Information
         </div>
@@ -3082,7 +3102,11 @@ const Reservation = ({ currentUserRole }) => {
                 }}
               />
               {endTime && !isEndTimeValid && (
-                <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+                <span className="field-error">
+                  {isWithinReservationHours(endTime) && isWithinReservationHours(startTime)
+                    ? 'End time must be later than start time. Reservations must end by 10:00 PM.'
+                    : 'Choose a time between 7:00 AM and 10:00 PM.'}
+                </span>
               )}
             </div>
           </div>
@@ -3130,7 +3154,8 @@ const Reservation = ({ currentUserRole }) => {
                           <ReservationTimePicker
                             value={entry.startTime}
                             label={`Start time for ${formatScheduleDate(entry.date)}`}
-                            invalid={!isWithinReservationHours(entry.startTime)}
+                            invalid={!isWithinReservationHours(entry.startTime)
+                              || !isValidReservationTimeRange(entry.startTime, entry.endTime)}
                             onChange={(value) => {
                               setDailyScheduleOverrides((overrides) => ({
                                 ...overrides,
@@ -3149,7 +3174,8 @@ const Reservation = ({ currentUserRole }) => {
                             value={entry.endTime}
                             label={`End time for ${formatScheduleDate(entry.date)}`}
                             defaultTime="22:00"
-                            invalid={!isWithinReservationHours(entry.endTime)}
+                            invalid={!isWithinReservationHours(entry.endTime)
+                              || !isValidReservationTimeRange(entry.startTime, entry.endTime)}
                             onChange={(value) => {
                               setDailyScheduleOverrides((overrides) => ({
                                 ...overrides,
@@ -3176,8 +3202,10 @@ const Reservation = ({ currentUserRole }) => {
                     ))}
                   </div>
                 )}
-                {missingFields.schedule && dailySchedule.length > 0 && !isDailyScheduleValid && (
-                  <span className="field-error">Each scheduled date needs start and end times between 7:00 AM and 10:00 PM, and the times must differ.</span>
+                {!isDailyScheduleValid && dailySchedule.length > 0 && (
+                  <span className="field-error">
+                    Each date must start and end between 7:00 AM and 10:00 PM, with the end later than the start.
+                  </span>
                 )}
               </div>
             )}
@@ -3197,8 +3225,10 @@ const Reservation = ({ currentUserRole }) => {
                   {liveConflict.conflictDate
                     ? formatScheduleDate(liveConflict.conflictDate)
                     : liveConflict.eventDate || 'an overlapping date'} at{' '}
-                  {liveConflict.conflictStartTime || liveConflict.startTime}–
-                  {liveConflict.conflictEndTime || liveConflict.endTime}.
+                  {formatTimeRange(
+                    liveConflict.conflictStartTime || liveConflict.startTime,
+                    liveConflict.conflictEndTime || liveConflict.endTime
+                  )}.
                 </span>
               )}
               {liveConflict.conflictType === 'capacity' && (
@@ -3302,7 +3332,7 @@ const Reservation = ({ currentUserRole }) => {
       {/* Custom React Modal for General Alerts */}
       {customAlert && (
         <div className={`modal-overlay ${customAlert.isSuccess ? 'reservation-success-overlay' : ''}`}>
-          <div className="modal-card">
+          <div className={`modal-card ${customAlert.isSuccess ? '' : 'reservation-alert-modal'}`}>
             <h3 className={customAlert.isSuccess ? 'modal-title success' : 'modal-title error'}>
               {customAlert.title}
             </h3>
@@ -3330,7 +3360,7 @@ const Reservation = ({ currentUserRole }) => {
       {/* Overlap Warning Modal */}
       {showOverlapWarning && (
         <div className="modal-overlay"> 
-          <div className="modal-card">
+          <div className="modal-card reservation-alert-modal">
             <h3 className="modal-title error">Schedule Conflict</h3>
             <p className="modal-message">
               {conflictEvent?.conflictType === 'capacity'

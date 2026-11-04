@@ -157,6 +157,26 @@ test('facility capacity allows a separate time slot even when other bookings use
   assert.equal(conflict, null);
 });
 
+test('exclusive scheduling blocks overlapping reservations even when configured capacity remains', () => {
+  const existing = reservation('existing', {
+    expectedParticipants: 20,
+    schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }]
+  });
+  const selectedRequest = request([
+    { date: '2026-10-03', startTime: '10:00', endTime: '12:00' }
+  ], 20);
+  const exclusiveFacility = { ...facility, capacity: 100, exclusiveScheduling: true };
+
+  const conflict = findFacilityConflict([existing], selectedRequest, [exclusiveFacility]);
+  assert.equal(conflict.conflictType, 'schedule');
+  assert.equal(conflict.conflictFacilityName, 'Room A');
+  assert.equal(findFacilityConflict(
+    [existing],
+    request([{ date: '2026-10-03', startTime: '11:00', endTime: '12:00' }], 20),
+    [exclusiveFacility]
+  ), null);
+});
+
 test('facility capacity uses per-facility participant counts when available', () => {
   const existing = reservation('existing', {
     facilities: ['room-a', 'room-b'],
@@ -229,6 +249,19 @@ test('facility schedule lookup prefers facility-specific entries and falls back 
   assert.deepEqual(getReservationScheduleForFacility(reservationWithSchedules, 'room-c'), [
     { date: '2026-10-03', startTime: '08:00', endTime: '10:00' }
   ]);
+});
+
+test('overnight schedules are invalid instead of extending past facility hours', () => {
+  const overnight = reservation('overnight', {
+    schedule: [{ date: '2026-10-03', startTime: '07:10', endTime: '07:00' }]
+  });
+
+  assert.deepEqual(getReservationScheduleForFacility(overnight, 'room-a'), []);
+  assert.equal(findFacilityConflict(
+    [overnight],
+    request([{ date: '2026-10-03', startTime: '07:00', endTime: '08:00' }]),
+    [facility]
+  ), null);
 });
 
 test('capacity availability uses the peak overlapping participants across selected schedule entries', () => {
