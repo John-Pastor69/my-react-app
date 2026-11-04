@@ -6,6 +6,7 @@ import { sendReservationEmail } from '../services/emailService';
 import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
+import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import '../styles/PendingRequest.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -204,14 +205,24 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
   const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
-  const scheduledYears = new Set((Array.isArray(currentData.schedule) ? currentData.schedule : []).map((entry) => (
+  const facilityIds = currentData.facilities || [];
+  const facilityScheduleEntries = facilityIds.length > 0
+    ? facilityIds.flatMap((id) => getReservationScheduleForFacility(currentData, id).map((entry) => ({
+      ...entry,
+      facilityName: facilitiesMap[id]?.name || id
+    })))
+    : getReservationScheduleForFacility(currentData, null).map((entry) => ({
+      ...entry,
+      facilityName: ''
+    }));
+  const scheduledYears = new Set(facilityScheduleEntries.map((entry) => (
     String(entry.date || '').match(/^\d{4}-/)?.[0]
       || String(entry.date || '').match(/\/(\d{4})$/)?.[1]
       || ''
   )).filter(Boolean));
   const includeYearInScheduleDates = scheduledYears.size > 1;
-  const dailyTimeEntries = Array.isArray(currentData.schedule)
-    ? currentData.schedule.reduce((groups, entry) => {
+  const dailyTimeEntries = facilityScheduleEntries
+    .reduce((groups, entry) => {
       const parsedDate = new Date(`${entry.date}T00:00:00`);
       const dateLabel = Number.isNaN(parsedDate.getTime())
         ? entry.date
@@ -221,27 +232,29 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
           ...(includeYearInScheduleDates ? { year: 'numeric' } : {})
         });
       const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
-      const existingGroup = groups.find((group) => group.time === time);
+      const existingGroup = groups.find((group) => (
+        group.facilityName === entry.facilityName && group.time === time
+      ));
       if (existingGroup) {
         existingGroup.dates.push(dateLabel);
       } else {
-        groups.push({ dates: [dateLabel], time });
+        groups.push({ dates: [dateLabel], time, facilityName: entry.facilityName });
       }
       return groups;
-    }, [])
-    : [];
+    }, []);
   const renderDailyTimeDisplay = (variant) => dailyTimeEntries.length > 0
     ? (
       <div className={`daily-time-list ${variant}`}>
-        {dailyTimeEntries.map(({ dates, time }, index) => {
-          const groupKey = `${variant}-${time}`;
+        {dailyTimeEntries.map(({ dates, time, facilityName }, index) => {
+          const groupKey = `${variant}-${facilityName}-${time}`;
           const isExpanded = Boolean(expandedTimeGroups[groupKey]);
           const visibleDates = dates.slice(0, 2);
           const additionalDates = dates.slice(2);
           const expandedDatesId = `daily-time-dates-${variant}-${index}`;
 
           return (
-            <div className="daily-time-entry" key={time}>
+            <div className="daily-time-entry" key={groupKey}>
+              {facilityName && <strong className="daily-time-facility">{facilityName}</strong>}
               <span className="daily-time-range">{time}</span>
               <div className="daily-time-date-group">
                 <span className="daily-time-date">[{visibleDates.join(', ')}]</span>
@@ -809,7 +822,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             <div className="card">
               <strong>Reservation is Fully Approved</strong>
             </div>
-          ) : <div className="card">
+          ) : isReservationOwner ? null : <div className="card">
             <div className="card-header-small">
               <h3>🛡️ {approver.role} Approval</h3>
               <p>Your administrative decision</p>

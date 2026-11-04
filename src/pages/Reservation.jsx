@@ -21,8 +21,7 @@ import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
 import {
   findFacilityConflict,
-  getParticipantsForFacility,
-  getActiveFacilityReservations,
+  getFacilityCapacityAvailability,
   parseDateOrdinal
 } from '../services/reservationConflicts';
 import {
@@ -79,6 +78,34 @@ const normalizeUtilityUnits = (units, selectedUtilities = []) => {
     );
   }
   return Object.fromEntries(selectedUtilities.map((id) => [id, 1]));
+};
+
+const combineFacilitySchedules = (facilitySchedules) => (
+  [...new Map(
+    Object.values(facilitySchedules)
+      .flat()
+      .map((entry) => [`${entry.date}:${entry.startTime}:${entry.endTime}`, entry])
+  ).values()]
+);
+
+const getReservationTimeSummary = (reservation) => {
+  const facilityTimeSets = Object.values(reservation.facilitySchedules || {})
+    .map((schedule) => [...new Set((Array.isArray(schedule) ? schedule : []).map(
+      (entry) => `${entry.startTime || ''}-${entry.endTime || ''}`
+    ))].sort().join('|'))
+    .filter(Boolean);
+  if (facilityTimeSets.length > 1 && facilityTimeSets.some((times) => times !== facilityTimeSets[0])) {
+    return 'Varies by facility';
+  }
+
+  const schedule = Array.isArray(reservation.schedule) ? reservation.schedule : [];
+  if (schedule.some((entry) => (
+    entry.startTime !== schedule[0]?.startTime || entry.endTime !== schedule[0]?.endTime
+  ))) return 'Varies by day';
+
+  return schedule.length > 0
+    ? `${schedule[0].startTime || ''} - ${schedule[0].endTime || ''}`
+    : `${reservation.startTime || ''} - ${reservation.endTime || ''}`;
 };
 
 const getEndorserNameWithoutFacultySuffix = (name) => (
@@ -453,6 +480,7 @@ const Reservation = ({ currentUserRole }) => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [dailyScheduleOverrides, setDailyScheduleOverrides] = useState({});
+  const [facilityScheduleOverrides, setFacilityScheduleOverrides] = useState({});
   const [removedScheduleDates, setRemovedScheduleDates] = useState([]);
   const [isDailyScheduleExpanded, setIsDailyScheduleExpanded] = useState(false);
   const [durationHours, setDurationHours] = useState(0);
@@ -464,6 +492,7 @@ const Reservation = ({ currentUserRole }) => {
   const [selectedUtilities, setSelectedUtilities] = useState([]);
   const [selectedUtilityUnits, setSelectedUtilityUnits] = useState({});
   const [facilityParticipants, setFacilityParticipants] = useState({});
+  const [participantPromptFacilityId, setParticipantPromptFacilityId] = useState(null);
 
   const [certified, setCertified] = useState(false);
   const [isDraftSaved, setIsDraftSaved] = useState(false);
@@ -492,6 +521,27 @@ const Reservation = ({ currentUserRole }) => {
   const [daysCalendarView, setDaysCalendarView] = useState(new Date());
   const [missingFields, setMissingFields] = useState({});
   const fieldRefs = useRef({});
+
+  useEffect(() => {
+    if (!participantPromptFacilityId) return;
+    const participantsField = fieldRefs.current[getFacilityParticipantFieldKey(participantPromptFacilityId)];
+    if (!participantsField) return;
+
+    participantsField.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    participantsField.querySelector('input')?.focus({ preventScroll: true });
+  }, [participantPromptFacilityId, formData.facilities]);
+
+  useEffect(() => {
+    if (!showCalendar && !showDaysCalendar) return;
+
+    const closeCalendarsOnOutsideClick = (event) => {
+      if (!fieldRefs.current.eventDate?.contains(event.target)) setShowCalendar(false);
+      if (!fieldRefs.current.endDateInput?.contains(event.target)) setShowDaysCalendar(false);
+    };
+
+    document.addEventListener('pointerdown', closeCalendarsOnOutsideClick);
+    return () => document.removeEventListener('pointerdown', closeCalendarsOnOutsideClick);
+  }, [showCalendar, showDaysCalendar]);
 
   useEffect(() => {
     if (!editReservationId) return;
@@ -712,6 +762,25 @@ const Reservation = ({ currentUserRole }) => {
             { startTime: dayStartTime, endTime: dayEndTime }
           ]))
           : {});
+        setFacilityScheduleOverrides(
+          reservation.facilitySchedules && typeof reservation.facilitySchedules === 'object'
+            ? Object.fromEntries(Object.entries(reservation.facilitySchedules)
+              .filter(([, schedule]) => Array.isArray(schedule))
+              .map(([facilityId, schedule]) => [
+                facilityId,
+                Object.fromEntries(schedule.flatMap((entry) => {
+                  const dateOrdinal = parseDateOrdinal(entry.date);
+                  return dateOrdinal === null ? [] : [[
+                    new Date(dateOrdinal * 86400000).toISOString().slice(0, 10),
+                    {
+                      startTime: formatTimeForPicker(entry.startTime || ''),
+                      endTime: formatTimeForPicker(entry.endTime || '')
+                    }
+                  ]];
+                }))
+              ]))
+            : {}
+        );
         setRemovedScheduleDates(normalizedSchedule
           ? getScheduleDates(startDate, endDate).filter(
             (date) => !normalizedSchedule.some((entry) => entry.date === date)
@@ -785,6 +854,9 @@ const Reservation = ({ currentUserRole }) => {
             }
           ])));
         }
+        if (parsed.facilityScheduleOverrides && typeof parsed.facilityScheduleOverrides === 'object') {
+          setFacilityScheduleOverrides(parsed.facilityScheduleOverrides);
+        }
         if (Array.isArray(parsed.removedScheduleDates)) setRemovedScheduleDates(parsed.removedScheduleDates);
         if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
         if (Array.isArray(parsed.selectedUtilities)) setSelectedUtilities(parsed.selectedUtilities);
@@ -811,7 +883,7 @@ const Reservation = ({ currentUserRole }) => {
   // Reset Draft toggle when form changes
   useEffect(() => {
     if (isDraftSaved) setIsDraftSaved(false);
-  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, removedScheduleDates, selectedEquip, selectedUtilities, selectedUtilityUnits, facilityParticipants]);
+  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, facilityScheduleOverrides, removedScheduleDates, selectedEquip, selectedUtilities, selectedUtilityUnits, facilityParticipants]);
 
   // Automatically calculate `days` from `eventDate` and `endDateInput`
   useEffect(() => {
@@ -948,52 +1020,62 @@ const Reservation = ({ currentUserRole }) => {
       startTime: dailyScheduleOverrides[date]?.startTime ?? startTime,
       endTime: dailyScheduleOverrides[date]?.endTime ?? endTime
     }));
+  const facilitySchedules = Object.fromEntries(
+    formData.facilities.map((facilityId) => [
+      facilityId,
+      dailySchedule.map((entry) => ({
+        ...entry,
+        startTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.startTime ?? entry.startTime,
+        endTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.endTime ?? entry.endTime
+      }))
+    ])
+  );
+  const facilityScheduleErrors = Object.fromEntries(
+    Object.entries(facilitySchedules).map(([facilityId, schedule]) => [
+      facilityId,
+      schedule.length === 0 || !schedule.every((entry) => (
+        isWithinReservationHours(entry.startTime)
+        && isWithinReservationHours(entry.endTime)
+        && parseTimeToMinutes(entry.startTime) !== parseTimeToMinutes(entry.endTime)
+      ))
+    ])
+  );
+  const areFacilitySchedulesValid = Object.values(facilityScheduleErrors).every((hasError) => !hasError);
+  const reservationSchedule = formData.facilities.length > 0
+    ? combineFacilitySchedules(facilitySchedules)
+    : dailySchedule;
 
   const conflictRequest = {
     eventDate,
     endDate: endDateInput,
     startTime,
     endTime,
-    schedule: dailySchedule.map(({ date, startTime: dayStartTime, endTime: dayEndTime }) => ({
+    schedule: reservationSchedule.map(({ date, startTime: dayStartTime, endTime: dayEndTime }) => ({
       date,
       startTime: dayStartTime,
       endTime: dayEndTime
     })),
+    facilitySchedules,
     facilities: formData.facilities,
     expectedParticipants: String(expectedParticipantCount || ''),
     facilityParticipants: selectedFacilityParticipants,
     excludeReservationId: editReservationId
   };
-  const getFacilityRemainingCapacity = (facility) => {
-    const maxCapacity = getFacilityCapacityLimits(facility).max;
-    if (maxCapacity === null) return null;
-
-    const activeReservations = getActiveFacilityReservations(
-      reservationsData,
-      conflictRequest,
-      facility.id
-    );
-    const hasUnknownCapacity = activeReservations.some((reservation) => {
-      const participants = getParticipantsForFacility(reservation, facility.id);
-      return !Number.isInteger(participants) || participants <= 0;
-    });
-    if (hasUnknownCapacity) return 0;
-
-    const occupiedCapacity = activeReservations.reduce(
-      (total, reservation) => total + getParticipantsForFacility(reservation, facility.id),
-      0
-    );
-    return Math.max(0, maxCapacity - occupiedCapacity);
-  };
+  const facilityCapacityAvailabilities = Object.fromEntries(
+    inventoryFacilities.map((facility) => [
+      facility.id,
+      getFacilityCapacityAvailability(reservationsData, conflictRequest, facility)
+    ])
+  );
   const selectedFacilityCapacities = inventoryFacilities
     .filter((facility) => formData.facilities.includes(facility.id))
     .map((facility) => ({
       facility,
       limits: getFacilityCapacityLimits(facility),
-      available: getFacilityRemainingCapacity(facility)
+      availability: facilityCapacityAvailabilities[facility.id]
     }));
   const facilityParticipantErrors = Object.fromEntries(
-    selectedFacilityCapacities.map(({ facility, limits, available }) => {
+    selectedFacilityCapacities.map(({ facility, limits, availability }) => {
       const participants = Number(facilityParticipants[facility.id]);
       const hasParticipantValue = String(facilityParticipants[facility.id] ?? '') !== '';
       return [
@@ -1002,7 +1084,7 @@ const Reservation = ({ currentUserRole }) => {
         && Number.isInteger(participants)
         && participants > 0
         && ((limits.min !== null && participants < limits.min)
-          || (available !== null && participants > available))
+          || (availability.availableCapacity !== null && participants > availability.availableCapacity))
       ];
     })
   );
@@ -1021,7 +1103,7 @@ const Reservation = ({ currentUserRole }) => {
   const isEndTimeValid = isWithinReservationHours(endTime);
   const isAirconOnTimeValid = !aircon || isWithinReservationHours(formData.airconOnTime);
   const isAirconOffTimeValid = !aircon || isWithinReservationHours(formData.airconOffTime);
-  const totalScheduledHours = Math.round(dailySchedule.reduce((total, entry) => {
+  const totalScheduledHours = Math.round(reservationSchedule.reduce((total, entry) => {
     const start = parseTimeToMinutes(entry.startTime);
     const end = parseTimeToMinutes(entry.endTime);
     if (start === null || end === null || start === end) return total;
@@ -1031,6 +1113,7 @@ const Reservation = ({ currentUserRole }) => {
     && !dateError
     && !daysDateError
     && !invalidDateRange
+    && areFacilitySchedulesValid
     ? findFacilityConflict(reservationsData, conflictRequest, inventoryFacilities)
     : null;
   const selectedSchedule = reservationsData.find(
@@ -1197,13 +1280,18 @@ const Reservation = ({ currentUserRole }) => {
 
   const handleCheckboxArrayChange = (field, value) => {
     if (field === 'facilities') {
-      const updatedFacilities = formData.facilities.includes(value)
+      const isCurrentlySelected = formData.facilities.includes(value);
+      const updatedFacilities = isCurrentlySelected
         ? formData.facilities.filter((item) => item !== value)
         : [...formData.facilities, value];
+      setParticipantPromptFacilityId(isCurrentlySelected ? null : value);
       setFormData((prev) => ({ ...prev, facilities: updatedFacilities }));
       setSelectedScheduleId('');
       setFacilityParticipants((prev) => Object.fromEntries(
         Object.entries(prev).filter(([facilityId]) => updatedFacilities.includes(facilityId))
+      ));
+      setFacilityScheduleOverrides((previous) => Object.fromEntries(
+        Object.entries(previous).filter(([facilityId]) => updatedFacilities.includes(facilityId))
       ));
       clearMissingField(getFacilityParticipantFieldKey(value));
       clearMissingField(field);
@@ -1473,8 +1561,15 @@ const Reservation = ({ currentUserRole }) => {
       setStartTime('');
       setEndTime('');
       setDailyScheduleOverrides({});
+      setFacilityScheduleOverrides({});
       setRemovedScheduleDates([]);
     }
+    setDateError('');
+    setDaysDateError('');
+    setShowCalendar(false);
+    setShowDaysCalendar(false);
+    setSelectedScheduleId('');
+    setParticipantPromptFacilityId(null);
     setAircon(false);
     setSelectedEquip({});
     setSelectedUtilities([]);
@@ -1496,6 +1591,7 @@ const Reservation = ({ currentUserRole }) => {
       startTime,
       endTime,
       dailyScheduleOverrides,
+      facilityScheduleOverrides,
       removedScheduleDates,
       selectedEquip,
       selectedUtilities,
@@ -1590,6 +1686,10 @@ const Reservation = ({ currentUserRole }) => {
       { key: 'startTime', missing: !isStartTimeValid },
       { key: 'endTime', missing: !isEndTimeValid },
       { key: 'schedule', missing: !isDailyScheduleValid },
+      ...formData.facilities.map((facilityId) => ({
+        key: `facilitySchedule:${facilityId}`,
+        missing: facilityScheduleErrors[facilityId]
+      })),
       { key: 'purpose', missing: !formData.purpose.trim() },
       ...(aircon ? [
         { key: 'airconOnTime', missing: !isAirconOnTimeValid },
@@ -1624,22 +1724,24 @@ const Reservation = ({ currentUserRole }) => {
     }
 
     if (selectedFacilityCapacities.length > 0) {
-      const invalidFacility = selectedFacilityCapacities.find(({ facility, limits, available }) => {
+      const invalidFacility = selectedFacilityCapacities.find(({ facility, limits, availability }) => {
         const participants = Number(facilityParticipants[facility.id]);
         return (limits.min !== null && participants < limits.min)
-          || (available !== null && participants > available);
+          || (availability.availableCapacity !== null && participants > availability.availableCapacity);
       });
 
       if (invalidFacility) {
-        const { facility, limits, available } = invalidFacility;
+        const { facility, limits, availability } = invalidFacility;
         const key = getFacilityParticipantFieldKey(facility.id);
         const participants = Number(facilityParticipants[facility.id]);
         setMissingFields({ [key]: true });
         setCustomAlert({
           title: 'Participant Limit',
-          message: limits.min !== null && participants < limits.min
+          message: availability.hasUnknownCapacity
+            ? `${facility.name} availability cannot be confirmed for the selected time because an overlapping reservation is missing participant information.`
+            : limits.min !== null && participants < limits.min
             ? `${facility.name} requires at least ${limits.min} participants.`
-            : `${facility.name} has capacity for up to ${available} more participants across active reservations.`,
+            : `${facility.name} has capacity for up to ${availability.availableCapacity} more participants during the selected schedule.`,
           isSuccess: false
         });
         fieldRefs.current[key]?.scrollIntoView({ behavior: 'smooth', block: 'center' });
@@ -1700,6 +1802,12 @@ const Reservation = ({ currentUserRole }) => {
       const latestDailySchedule = dailySchedule.filter((entry) => (
         latestAvailableDateIds.has(entry.date)
       ));
+      const latestFacilitySchedules = Object.fromEntries(
+        formData.facilities.map((facilityId) => [
+          facilityId,
+          (facilitySchedules[facilityId] || []).filter((entry) => latestAvailableDateIds.has(entry.date))
+        ])
+      );
       if (latestDailySchedule.length === 0) {
         setCustomAlert({
           title: 'Date Unavailable',
@@ -1718,7 +1826,13 @@ const Reservation = ({ currentUserRole }) => {
         }));
         const conflictingReservation = findFacilityConflict(
           reservations,
-          { ...conflictRequest, schedule: latestDailySchedule },
+          {
+            ...conflictRequest,
+            schedule: formData.facilities.length > 0
+              ? combineFacilitySchedules(latestFacilitySchedules)
+              : latestDailySchedule,
+            facilitySchedules: latestFacilitySchedules
+          },
           inventoryFacilities
         );
 
@@ -1801,11 +1915,14 @@ const Reservation = ({ currentUserRole }) => {
         endDate: calculatedEndDate,
         startTime: formatTimeForStorage(startTime),
         endTime: formatTimeForStorage(endTime),
-        schedule: latestDailySchedule.map((entry) => ({
+        schedule: (formData.facilities.length > 0
+          ? combineFacilitySchedules(latestFacilitySchedules)
+          : latestDailySchedule).map((entry) => ({
           date: entry.date,
           startTime: formatTimeForStorage(entry.startTime),
           endTime: formatTimeForStorage(entry.endTime)
         })),
+        facilitySchedules: latestFacilitySchedules,
         durationHours,
         days,
         aircon,
@@ -1901,7 +2018,7 @@ const Reservation = ({ currentUserRole }) => {
         console.warn("Inventory update skipped due to permissions:", inventoryErr);
       }
 
-      handleDiscard(true);
+      handleDiscard(Boolean(editingReservation));
       if (editingReservation) setEditingReservation(null);
       setCustomAlert({
         title: 'Success',
@@ -2305,9 +2422,10 @@ const Reservation = ({ currentUserRole }) => {
                 const isSelected = formData.facilities.includes(item.id);
                 const limits = getFacilityCapacityLimits(item);
                 const maxCapacity = limits.max;
-                const displayCapacityLeft = getFacilityRemainingCapacity(item);
-                const isLocked = item.status === 'Unavailable' || displayCapacityLeft === 0;
+                const availability = facilityCapacityAvailabilities[item.id];
+                const isLocked = item.status === 'Unavailable';
                 const participantFieldKey = getFacilityParticipantFieldKey(item.id);
+                const facilityScheduleFieldKey = `facilitySchedule:${item.id}`;
 
                 return (
                   <div
@@ -2336,47 +2454,134 @@ const Reservation = ({ currentUserRole }) => {
                             ● {item.status}
                           </span>
                           {maxCapacity !== null && item.status?.toLowerCase() === 'available' && (
-                            <span className="facility-capacity-left">
-                              {displayCapacityLeft} / {maxCapacity} capacity left
-                            </span>
+                            availability.scheduleAvailable
+                              ? (
+                                <span className={`facility-capacity-left ${availability.availableCapacity === 0 || availability.hasUnknownCapacity ? 'unavailable' : ''}`}>
+                                  {availability.hasUnknownCapacity
+                                    ? 'Capacity cannot be verified for this time'
+                                    : `${availability.availableCapacity} / ${maxCapacity} capacity available for selected schedule`}
+                                </span>
+                              )
+                              : (
+                                <span className="facility-capacity-left schedule-needed">
+                                  Up to {maxCapacity} people · Select a schedule to check availability
+                                </span>
+                              )
                           )}
                         </span>
                       </div>
                     </label>
                     {isSelected && (
-                      <div
-                        className={`facility-participants ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'field-missing' : ''}`}
-                        ref={(element) => { fieldRefs.current[participantFieldKey] = element; }}
-                      >
-                        <label htmlFor={`participants-${item.id}`}>
-                          Number of Participants <span className="req">*</span>
-                        </label>
-                        <input
-                          id={`participants-${item.id}`}
-                          type="text"
-                          inputMode="numeric"
-                          value={facilityParticipants[item.id] ?? ''}
-                          onKeyDown={(event) => {
-                            if (event.key.length === 1 && !/[0-9]/.test(event.key)) event.preventDefault();
-                          }}
-                          onChange={(event) => handleFacilityParticipantsChange(
-                            item.id,
-                            event.target.value.replace(/\D/g, '')
+                      <>
+                        <div
+                          className={`facility-schedule ${missingFields[facilityScheduleFieldKey] ? 'field-missing' : ''}`}
+                          ref={(element) => { fieldRefs.current[facilityScheduleFieldKey] = element; }}
+                        >
+                          <strong>Schedule for {item.name}</strong>
+                          {facilitySchedules[item.id]?.length ? (
+                            <>
+                              <span className="helper-text">
+                                Times for this facility can differ from other selected facilities.
+                              </span>
+                              <div className="facility-schedule-list">
+                                {facilitySchedules[item.id].map((entry) => {
+                                  const hasSameTime = parseTimeToMinutes(entry.startTime) === parseTimeToMinutes(entry.endTime);
+                                  const startInvalid = !isWithinReservationHours(entry.startTime) || hasSameTime;
+                                  const endInvalid = !isWithinReservationHours(entry.endTime) || hasSameTime;
+                                  return (
+                                    <div className="facility-schedule-row" key={entry.date}>
+                                      <strong>{formatScheduleDate(entry.date)}</strong>
+                                      <label>
+                                        <span>Start</span>
+                                        <ReservationTimePicker
+                                          value={entry.startTime}
+                                          label={`Start time for ${item.name} on ${formatScheduleDate(entry.date)}`}
+                                          invalid={startInvalid}
+                                          onChange={(value) => {
+                                            setFacilityScheduleOverrides((previous) => ({
+                                              ...previous,
+                                              [item.id]: {
+                                                ...previous[item.id],
+                                                [entry.date]: {
+                                                  startTime: value,
+                                                  endTime: previous[item.id]?.[entry.date]?.endTime ?? entry.endTime
+                                                }
+                                              }
+                                            }));
+                                            clearMissingField(facilityScheduleFieldKey);
+                                          }}
+                                        />
+                                      </label>
+                                      <label>
+                                        <span>End</span>
+                                        <ReservationTimePicker
+                                          value={entry.endTime}
+                                          label={`End time for ${item.name} on ${formatScheduleDate(entry.date)}`}
+                                          defaultTime="22:00"
+                                          invalid={endInvalid}
+                                          onChange={(value) => {
+                                            setFacilityScheduleOverrides((previous) => ({
+                                              ...previous,
+                                              [item.id]: {
+                                                ...previous[item.id],
+                                                [entry.date]: {
+                                                  startTime: previous[item.id]?.[entry.date]?.startTime ?? entry.startTime,
+                                                  endTime: value
+                                                }
+                                              }
+                                            }));
+                                            clearMissingField(facilityScheduleFieldKey);
+                                          }}
+                                        />
+                                      </label>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                              {facilityScheduleErrors[item.id] && (
+                                <span className="field-error">
+                                  This facility needs at least one valid date, with start and end times between 7:00 AM and 10:00 PM that differ.
+                                </span>
+                              )}
+                            </>
+                          ) : (
+                            <span className="field-error">Select valid dates and times for this facility.</span>
                           )}
-                          placeholder="Enter whole number"
-                          className={`facility-participants-input ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'input-error' : ''}`}
-                        />
-                        {facilityParticipantErrors[item.id] && (
-                          <span className="field-error">
-                            {limits.min !== null && Number(facilityParticipants[item.id]) < limits.min
-                              ? `Enter at least ${limits.min} participants.`
-                              : `Enter no more than ${displayCapacityLeft} participants.`}
-                          </span>
-                        )}
-                        {missingFields[participantFieldKey] && (
-                          <span className="field-error">Enter a positive whole number of participants.</span>
-                        )}
-                      </div>
+                        </div>
+                        <div
+                          className={`facility-participants ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'field-missing' : ''} ${Number(facilityParticipants[item.id]) > 0 ? '' : 'needs-participants'}`}
+                          ref={(element) => { fieldRefs.current[participantFieldKey] = element; }}
+                        >
+                          <label htmlFor={`participants-${item.id}`}>
+                            Number of Participants <span className="req">*</span>
+                          </label>
+                          <input
+                            id={`participants-${item.id}`}
+                            type="text"
+                            inputMode="numeric"
+                            value={facilityParticipants[item.id] ?? ''}
+                            onKeyDown={(event) => {
+                              if (event.key.length === 1 && !/[0-9]/.test(event.key)) event.preventDefault();
+                            }}
+                            onChange={(event) => handleFacilityParticipantsChange(
+                              item.id,
+                              event.target.value.replace(/\D/g, '')
+                            )}
+                            placeholder="Enter whole number"
+                            className={`facility-participants-input ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'input-error' : ''}`}
+                          />
+                          {facilityParticipantErrors[item.id] && (
+                            <span className="field-error">
+                              {limits.min !== null && Number(facilityParticipants[item.id]) < limits.min
+                                ? `Enter at least ${limits.min} participants.`
+                                : `Enter no more than ${displayCapacityLeft} participants.`}
+                            </span>
+                          )}
+                          {missingFields[participantFieldKey] && (
+                            <span className="field-error">Enter a positive whole number of participants.</span>
+                          )}
+                        </div>
+                      </>
                     )}
                   </div>
                 );
@@ -2441,6 +2646,17 @@ const Reservation = ({ currentUserRole }) => {
 
                 return (
                   <div className={`equip-item ${isLocked ? 'is-locked' : ''}`} key={item.id}>
+                    <input
+                      type="checkbox"
+                      className="equipment-checkbox"
+                      aria-label={`Select ${item.name || 'equipment'}`}
+                      checked={count > 0}
+                      onChange={(e) => setSelectedEquip((previous) => ({
+                        ...previous,
+                        [item.id]: e.target.checked ? 1 : 0
+                      }))}
+                      disabled={isLocked || (!count && !isAvailable)}
+                    />
                     <div className="equip-info">
                       <div className="icon-box bg-blue">
                         <i className="ph ph-package"></i>
@@ -2714,7 +2930,7 @@ const Reservation = ({ currentUserRole }) => {
                 <option value="" disabled>View pending & approved schedules...</option>
                 {takenScheduleReservations.map(res => (
                     <option key={res.id} value={res.id}>
-                      {res.eventName || 'Untitled Event'} | {res.eventDate} {res.endDate && res.endDate !== res.eventDate ? `to ${res.endDate}` : ''} | {res.startTime} - {res.endTime}
+                      {res.eventName || 'Untitled Event'} | {res.eventDate} {res.endDate && res.endDate !== res.eventDate ? `to ${res.endDate}` : ''} | {getReservationTimeSummary(res)}
                       {' | '}{(res.facilities || [])
                         .map(facilityId => inventoryFacilities.find(facility => facility.id === facilityId)?.name || facilityId)
                         .join(', ') || 'No facility'}
@@ -2753,26 +2969,23 @@ const Reservation = ({ currentUserRole }) => {
                 {unavailableDatesError && <span className="field-error">{unavailableDatesError}</span>}
                 
                 {showCalendar && (
-                  <>
-                    <div className="calendar-overlay" onClick={() => setShowCalendar(false)}></div>
-                    <div className="custom-calendar-popup">
-                      <div className="calendar-header">
-                        <button type="button" onClick={handlePrevMonth}><i className="ph ph-caret-left"></i></button>
-                        <MonthYearPicker date={calendarView} onChange={setCalendarView} />
-                        <button type="button" onClick={handleNextMonth}><i className="ph ph-caret-right"></i></button>
-                      </div>
-                      <div className="calendar-grid">
-                        <div className="calendar-day-name">Su</div>
-                        <div className="calendar-day-name">Mo</div>
-                        <div className="calendar-day-name">Tu</div>
-                        <div className="calendar-day-name">We</div>
-                        <div className="calendar-day-name">Th</div>
-                        <div className="calendar-day-name">Fr</div>
-                        <div className="calendar-day-name">Sa</div>
-                        {renderCalendarDays()}
-                      </div>
+                  <div className="custom-calendar-popup">
+                    <div className="calendar-header">
+                      <button type="button" onClick={handlePrevMonth}><i className="ph ph-caret-left"></i></button>
+                      <MonthYearPicker date={calendarView} onChange={setCalendarView} />
+                      <button type="button" onClick={handleNextMonth}><i className="ph ph-caret-right"></i></button>
                     </div>
-                  </>
+                    <div className="calendar-grid">
+                      <div className="calendar-day-name">Su</div>
+                      <div className="calendar-day-name">Mo</div>
+                      <div className="calendar-day-name">Tu</div>
+                      <div className="calendar-day-name">We</div>
+                      <div className="calendar-day-name">Th</div>
+                      <div className="calendar-day-name">Fr</div>
+                      <div className="calendar-day-name">Sa</div>
+                      {renderCalendarDays()}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -2811,26 +3024,23 @@ const Reservation = ({ currentUserRole }) => {
                 )}
                 
                 {showDaysCalendar && (
-                  <>
-                    <div className="calendar-overlay" onClick={() => setShowDaysCalendar(false)}></div>
-                    <div className="custom-calendar-popup">
-                      <div className="calendar-header">
-                        <button type="button" onClick={handleDaysPrevMonth}><i className="ph ph-caret-left"></i></button>
-                        <MonthYearPicker date={daysCalendarView} onChange={setDaysCalendarView} />
-                        <button type="button" onClick={handleDaysNextMonth}><i className="ph ph-caret-right"></i></button>
-                      </div>
-                      <div className="calendar-grid">
-                        <div className="calendar-day-name">Su</div>
-                        <div className="calendar-day-name">Mo</div>
-                        <div className="calendar-day-name">Tu</div>
-                        <div className="calendar-day-name">We</div>
-                        <div className="calendar-day-name">Th</div>
-                        <div className="calendar-day-name">Fr</div>
-                        <div className="calendar-day-name">Sa</div>
-                        {renderDaysCalendarDays()}
-                      </div>
+                  <div className="custom-calendar-popup">
+                    <div className="calendar-header">
+                      <button type="button" onClick={handleDaysPrevMonth}><i className="ph ph-caret-left"></i></button>
+                      <MonthYearPicker date={daysCalendarView} onChange={setDaysCalendarView} />
+                      <button type="button" onClick={handleDaysNextMonth}><i className="ph ph-caret-right"></i></button>
                     </div>
-                  </>
+                    <div className="calendar-grid">
+                      <div className="calendar-day-name">Su</div>
+                      <div className="calendar-day-name">Mo</div>
+                      <div className="calendar-day-name">Tu</div>
+                      <div className="calendar-day-name">We</div>
+                      <div className="calendar-day-name">Th</div>
+                      <div className="calendar-day-name">Fr</div>
+                      <div className="calendar-day-name">Sa</div>
+                      {renderDaysCalendarDays()}
+                    </div>
+                  </div>
                 )}
               </div>
             </div>
@@ -2902,7 +3112,7 @@ const Reservation = ({ currentUserRole }) => {
             {isDailyScheduleExpanded && (
               <div id="daily-schedule-options" className="schedule-override-content">
                 <span className="helper-text">
-                  Default times are applied to each date. Adjust an individual day or remove it if it is not needed.
+                  These default times apply to each facility and date. Adjust a day here, then set facility-specific times in the selected facility cards if needed.
                 </span>
                 {dailySchedule.length === 0 ? (
                   <span className={missingFields.schedule ? 'field-error' : 'helper-text'}>

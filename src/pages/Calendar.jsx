@@ -7,6 +7,7 @@ import ReservationDetails from './ReservationDetails';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationEndReached } from '../services/reservationExpiration';
 import { getUnavailableDateId } from '../services/unavailableDates';
+import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -216,21 +217,35 @@ const Calendar = ({ currentUserRole }) => {
       }
       const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
 
-      const datesRange = Array.isArray(data.schedule)
-        ? data.schedule.map((entry) => ({
+      const selectedFacilities = data.facilities || [];
+      const datesRange = selectedFacilities.length > 0
+        ? selectedFacilities.flatMap((facilityId) => (
+          getReservationScheduleForFacility(data, facilityId).map((entry) => ({
+            date: formatScheduleDateForCalendar(entry.date),
+            startTime: entry.startTime || '',
+            endTime: entry.endTime || '',
+            facility: facilitiesMap[facilityId]?.name || facilityId
+          }))
+        ))
+        : getReservationScheduleForFacility(data, null).map((entry) => ({
           date: formatScheduleDateForCalendar(entry.date),
           startTime: entry.startTime || '',
-          endTime: entry.endTime || ''
-        }))
+          endTime: entry.endTime || '',
+          facility: facilityDisplay
+        }));
+
+      const calendarEntries = datesRange.length > 0
+        ? datesRange
         : getDatesInRange(data.eventDate || data.date, data.days || 1).map((date) => ({
           date,
           startTime: data.startTime || '',
-          endTime: data.endTime || ''
+          endTime: data.endTime || '',
+          facility: facilityDisplay
         }));
 
-      return datesRange.map((scheduleEntry, index) => {
+      return calendarEntries.map((scheduleEntry, index) => {
         return {
-          id: `${data.id}-${index}`,
+          id: `${data.id}-${scheduleEntry.facility}-${index}`,
           originalId: data.id,
           title: data.eventName || data.title || "Untitled Event",
           date: scheduleEntry.date,
@@ -239,7 +254,7 @@ const Calendar = ({ currentUserRole }) => {
             ? `${scheduleEntry.startTime} - ${scheduleEntry.endTime}`
             : "N/A",
           startTimeOnly: scheduleEntry.startTime,
-          facility: facilityDisplay,
+          facility: scheduleEntry.facility,
           equipment: equipmentRequested,
           requestor: formatName(data.fullName),
           endorser: data.endorserName ? formatName(data.endorserName) : 'N/A',

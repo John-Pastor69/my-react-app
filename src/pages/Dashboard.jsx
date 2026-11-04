@@ -5,6 +5,7 @@ import { auth, db } from '../Firebase';
 import MonthYearPicker from '../components/MonthYearPicker';
 import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationActive } from '../services/reservationStatus';
+import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import "../styles/Dashboard.scss";
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
@@ -1105,16 +1106,23 @@ const DashboardContent = ({ currentUserRole }) => {
       reservationsData
         .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
         .forEach((reservation) => {
-          const date = parseDate(reservation.eventDate || reservation.date);
-          const start = parseTime(reservation.startTime);
-          const end = parseTime(reservation.endTime);
-          if (!date || date < today || date > weekAhead || start === null || end === null || end <= start) return;
-
           (reservation.facilities || []).forEach((facilityId) => {
-            const key = `${toDateInputValue(date)}-${facilityId}`;
-            const group = reservationGroups.get(key) || [];
-            group.push({ reservation, date, start, end, facilityId });
-            reservationGroups.set(key, group);
+            getReservationScheduleForFacility(reservation, facilityId).forEach((entry) => {
+              const date = parseDate(entry.date);
+              const start = parseTime(entry.startTime);
+              let end = parseTime(entry.endTime);
+              if (!date || start === null || end === null || end === start) return;
+              if (end < start) end += 1440;
+
+              const startsAt = date.getTime() + start * 60 * 1000;
+              const endsAt = date.getTime() + end * 60 * 1000;
+              if (endsAt < today.getTime() || startsAt > weekAhead.getTime()) return;
+
+              const key = facilityId;
+              const group = reservationGroups.get(key) || [];
+              group.push({ reservation, date, start: startsAt, end: endsAt, facilityId });
+              reservationGroups.set(key, group);
+            });
           });
         });
 

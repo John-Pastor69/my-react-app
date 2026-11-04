@@ -88,9 +88,15 @@ const createScheduleEntry = (date, startTime, endTime) => {
   };
 };
 
-const getReservationSchedule = (reservation) => {
-  if (Array.isArray(reservation.schedule)) {
-    return reservation.schedule
+const getReservationSchedule = (reservation, facilityId) => {
+  const facilitySchedule = facilityId
+    ? reservation.facilitySchedules?.[facilityId]
+    : null;
+  const schedule = Array.isArray(facilitySchedule)
+    ? facilitySchedule
+    : reservation.schedule;
+  if (Array.isArray(schedule)) {
+    return schedule
       .map((entry) => createScheduleEntry(entry.date, entry.startTime, entry.endTime))
       .filter(Boolean);
   }
@@ -109,13 +115,24 @@ const getReservationSchedule = (reservation) => {
   return entries;
 };
 
-const getRequestSchedule = (request) => {
-  if (Array.isArray(request.schedule)) {
-    return request.schedule
+export const getReservationScheduleForFacility = (reservation, facilityId) => (
+  getReservationSchedule(reservation, facilityId)
+    .map(({ date, startTime, endTime }) => ({ date, startTime, endTime }))
+);
+
+const getRequestSchedule = (request, facilityId) => {
+  const facilitySchedule = facilityId
+    ? request.facilitySchedules?.[facilityId]
+    : null;
+  const schedule = Array.isArray(facilitySchedule)
+    ? facilitySchedule
+    : request.schedule;
+  if (Array.isArray(schedule)) {
+    return schedule
       .map((entry) => createScheduleEntry(entry.date, entry.startTime, entry.endTime))
       .filter(Boolean);
   }
-  return getReservationSchedule(request);
+  return getReservationSchedule(request, facilityId);
 };
 
 const getScheduleOverlap = (firstEntry, secondEntry) => {
@@ -135,7 +152,7 @@ const getOverlappingReservationDetails = (reservations, request, facilityId) => 
   if (!facilityId || !Array.isArray(request.facilities) || !request.facilities.includes(facilityId)) {
     return [];
   }
-  const requestSchedule = getRequestSchedule(request);
+  const requestSchedule = getRequestSchedule(request, facilityId);
   if (requestSchedule.length === 0) return [];
 
   const overlaps = [];
@@ -147,7 +164,7 @@ const getOverlappingReservationDetails = (reservations, request, facilityId) => 
       || !(reservation.facilities || []).includes(facilityId)
     ) return;
 
-    const reservationSchedule = getReservationSchedule(reservation);
+    const reservationSchedule = getReservationSchedule(reservation, facilityId);
     for (const requestEntry of requestSchedule) {
       const reservationEntry = reservationSchedule.find((entry) => (
         getScheduleOverlap(requestEntry, entry)
@@ -200,6 +217,90 @@ export const getParticipantsForFacility = (reservation, facilityId) => {
   return Number(reservation.expectedParticipants);
 };
 
+export const getFacilityCapacityAvailability = (reservations, request, facility) => {
+  const maxCapacity = getFacilityCapacityLimits(facility).max;
+  const requestSchedule = getRequestSchedule(request, facility.id);
+  if (maxCapacity === null || requestSchedule.length === 0) {
+    return {
+      maxCapacity,
+      scheduleAvailable: false,
+      occupiedCapacity: 0,
+      availableCapacity: null,
+      hasUnknownCapacity: false
+    };
+  }
+
+  let occupiedCapacity = 0;
+  let hasUnknownCapacity = false;
+
+  requestSchedule.forEach((requestEntry) => {
+    const requestStart = requestEntry.dateOrdinal * 1440 + requestEntry.startMinute;
+    const requestEnd = requestEntry.dateOrdinal * 1440 + requestEntry.endMinute;
+    const overlappingEntries = [];
+
+    reservations.forEach((reservation) => {
+      if (
+        reservation.id === request.excludeReservationId
+        || !isReservationActive(reservation)
+        || hasRejectedApproval(reservation)
+        || !(reservation.facilities || []).includes(facility.id)
+      ) return;
+
+      const participants = getParticipantsForFacility(reservation, facility.id);
+      getReservationSchedule(reservation, facility.id).forEach((reservationEntry) => {
+        if (!getScheduleOverlap(requestEntry, reservationEntry)) return;
+        const reservationStart = reservationEntry.dateOrdinal * 1440 + reservationEntry.startMinute;
+        const reservationEnd = reservationEntry.dateOrdinal * 1440 + reservationEntry.endMinute;
+        overlappingEntries.push({
+          reservation,
+          participants,
+          start: Math.max(requestStart, reservationStart),
+          end: Math.min(requestEnd, reservationEnd)
+        });
+      });
+    });
+
+    const boundaries = [...new Set([
+      requestStart,
+      requestEnd,
+      ...overlappingEntries.flatMap(({ start, end }) => [start, end])
+    ])].sort((first, second) => first - second);
+
+    for (let index = 0; index < boundaries.length - 1; index += 1) {
+      const segmentStart = boundaries[index];
+      if (segmentStart >= requestEnd || boundaries[index + 1] <= requestStart) continue;
+
+      const activeReservations = new Map();
+      overlappingEntries.forEach(({ reservation, participants, start, end }) => {
+        if (start <= segmentStart && end > segmentStart) {
+          activeReservations.set(reservation.id || reservation, participants);
+        }
+      });
+
+      let segmentOccupiedCapacity = 0;
+      for (const participants of activeReservations.values()) {
+        if (!Number.isInteger(participants) || participants <= 0) {
+          hasUnknownCapacity = true;
+          continue;
+        }
+        segmentOccupiedCapacity += participants;
+      }
+
+      occupiedCapacity = Math.max(occupiedCapacity, segmentOccupiedCapacity);
+    }
+  });
+
+  return {
+    maxCapacity,
+    scheduleAvailable: true,
+    occupiedCapacity,
+    availableCapacity: hasUnknownCapacity
+      ? 0
+      : Math.max(0, maxCapacity - occupiedCapacity),
+    hasUnknownCapacity
+  };
+};
+
 const createConflictResult = (overlap, conflictDetails) => ({
   ...overlap.reservation,
   ...conflictDetails,
@@ -218,30 +319,29 @@ export const findFacilityConflict = (reservations, request, facilities) => {
     };
 
     if (maxCapacity !== null) {
-      const activeReservations = getActiveFacilityReservations(reservations, request, facilityId);
-      const hasUnknownCapacity = activeReservations.some((reservation) => {
-        const participants = getParticipantsForFacility(reservation, facilityId);
-        return !Number.isInteger(participants) || participants <= 0;
-      });
-      if (hasUnknownCapacity) {
+      const availability = getFacilityCapacityAvailability(reservations, request, facility);
+      if (!availability.scheduleAvailable) continue;
+
+      const overlappingReservations = getOverlappingFacilityReservations(
+        reservations,
+        request,
+        facilityId
+      );
+      if (availability.hasUnknownCapacity) {
         return {
-          ...activeReservations[0],
+          ...overlappingReservations[0],
           ...conflictDetails,
           conflictType: 'unknown-capacity'
         };
       }
 
-      const occupiedCapacity = activeReservations.reduce(
-        (total, reservation) => total + getParticipantsForFacility(reservation, facilityId),
-        0
-      );
       const requestedCapacity = getParticipantsForFacility(request, facilityId);
-      if (occupiedCapacity + requestedCapacity > maxCapacity) {
+      if (availability.occupiedCapacity + requestedCapacity > maxCapacity) {
         return {
-          ...activeReservations[0],
+          ...overlappingReservations[0],
           ...conflictDetails,
           conflictType: 'capacity',
-          occupiedCapacity,
+          occupiedCapacity: availability.occupiedCapacity,
           requestedCapacity,
           maxCapacity
         };

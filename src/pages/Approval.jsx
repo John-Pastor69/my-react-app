@@ -226,6 +226,13 @@ const Approval = ({ currentUserRole = '' }) => {
             entry.startTime !== dailySchedule[0]?.startTime
             || entry.endTime !== dailySchedule[0]?.endTime
         ));
+        const facilityTimeSets = Object.values(res.facilitySchedules || {})
+            .map((schedule) => [...new Set((Array.isArray(schedule) ? schedule : []).map(
+                (entry) => `${entry.startTime || ''}-${entry.endTime || ''}`
+            ))].sort().join('|'))
+            .filter(Boolean);
+        const hasDifferentFacilityTimes = facilityTimeSets.length > 1
+            && facilityTimeSets.some((times) => times !== facilityTimeSets[0]);
 
         // --- DETERMINE USER NOTIFICATION STATUS ---
         const determineUserStatus = () => {
@@ -277,7 +284,9 @@ const Approval = ({ currentUserRole = '' }) => {
             avatarUrl: requestor.avatarUrl || null,
             initial: cleanName.charAt(0).toUpperCase(),
             date: res.eventDate || 'No Date',
-            time: hasVaryingTimes
+            time: hasDifferentFacilityTimes
+                ? 'Varies by facility'
+                : hasVaryingTimes
                 ? 'Varies by day'
                 : dailySchedule.length > 0
                     ? `${dailySchedule[0].startTime || ''} - ${dailySchedule[0].endTime || ''}`

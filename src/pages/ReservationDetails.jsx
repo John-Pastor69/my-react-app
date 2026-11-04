@@ -4,6 +4,7 @@ import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'fire
 import { db, auth } from '../Firebase';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
+import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import '../styles/ReservationDetails.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -15,6 +16,18 @@ const formatName = (fullName) => {
     name = `${parts[1].trim()} ${parts[0].trim()}`;
   }
   return name;
+};
+
+const addMiddleInitial = (fullName, middleInitial) => {
+  const name = formatName(fullName);
+  const initial = String(middleInitial || '').trim().replace(/\./g, '').charAt(0);
+  const parts = name.split(/\s+/);
+  const alreadyHasInitial = parts.slice(1, -1).some(
+    (part) => part.replace(/\./g, '').toLowerCase() === initial.toLowerCase()
+  );
+  if (!initial || alreadyHasInitial) return name;
+  if (parts.length < 2) return name;
+  return `${parts.slice(0, -1).join(' ')} ${initial}. ${parts[parts.length - 1]}`;
 };
 
 // --- EVENT DATE RANGE FORMATTER HELPER ---
@@ -194,7 +207,10 @@ const ReservationDetails = ({
               const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ')
                 || profile.name
                 || '';
-              return [`${collectionName}:${approver.id}`, name];
+              return [`${collectionName}:${approver.id}`, {
+                name,
+                middleInitial: profile.middleInitial || profile.personal_information?.middle_initial || ''
+              }];
             }
 
             if (approver.email) {
@@ -208,7 +224,10 @@ const ReservationDetails = ({
                 const name = [profile.firstName, profile.lastName].filter(Boolean).join(' ')
                   || profile.name
                   || '';
-                return [`${collectionName}:${approver.id || approver.email}`, name];
+                return [`${collectionName}:${approver.id || approver.email}`, {
+                  name,
+                  middleInitial: profile.middleInitial || profile.personal_information?.middle_initial || ''
+                }];
               }
             }
           }
@@ -292,15 +311,25 @@ const ReservationDetails = ({
   const eventName = currentData.eventName || 'Untitled Event';
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
   const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
-  const scheduledYears = new Set((Array.isArray(currentData.schedule) ? currentData.schedule : []).map((entry) => (
+  const facilityIds = currentData.facilities || [];
+  const facilityScheduleEntries = facilityIds.length > 0
+    ? facilityIds.flatMap((id) => getReservationScheduleForFacility(currentData, id).map((entry) => ({
+      ...entry,
+      facilityName: facilitiesMap[id]?.name || id
+    })))
+    : getReservationScheduleForFacility(currentData, null).map((entry) => ({
+      ...entry,
+      facilityName: ''
+    }));
+  const scheduledYears = new Set(facilityScheduleEntries.map((entry) => (
     String(entry.date || '').match(/^\d{4}-/)?.[0]
       || String(entry.date || '').match(/\/(\d{4})$/)?.[1]
       || ''
   )).filter(Boolean));
   const includeYearInScheduleDates = scheduledYears.size > 1;
   
-  const dailyTimeEntries = Array.isArray(currentData.schedule)
-    ? currentData.schedule.reduce((groups, entry) => {
+  const dailyTimeEntries = facilityScheduleEntries
+    .reduce((groups, entry) => {
       const parsedDate = new Date(`${entry.date}T00:00:00`);
       const dateLabel = Number.isNaN(parsedDate.getTime())
         ? entry.date
@@ -311,21 +340,24 @@ const ReservationDetails = ({
         });
       
       const time = `${entry.startTime || 'N/A'} – ${entry.endTime || 'N/A'}`;
-      const existingGroup = groups.find((group) => group.time === time);
+      const existingGroup = groups.find((group) => (
+        group.facilityName === entry.facilityName && group.time === time
+      ));
       
       if (existingGroup) {
         existingGroup.dates.push(dateLabel);
         existingGroup.rawDates.push(entry.date);
       } else {
-        groups.push({ dates: [dateLabel], rawDates: [entry.date], time });
+        groups.push({ dates: [dateLabel], rawDates: [entry.date], time, facilityName: entry.facilityName });
       }
       return groups;
-    }, [])
-    : [];
+    }, []);
 
   // Replaced generic pdfDates mapping with condenseDateList for cleaner PDF Output
   const eventTime = dailyTimeEntries.length > 0
-    ? dailyTimeEntries.map(({ rawDates, time }) => `${time} [${condenseDateList(rawDates)}]`).join('\n')
+    ? dailyTimeEntries.map(({ rawDates, time, facilityName }) => (
+      `${facilityName ? `${facilityName}: ` : ''}${time} [${condenseDateList(rawDates)}]`
+    )).join('\n')
     : `${currentData.startTime || ''} – ${currentData.endTime || ''}`;
 
   const renderDailyTimeDisplay = (variant) => {
@@ -333,15 +365,16 @@ const ReservationDetails = ({
 
     return (
       <div className={`daily-time-list ${variant}`}>
-        {dailyTimeEntries.map(({ dates, time }, index) => {
-          const groupKey = `${variant}-${time}`;
+        {dailyTimeEntries.map(({ dates, time, facilityName }, index) => {
+          const groupKey = `${variant}-${facilityName}-${time}`;
           const isExpanded = Boolean(expandedTimeGroups[groupKey]);
           const visibleDates = dates.slice(0, 2);
           const additionalDates = dates.slice(2);
           const expandedDatesId = `daily-time-dates-${variant}-${index}`;
 
           return (
-            <div className="daily-time-entry" key={time}>
+            <div className="daily-time-entry" key={groupKey}>
+              {facilityName && <strong className="daily-time-facility">{facilityName}</strong>}
               <span className="daily-time-range">{time}</span>
               <div className="daily-time-date-group">
                 <span className="daily-time-date">[{visibleDates.join(', ')}]</span>
@@ -454,17 +487,13 @@ const ReservationDetails = ({
 
   const hasEndorser = !!currentData.endorserName;
   const endorserName = currentData.endorserName ? formatName(currentData.endorserName) : 'N/A';
-  const endorserDesignation = currentData.endorserInfo?.department
-    || currentData.endorserInfo?.designation
-    || currentData.endorserDesignation
-    || 'N/A';
   const endorserEmail = currentData.endorserEmail || 'N/A';
   const endorserDynamicAttributes = getReservationDynamicAttributes(
     currentData,
     'endorser',
     signupConfiguration
   );
-  const endorsedBy = currentData.endorserName ? `${endorserName} (${endorserDesignation})` : 'N/A';
+  const endorsedBy = currentData.endorserName ? endorserName : 'N/A';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
   const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'
@@ -721,19 +750,22 @@ const ReservationDetails = ({
         const approverCollection = approvalLog?.approverCollection
           || approvalRecord?.approverCollection
           || '';
-        const profileName = approverProfiles[`${approverCollection}:${approverIdentity}`]
+        const approverProfile = approverProfiles[`${approverCollection}:${approverIdentity}`]
           || approverProfiles[`super_users:${approverId}`]
           || approverProfiles[`users:${approverId}`]
           || approverProfiles[`super_users:${approverEmail}`]
           || approverProfiles[`users:${approverEmail}`]
-          || '';
+          || {};
+        const profileName = typeof approverProfile === 'string' ? approverProfile : approverProfile.name;
+        const profileMiddleInitial = typeof approverProfile === 'string' ? '' : approverProfile.middleInitial;
+        const approverName = approvalLog?.approverName
+          || approvalRecord?.approverName
+          || profileName
+          || (step.key === 'endorser' ? endorserName : 'Name unavailable');
 
         return {
           ...step,
-          approverName: approvalLog?.approverName
-            || approvalRecord?.approverName
-            || profileName
-            || (step.key === 'endorser' ? endorserName : 'Name unavailable'),
+          approverName: addMiddleInitial(approverName, profileMiddleInitial),
           approvalDate: approvalLog?.date || approvalRecord?.date || step.date
         };
       });

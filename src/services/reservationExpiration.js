@@ -2,6 +2,7 @@ import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../Firebase';
 import { sendReservationEmail } from './emailService';
 import { archiveReservations } from './archiveReservation';
+import { getReservationScheduleForFacility } from './reservationConflicts';
 
 const parseReservationDate = (value) => {
   if (!value) return null;
@@ -41,7 +42,53 @@ const parseReservationTime = (value) => {
   return { hours, minutes };
 };
 
+const getReservationScheduleEntries = (reservation) => {
+  const facilityIds = Array.isArray(reservation.facilities) ? reservation.facilities : [];
+  return facilityIds.length > 0
+    ? facilityIds.flatMap((facilityId) => getReservationScheduleForFacility(reservation, facilityId))
+    : getReservationScheduleForFacility(reservation, null);
+};
+
+const getScheduleDateTime = (entry, field) => {
+  const date = parseReservationDate(entry.date);
+  const time = parseReservationTime(entry[field]);
+  if (!date || !time) return null;
+  return new Date(date.getFullYear(), date.getMonth(), date.getDate(), time.hours, time.minutes);
+};
+
+const getScheduledReservationEndDateTime = (reservation) => {
+  const scheduleEntries = getReservationScheduleEntries(reservation);
+  const scheduledEndTimes = scheduleEntries.map((entry) => {
+    const endDateTime = getScheduleDateTime(entry, 'endTime');
+    const startTime = parseReservationTime(entry.startTime);
+    const endTime = parseReservationTime(entry.endTime);
+    if (!endDateTime || !startTime || !endTime) return null;
+    if (endTime.hours * 60 + endTime.minutes < startTime.hours * 60 + startTime.minutes) {
+      endDateTime.setDate(endDateTime.getDate() + 1);
+    }
+    return endDateTime;
+  }).filter(Boolean);
+
+  return scheduledEndTimes.reduce(
+    (latest, dateTime) => !latest || dateTime > latest ? dateTime : latest,
+    null
+  );
+};
+
+const getScheduledReservationStartDateTime = (reservation) => (
+  getReservationScheduleEntries(reservation)
+    .map((entry) => getScheduleDateTime(entry, 'startTime'))
+    .filter(Boolean)
+    .reduce(
+      (earliest, dateTime) => !earliest || dateTime < earliest ? dateTime : earliest,
+      null
+    )
+);
+
 export const isReservationEndReached = (reservation, now = new Date()) => {
+  const scheduledEndDateTime = getScheduledReservationEndDateTime(reservation);
+  if (scheduledEndDateTime) return now > scheduledEndDateTime;
+
   const eventDate = parseReservationDate(reservation.eventDate || reservation.date);
   if (!eventDate) return false;
 
@@ -80,6 +127,9 @@ export const archiveExpiredApprovedReservations = async (reservations, now = new
 };
 
 const isExpiredPendingReservation = (reservation, now) => {
+  const scheduledStartDateTime = getScheduledReservationStartDateTime(reservation);
+  if (scheduledStartDateTime) return now > scheduledStartDateTime;
+
   const eventDate = parseReservationDate(reservation.eventDate || reservation.date);
   if (!eventDate) return false;
 

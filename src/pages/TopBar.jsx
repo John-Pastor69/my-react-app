@@ -35,41 +35,6 @@ const timeAgo = (dateInput) => {
   return Math.floor(seconds) + " seconds ago";
 };
 
-const isExpired = (eventDate, endTime, days = 1) => {
-  if (!eventDate) return false;
-  const now = new Date();
-  let endDateTime;
-  
-  const [month, day, year] = eventDate.split('/');
-  if (!month || !day || !year) return false;
-
-  const parsedDays = parseInt(days, 10) || 1;
-  const baseDate = new Date(year, month - 1, day);
-  baseDate.setDate(baseDate.getDate() + (parsedDays - 1));
-
-  const endYear = baseDate.getFullYear();
-  const endMonth = baseDate.getMonth();
-  const endDay = baseDate.getDate();
-  
-  if (endTime && endTime !== 'N/A') {
-    const match = endTime.trim().match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-    if (match) {
-      let [ , hours, minutes, modifier ] = match;
-      hours = parseInt(hours, 10);
-      if (hours === 12 && modifier.toUpperCase() === 'AM') hours = 0;
-      if (hours < 12 && modifier.toUpperCase() === 'PM') hours += 12;
-      
-      endDateTime = new Date(endYear, endMonth, endDay, hours, minutes);
-    }
-  }
-  
-  if (!endDateTime) {
-    endDateTime = new Date(endYear, endMonth, endDay, 23, 59, 59);
-  }
-
-  return now > endDateTime;
-};
-
 // --- NEW PROPS ADDED HERE ---
 const TopBar = ({ toggleSidebar, userRole }) => {
   const navigate = useNavigate();
@@ -433,7 +398,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       if (
         myIndex > 0
         && !['rejected', 'approved', 'to modify'].includes(reservationStatus)
-        && !isExpired(res.eventDate, res.endTime, res.days)
+        && !isReservationEndReached(res)
       ) {
         
         if (myRoleKey === 'endorser' && res.endorserEmail !== email) {

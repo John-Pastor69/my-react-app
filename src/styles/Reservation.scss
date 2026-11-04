@@ -1113,6 +1113,14 @@ $orange-main: #F59E0B;
     .facility-capacity-left {
       color: $green-main;
       font-size: var(--font-body);
+
+      &.unavailable {
+        color: $red-main;
+      }
+
+      &.schedule-needed {
+        color: $text-muted;
+      }
     }
 
     .utility-info {
@@ -1143,8 +1151,8 @@ $orange-main: #F59E0B;
       overflow: hidden;
 
       button {
-        width: 2rem;
-        height: 2rem;
+        width: 1.75rem;
+        height: 1.75rem;
         border: 0;
         background: transparent;
         color: $text-muted;
@@ -1164,8 +1172,8 @@ $orange-main: #F59E0B;
       }
 
       input {
-        width: 2rem;
-        height: 2rem;
+        width: 1.75rem;
+        height: 1.75rem;
         padding: 0;
         border: 0;
         background: transparent;
@@ -1212,6 +1220,21 @@ $orange-main: #F59E0B;
       min-width: 0;
       cursor: default;
 
+      &.needs-participants {
+        padding: 0.5rem;
+        border: 1px solid #FCA5A5;
+        border-radius: 7px;
+        background: #FEF2F2;
+
+        label {
+          color: $red-main;
+        }
+
+        input {
+          border-color: $red-main;
+        }
+      }
+
       label {
         color: $text-dark;
         font-size: var(--font-body);
@@ -1227,6 +1250,59 @@ $orange-main: #F59E0B;
         border-radius: 6px;
         background: #fff;
         color: $text-dark;
+      }
+    }
+
+    .facility-schedule {
+      grid-column: 1 / -1;
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      width: 100%;
+      min-width: 0;
+      box-sizing: border-box;
+      padding: 0.75rem;
+      border: 1px solid $border-color;
+      border-radius: 7px;
+      background: #F8FAFC;
+
+      > strong {
+        color: $text-dark;
+      }
+
+      .facility-schedule-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        min-width: 0;
+      }
+
+      .facility-schedule-row {
+        display: grid;
+        grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr));
+        align-items: end;
+        gap: 0.625rem;
+        min-width: 0;
+        padding: 0.625rem;
+        border: 1px solid $border-color;
+        border-radius: 7px;
+        background: #fff;
+
+        > strong {
+          align-self: center;
+        }
+
+        label {
+          display: flex;
+          flex-direction: column;
+          gap: 0.3rem;
+          min-width: 0;
+
+          span {
+            color: $text-muted;
+            font-size: var(--font-small);
+          }
+        }
       }
     }
   }
@@ -1259,6 +1335,19 @@ $orange-main: #F59E0B;
       border: 1px solid $border-color; 
       border-radius: 8px; 
       background: #fff;
+
+      .equipment-checkbox {
+        width: 1.125rem;
+        height: 1.125rem;
+        flex: 0 0 1.125rem;
+        margin: 0;
+        accent-color: $blue-main;
+        cursor: pointer;
+
+        &:disabled {
+          cursor: not-allowed;
+        }
+      }
 
       &.is-locked { 
         opacity: .6; 
@@ -1325,7 +1414,7 @@ $orange-main: #F59E0B;
       overflow: hidden;
 
       button { 
-        width: 2.25rem; 
+        width: 1.875rem; 
         height: 2.125rem; 
         border: 0; 
         background: transparent; 
@@ -1346,7 +1435,7 @@ $orange-main: #F59E0B;
       }
 
       input { 
-        width: 2.125rem; 
+        width: 1.875rem; 
         height: 2.125rem; 
         padding: 0; 
         border: 0; 
@@ -1436,6 +1525,23 @@ $orange-main: #F59E0B;
         span { 
           color: #059669; 
         } 
+      }
+
+      &.is-disabled {
+        border-color: #FCA5A5;
+        background: #FEF2F2;
+
+        .toggle-switch {
+          background: $red-main;
+        }
+
+        strong {
+          color: #B91C1C;
+        }
+
+        span {
+          color: #DC2626;
+        }
       }
     }
 
@@ -1963,6 +2069,14 @@ $orange-main: #F59E0B;
       }
 
       .schedule-day-remove {
+        grid-column: 1 / -1;
+      }
+    }
+
+    .reservation-facility-option .facility-schedule-row {
+      grid-template-columns: 1fr 1fr;
+
+      > strong {
         grid-column: 1 / -1;
       }
     }

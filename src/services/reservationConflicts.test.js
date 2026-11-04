@@ -3,7 +3,9 @@ import test from 'node:test';
 import {
   findFacilityConflict,
   getActiveFacilityReservations,
-  getOverlappingFacilityReservations
+  getFacilityCapacityAvailability,
+  getOverlappingFacilityReservations,
+  getReservationScheduleForFacility
 } from './reservationConflicts.js';
 
 const facility = { id: 'room-a', name: 'Room A', capacity: 100 };
@@ -42,34 +44,34 @@ test('daily schedule overrides only conflict on an overlapping date and time', (
   assert.equal(conflict.conflictDate, '2026-10-03');
 });
 
-test('facility capacity counts active reservations across all dates and times', () => {
+test('facility capacity counts only reservations overlapping the selected time', () => {
   const reservations = [
     reservation('day-one', {
       expectedParticipants: 50,
-      schedule: [{ date: '2026-10-01', startTime: '07:00', endTime: '11:00' }]
+      schedule: [{ date: '2026-10-05', startTime: '08:00', endTime: '10:00' }]
     }),
     reservation('day-two', {
       expectedParticipants: 60,
-      schedule: [{ date: '2026-10-02', startTime: '07:00', endTime: '11:00' }]
+      schedule: [{ date: '2026-10-05', startTime: '10:00', endTime: '12:00' }]
     })
   ];
   const requestSchedule = [
-    { date: '2026-10-05', startTime: '08:00', endTime: '10:00' }
+    { date: '2026-10-05', startTime: '08:30', endTime: '09:30' }
   ];
 
   assert.equal(findFacilityConflict(
     reservations,
     request(requestSchedule, 40),
-    [{ ...facility, capacity: 200 }]
+    [{ ...facility, capacity: 100 }]
   ), null);
 
   const conflict = findFacilityConflict(
     reservations,
-    request(requestSchedule, 91),
-    [{ ...facility, capacity: 200 }]
+    request(requestSchedule, 51),
+    [{ ...facility, capacity: 100 }]
   );
   assert.equal(conflict.conflictType, 'capacity');
-  assert.equal(conflict.occupiedCapacity, 110);
+  assert.equal(conflict.occupiedCapacity, 50);
 });
 
 test('facility availability counts reservations even when that facility is not selected in the form', () => {
@@ -141,7 +143,7 @@ test('archived reservations release their facility capacity', () => {
   ).length, 0);
 });
 
-test('facility capacity is enforced even when reservation schedules do not overlap', () => {
+test('facility capacity allows a separate time slot even when other bookings used full capacity', () => {
   const existing = reservation('existing', {
     expectedParticipants: 99,
     schedule: [{ date: '2026-10-03', startTime: '13:00', endTime: '15:00' }]
@@ -152,8 +154,7 @@ test('facility capacity is enforced even when reservation schedules do not overl
     request([{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }]),
     [facility]
   );
-  assert.equal(conflict.conflictType, 'capacity');
-  assert.equal(conflict.occupiedCapacity, 99);
+  assert.equal(conflict, null);
 });
 
 test('facility capacity uses per-facility participant counts when available', () => {
@@ -161,10 +162,10 @@ test('facility capacity uses per-facility participant counts when available', ()
     facilities: ['room-a', 'room-b'],
     expectedParticipants: 80,
     facilityParticipants: { 'room-a': 30, 'room-b': 50 },
-    schedule: [{ date: '2026-10-03', startTime: '13:00', endTime: '15:00' }]
+    schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }]
   });
   const selectedRequest = {
-    ...request([{ date: '2026-10-04', startTime: '09:00', endTime: '11:00' }], 20),
+    ...request([{ date: '2026-10-03', startTime: '09:30', endTime: '10:30' }], 20),
     facilityParticipants: { 'room-a': 15 }
   };
 
@@ -182,4 +183,142 @@ test('facility capacity uses per-facility participant counts when available', ()
   assert.equal(conflict.conflictType, 'capacity');
   assert.equal(conflict.occupiedCapacity, 30);
   assert.equal(conflict.requestedCapacity, 21);
+});
+
+test('facility conflicts use each facility schedule instead of the legacy combined schedule', () => {
+  const existing = reservation('existing', {
+    facilities: ['room-a', 'room-b'],
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }],
+    facilitySchedules: {
+      'room-a': [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }],
+      'room-b': [{ date: '2026-10-03', startTime: '14:00', endTime: '16:00' }]
+    }
+  });
+  const selectedRequest = {
+    facilities: ['room-a', 'room-b'],
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }],
+    facilitySchedules: {
+      'room-a': [{ date: '2026-10-03', startTime: '10:00', endTime: '12:00' }],
+      'room-b': [{ date: '2026-10-03', startTime: '15:00', endTime: '17:00' }]
+    }
+  };
+
+  const conflict = findFacilityConflict(
+    [existing],
+    selectedRequest,
+    [{ id: 'room-a', name: 'Room A' }, { id: 'room-b', name: 'Room B' }]
+  );
+  assert.equal(conflict.conflictType, 'schedule');
+  assert.equal(conflict.conflictFacilityName, 'Room B');
+  assert.equal(conflict.conflictStartTime, '14:00');
+});
+
+test('facility schedule lookup prefers facility-specific entries and falls back to legacy schedule', () => {
+  const reservationWithSchedules = reservation('existing', {
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }],
+    facilitySchedules: {
+      'room-a': [{ date: '2026-10-03', startTime: '13:00', endTime: '15:00' }],
+      'room-b': []
+    }
+  });
+
+  assert.deepEqual(getReservationScheduleForFacility(reservationWithSchedules, 'room-a'), [
+    { date: '2026-10-03', startTime: '13:00', endTime: '15:00' }
+  ]);
+  assert.deepEqual(getReservationScheduleForFacility(reservationWithSchedules, 'room-b'), []);
+  assert.deepEqual(getReservationScheduleForFacility(reservationWithSchedules, 'room-c'), [
+    { date: '2026-10-03', startTime: '08:00', endTime: '10:00' }
+  ]);
+});
+
+test('capacity availability uses the peak overlapping participants across selected schedule entries', () => {
+  const reservations = [
+    reservation('morning', {
+      expectedParticipants: 60,
+      schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }]
+    }),
+    reservation('afternoon', {
+      expectedParticipants: 70,
+      schedule: [{ date: '2026-10-03', startTime: '13:00', endTime: '15:00' }]
+    })
+  ];
+  const selectedRequest = request([
+    { date: '2026-10-03', startTime: '09:00', endTime: '09:30' },
+    { date: '2026-10-03', startTime: '13:30', endTime: '14:00' }
+  ], 30);
+
+  assert.deepEqual(
+    getFacilityCapacityAvailability(reservations, selectedRequest, facility),
+    {
+      maxCapacity: 100,
+      scheduleAvailable: true,
+      occupiedCapacity: 70,
+      availableCapacity: 30,
+      hasUnknownCapacity: false
+    }
+  );
+  assert.equal(findFacilityConflict(reservations, selectedRequest, [facility]), null);
+});
+
+test('capacity availability counts concurrent usage rather than every booking overlapping a long schedule', () => {
+  const reservations = [
+    reservation('morning', {
+      expectedParticipants: 60,
+      schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '09:00' }]
+    }),
+    reservation('afternoon', {
+      expectedParticipants: 60,
+      schedule: [{ date: '2026-10-03', startTime: '16:00', endTime: '17:00' }]
+    })
+  ];
+  const selectedRequest = request([
+    { date: '2026-10-03', startTime: '08:00', endTime: '17:00' }
+  ], 40);
+
+  assert.equal(
+    getFacilityCapacityAvailability(reservations, selectedRequest, facility).availableCapacity,
+    40
+  );
+  assert.equal(findFacilityConflict(reservations, selectedRequest, [facility]), null);
+});
+
+test('capacity availability requests a schedule before reporting remaining capacity', () => {
+  assert.deepEqual(
+    getFacilityCapacityAvailability([], request([]), facility),
+    {
+      maxCapacity: 100,
+      scheduleAvailable: false,
+      occupiedCapacity: 0,
+      availableCapacity: null,
+      hasUnknownCapacity: false
+    }
+  );
+});
+
+test('reservations with unknown participant counts only prevent availability when their schedule overlaps', () => {
+  const existing = reservation('existing', {
+    expectedParticipants: 0,
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }]
+  });
+  const selectedRequest = request([
+    { date: '2026-10-03', startTime: '13:00', endTime: '15:00' }
+  ]);
+
+  assert.equal(
+    getFacilityCapacityAvailability([existing], selectedRequest, facility).availableCapacity,
+    100
+  );
+  assert.equal(findFacilityConflict([existing], selectedRequest, [facility]), null);
+
+  const overlappingRequest = request([
+    { date: '2026-10-03', startTime: '09:00', endTime: '11:00' }
+  ]);
+  assert.equal(
+    getFacilityCapacityAvailability([existing], overlappingRequest, facility).hasUnknownCapacity,
+    true
+  );
+  assert.equal(
+    findFacilityConflict([existing], overlappingRequest, [facility]).conflictType,
+    'unknown-capacity'
+  );
 });
