@@ -175,7 +175,7 @@ export const archiveExpiredPendingReservations = async (user) => {
   await archiveReservations(expiredReservations.map(({ id, data }) => {
     const expiredAt = now.toISOString();
     const expirationLog = {
-      id: `expired-${id}`,
+      id: `expired-${crypto.randomUUID()}`,
       role: 'System',
       badge: 'Expired',
       date: expiredAt,

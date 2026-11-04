@@ -168,7 +168,7 @@ const Schedule = ({ currentUserRole = '' }) => {
     try {
       const cancelledAt = new Date().toISOString();
       const cancellationLog = {
-        id: `cancelled-${Date.now()}`,
+        id: `cancelled-${crypto.randomUUID()}`,
         role: 'Requestor',
         badge: 'Cancelled',
         date: cancelledAt,

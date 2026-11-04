@@ -151,7 +151,7 @@ const Approval = ({ currentUserRole = '' }) => {
         try {
             const cancelledAt = new Date().toISOString();
             const cancellationLog = {
-                id: `cancelled-${Date.now()}`,
+                id: `cancelled-${crypto.randomUUID()}`,
                 role: currentUserRole,
                 badge: 'Cancelled',
                 date: cancelledAt,

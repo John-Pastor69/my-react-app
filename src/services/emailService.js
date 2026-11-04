@@ -5,9 +5,12 @@ export const sendReservationEmail = async (userEmail, userName, resData, notific
     const templateParams = {
       to_email: userEmail,
       to_name: userName || 'User',
-      event_name: resData.eventName || 'Untitled Event', 
+      name: userName || 'User',
+      time: resData.eventDate || new Date().toLocaleString(),
+      event_name: resData.eventName || 'Untitled Event',
       event_date: resData.eventDate || 'TBD',
-      message_body: notificationMessage
+      message_body: notificationMessage,
+      message: notificationMessage
     };
 
     await emailjs.send(

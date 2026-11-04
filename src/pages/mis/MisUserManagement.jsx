@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc } from 'firebase/firestore';
+import { createPortal } from 'react-dom';
+import { collection, onSnapshot, doc, updateDoc, deleteDoc, setDoc, writeBatch, deleteField, arrayUnion } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
 import { db, auth } from '../../Firebase';
+import { sendReservationEmail } from '../../services/emailService';
 import {
   DEFAULT_ACCOUNT_TYPES,
   DEFAULT_COURSE_OPTIONS,
@@ -116,9 +118,15 @@ const MisUserManagement = ({ currentUserRole }) => {
   const canViewPendingUsers = ['super admin', 'mis', 'mis admin', 'building admin'].includes(normalizedCurrentUserRole);
   const canAssignPendingRole = isSuperAdmin;
   const [usersData, setUsersData] = useState([]);
+  const [pendingProfiles, setPendingProfiles] = useState([]);
+  const [isPendingProfilesLoading, setIsPendingProfilesLoading] = useState(true);
+  const [pendingProfilesLoadError, setPendingProfilesLoadError] = useState('');
+  const [expandedPendingImage, setExpandedPendingImage] = useState(null);
   const [searchQuery, setSearchQuery] = useState(''); // Added search state
   const [userFilter, setUserFilter] = useState(() => (
-    canViewPendingUsers && searchParams.get('filter') === 'pending' ? 'pending' : 'all'
+    canViewPendingUsers && ['pending', 'pending-profile'].includes(searchParams.get('filter'))
+      ? searchParams.get('filter')
+      : 'all'
   ));
   const [unverifiedAgeFilter, setUnverifiedAgeFilter] = useState('all');
   const [unverifiedFilterNow, setUnverifiedFilterNow] = useState(() => Date.now());
@@ -142,6 +150,8 @@ const MisUserManagement = ({ currentUserRole }) => {
   const [signupOptionsSuccess, setSignupOptionsSuccess] = useState('');
 
   const [roleModalUser, setRoleModalUser] = useState(null);
+  const [pendingProfileAction, setPendingProfileAction] = useState(null);
+  const [processingPendingProfileId, setProcessingPendingProfileId] = useState(null);
   const [selectedRole, setSelectedRole] = useState('requestor');
   const [isUpdatingRole, setIsUpdatingRole] = useState(false);
   const [updatingBlockUserId, setUpdatingBlockUserId] = useState(null);
@@ -238,6 +248,27 @@ const MisUserManagement = ({ currentUserRole }) => {
     return () => unsubscribe();
   }, [currentUser]);
 
+  useEffect(() => {
+    if (!currentUser || !canViewPendingUsers) return undefined;
+
+    return onSnapshot(
+      collection(db, 'pending_profiles'),
+      (snapshot) => {
+        setPendingProfiles(snapshot.docs.map((pendingProfileDoc) => ({
+          id: pendingProfileDoc.id,
+          ...pendingProfileDoc.data()
+        })));
+        setPendingProfilesLoadError('');
+        setIsPendingProfilesLoading(false);
+      },
+      (error) => {
+        console.error('Failed to load pending profile changes:', error);
+        setPendingProfilesLoadError('Could not load pending profile changes. Check Firestore access and try again.');
+        setIsPendingProfilesLoading(false);
+      }
+    );
+  }, [currentUser, canViewPendingUsers]);
+
   const handleOpenRoleModal = (user) => {
     setRoleModalUser(user);
     
@@ -282,6 +313,19 @@ const MisUserManagement = ({ currentUserRole }) => {
         role: roleToSave,
         ...(roleChangeNotification ? { roleChangeNotification } : {})
       });
+
+      if (roleChangeNotification && roleModalUser.email) {
+        const roleLabel = ROLE_LABELS[roleToSave] || roleToSave;
+        await sendReservationEmail(
+          roleModalUser.email,
+          roleModalUser.name || roleModalUser.fullName || 'User',
+          {
+            eventName: 'Account role updated',
+            eventDate: roleChangeNotification.timestamp
+          },
+          `Your account role has changed from Pending to ${roleLabel}.`
+        );
+      }
 
       setRoleModalUser(null);
     } catch (error) {
@@ -337,6 +381,76 @@ const MisUserManagement = ({ currentUserRole }) => {
       setActionError('Could not delete this user profile. Please try again.');
     } finally {
       setDeletingUserId(null);
+    }
+  };
+
+  const handlePendingProfileAction = async () => {
+    if (!pendingProfileAction || !canViewPendingUsers) return;
+
+    const { request, action, imageSelection } = pendingProfileAction;
+    const userId = request.userId || request.id;
+    const hasRequestedPicture = Boolean(request.requestedAvatarUrl);
+    const hasRequestedCover = Boolean(request.requestedBannerUrl);
+    const hasBothImages = hasRequestedPicture && hasRequestedCover;
+    const selectedImage = hasBothImages
+      ? imageSelection
+      : hasRequestedPicture ? 'picture' : hasRequestedCover ? 'cover' : null;
+    if (hasBothImages && !['picture', 'cover', 'all'].includes(selectedImage)) return;
+
+    const shouldProcessPicture = hasRequestedPicture && ['picture', 'all'].includes(selectedImage);
+    const shouldProcessCover = hasRequestedCover && ['cover', 'all'].includes(selectedImage);
+    const requestedImages = {
+      ...(shouldProcessPicture ? { avatarUrl: request.requestedAvatarUrl } : {}),
+      ...(shouldProcessCover ? { bannerUrl: request.requestedBannerUrl } : {})
+    };
+    if (!hasRequestedPicture && !hasRequestedCover) {
+      setActionError('This profile request does not contain any images to review.');
+      setPendingProfileAction(null);
+      return;
+    }
+
+    try {
+      setProcessingPendingProfileId(request.id);
+      setActionError('');
+      const batch = writeBatch(db);
+      const imageTypes = [
+        ...(shouldProcessPicture ? ['profile picture'] : []),
+        ...(shouldProcessCover ? ['cover picture'] : [])
+      ];
+      const profileImageNotification = {
+        id: crypto.randomUUID(),
+        status: action === 'approve' ? 'approved' : 'rejected',
+        imageTypes,
+        timestamp: new Date().toISOString()
+      };
+      if (action === 'approve') {
+        batch.update(doc(db, 'users', userId), {
+          ...requestedImages,
+          profileImageNotifications: arrayUnion(profileImageNotification)
+        });
+      } else {
+        batch.update(doc(db, 'users', userId), {
+          profileImageNotifications: arrayUnion(profileImageNotification)
+        });
+      }
+      const pendingProfileRef = doc(db, 'pending_profiles', request.id);
+      const hasRemainingPicture = hasRequestedPicture && !shouldProcessPicture;
+      const hasRemainingCover = hasRequestedCover && !shouldProcessCover;
+      if (!hasRemainingPicture && !hasRemainingCover) {
+        batch.delete(pendingProfileRef);
+      } else {
+        batch.update(pendingProfileRef, {
+          ...(shouldProcessPicture ? { requestedAvatarUrl: deleteField() } : {}),
+          ...(shouldProcessCover ? { requestedBannerUrl: deleteField() } : {})
+        });
+      }
+      await batch.commit();
+      setPendingProfileAction(null);
+    } catch (error) {
+      console.error(`Failed to ${action} pending profile changes:`, error);
+      setActionError(`Could not ${action} these profile changes. Please try again.`);
+    } finally {
+      setProcessingPendingProfileId(null);
     }
   };
 
@@ -637,6 +751,19 @@ const MisUserManagement = ({ currentUserRole }) => {
       || '—'
   );
 
+  const getPendingProfileUser = (request) => usersData.find(
+    (user) => user.id === (request.userId || request.id)
+  );
+  const filteredPendingProfiles = pendingProfiles.filter((request) => {
+    const query = searchQuery.toLowerCase();
+    const user = getPendingProfileUser(request);
+    return (
+      (request.userName || user?.name || '').toLowerCase().includes(query) ||
+      (request.userEmail || user?.email || '').toLowerCase().includes(query)
+    );
+  });
+  const isPendingProfileFilter = userFilter === 'pending-profile';
+
   // Filter users based on search query
   const filteredUsers = usersData.filter((user) => {
     const isPending = (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending';
@@ -661,6 +788,9 @@ const MisUserManagement = ({ currentUserRole }) => {
     );
   });
 
+  const directoryItems = isPendingProfileFilter ? filteredPendingProfiles : filteredUsers;
+  const directoryIsLoading = isPendingProfileFilter ? isPendingProfilesLoading : isLoading;
+  const directoryLoadError = isPendingProfileFilter ? pendingProfilesLoadError : loadError;
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => getDynamicStatus(u) === 'Online').length;
   const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase().trim())).length;
@@ -1066,6 +1196,16 @@ const MisUserManagement = ({ currentUserRole }) => {
     </>
   );
 
+  const pendingProfileRequest = pendingProfileAction?.request;
+  const pendingProfileHasPicture = Boolean(pendingProfileRequest?.requestedAvatarUrl);
+  const pendingProfileHasCover = Boolean(pendingProfileRequest?.requestedBannerUrl);
+  const pendingProfileHasBothImages = pendingProfileHasPicture && pendingProfileHasCover;
+  const pendingProfileImageSelection = pendingProfileAction?.imageSelection
+    || (pendingProfileHasBothImages ? null : pendingProfileHasPicture ? 'picture' : 'cover');
+  const pendingProfileImageDescription = pendingProfileImageSelection === 'picture'
+    ? 'profile picture'
+    : pendingProfileImageSelection === 'cover' ? 'cover picture' : 'profile picture and cover picture';
+
   return (
     <div className="user-management-content">
       <div className="page-header">
@@ -1104,9 +1244,11 @@ const MisUserManagement = ({ currentUserRole }) => {
             <p>Search and manage all system users</p>
             <div className="table-pagination">
               <span className="pagination-text">
-                {filteredUsers.length === 0
-                  ? 'No users to show'
-                  : `Showing all ${filteredUsers.length}${userFilter === 'pending' ? ' pending' : ''} users`}
+                {directoryItems.length === 0
+                  ? isPendingProfileFilter ? 'No profile changes to show' : 'No users to show'
+                  : isPendingProfileFilter
+                    ? `Showing ${directoryItems.length} pending profile changes`
+                    : `Showing all ${directoryItems.length}${userFilter === 'pending' ? ' pending' : ''} users`}
               </span>
             </div>
           </div>
@@ -1130,6 +1272,9 @@ const MisUserManagement = ({ currentUserRole }) => {
               <option value="all">All users</option>
               {canViewPendingUsers && (
                 <option value="pending">Pending users</option>
+              )}
+              {canViewPendingUsers && (
+                <option value="pending-profile">Pending profile</option>
               )}
               {isSuperAdmin && (
                 <option value="unverified">Unverified users</option>
@@ -1159,35 +1304,118 @@ const MisUserManagement = ({ currentUserRole }) => {
           <div className="table-scroll-wrapper">
             <table className="user-table">
               <thead>
-                <tr>
-                  <th>USER</th>
-                  <th>ROLE</th>
-                  <th>ACCOUNT TYPE</th>
-                  {!isSuperAdmin || userFilter === 'all' ? <th>STATUS</th> : <th>TIME CREATED</th>}
-                  <th>ACTIONS</th>
-                </tr>
+                {isPendingProfileFilter ? (
+                  <tr>
+                    <th>USER</th>
+                    <th>REQUESTED IMAGES</th>
+                    <th>SUBMITTED</th>
+                    <th>ACTIONS</th>
+                  </tr>
+                ) : (
+                  <tr>
+                    <th>USER</th>
+                    <th>ROLE</th>
+                    <th>ACCOUNT TYPE</th>
+                    {!isSuperAdmin || userFilter === 'all' ? <th>STATUS</th> : <th>TIME CREATED</th>}
+                    <th>ACTIONS</th>
+                  </tr>
+                )}
               </thead>
               <tbody>
-                {isLoading || loadError || filteredUsers.length === 0 ? (
+                {directoryIsLoading || directoryLoadError || directoryItems.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="empty-state-cell">
+                    <td colSpan={isPendingProfileFilter ? 4 : 5} className="empty-state-cell">
                       <div className="empty-state">
-                        <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
+                        <span className="empty-state-icon">{directoryLoadError ? '⚠️' : '👥'}</span>
                         <p className="empty-state-title">
-                          {isLoading ? 'Loading users…' : loadError ? 'Something went wrong' : 'No users found'}
+                          {directoryIsLoading ? 'Loading users…' : directoryLoadError ? 'Something went wrong' : 'No users found'}
                         </p>
                         <p className="empty-state-subtitle">
-                          {isLoading
+                          {directoryIsLoading
                             ? 'Fetching the latest users from the database.'
-                            : loadError || (searchQuery
+                            : directoryLoadError || (searchQuery
                               ? 'Try adjusting your search filters.'
-                              : userFilter === 'pending'
-                                ? 'Accounts with a pending role will appear here.'
-                                : 'Users will appear here once they are registered.')}
+                              : isPendingProfileFilter
+                                ? 'No profile changes are waiting for approval.'
+                                : userFilter === 'pending'
+                                  ? 'Accounts with a pending role will appear here.'
+                                  : 'Users will appear here once they are registered.')}
                         </p>
                       </div>
                     </td>
                   </tr>
+                ) : isPendingProfileFilter ? (
+                  filteredPendingProfiles.map((request) => {
+                    const profileUser = getPendingProfileUser(request);
+                    const requestName = request.userName || profileUser?.name || 'Unnamed User';
+                    const requestEmail = request.userEmail || profileUser?.email || '';
+
+                    return (
+                      <tr key={request.id}>
+                        <td>
+                          <Link
+                            className="user-name-cell user-profile-link"
+                            to={`/account?userId=${encodeURIComponent(request.userId || request.id)}`}
+                          >
+                            {profileUser?.avatarUrl ? (
+                              <img className="avatar-img" src={profileUser.avatarUrl} alt="" />
+                            ) : (
+                              <span className="avatar-placeholder">{requestName.charAt(0)}</span>
+                            )}
+                            <span className="user-name-copy">
+                              <span className="user-title">{requestName}</span>
+                              <span className="user-email">{requestEmail}</span>
+                            </span>
+                          </Link>
+                        </td>
+                        <td>
+                          <div className="pending-profile-images">
+                            {request.requestedAvatarUrl && (
+                              <button
+                                type="button"
+                                className="pending-profile-image-preview"
+                                onClick={() => setExpandedPendingImage(request.requestedAvatarUrl)}
+                              >
+                                <img src={request.requestedAvatarUrl} alt="" />
+                                <span>Profile picture</span>
+                              </button>
+                            )}
+                            {request.requestedBannerUrl && (
+                              <button
+                                type="button"
+                                className="pending-profile-image-preview"
+                                onClick={() => setExpandedPendingImage(request.requestedBannerUrl)}
+                              >
+                                <img src={request.requestedBannerUrl} alt="" />
+                                <span>Cover picture</span>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                        <td>{formatTimeCreated(request.submittedAt)}</td>
+                        <td>
+                          <div className="action-buttons">
+                            <button
+                              className="action-btn approve-profile-btn"
+                              type="button"
+                              onClick={() => setPendingProfileAction({ request, action: 'approve', imageSelection: null })}
+                              disabled={processingPendingProfileId === request.id}
+                            >
+                              Approve
+                            </button>
+                            <button
+                              className="action-btn reject-profile-btn"
+                              type="button"
+                              onClick={() => setPendingProfileAction({ request, action: 'reject', imageSelection: null })}
+                              disabled={processingPendingProfileId === request.id}
+                            >
+                              Reject
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 ) : (
                   filteredUsers.map((user) => {
                     const status = getDynamicStatus(user);
@@ -1352,6 +1580,97 @@ const MisUserManagement = ({ currentUserRole }) => {
             </section>
           </div>
         </section>
+      )}
+
+      {pendingProfileAction && (
+        <div className="modal-overlay">
+          <div className="modal-content" role="dialog" aria-modal="true" aria-labelledby="pending-profile-confirm-title">
+            <h3 id="pending-profile-confirm-title">
+              {pendingProfileAction.action === 'approve' ? 'Approve profile changes?' : 'Reject profile changes?'}
+            </h3>
+            {pendingProfileHasBothImages && (
+              <fieldset className="pending-image-selection">
+                <legend>Choose which image to {pendingProfileAction.action}:</legend>
+                {[
+                  { value: 'picture', label: 'Picture' },
+                  { value: 'cover', label: 'Cover' },
+                  { value: 'all', label: 'All' }
+                ].map((option) => (
+                  <label key={option.value}>
+                    <input
+                      type="radio"
+                      name="pending-profile-image-selection"
+                      value={option.value}
+                      checked={pendingProfileImageSelection === option.value}
+                      onChange={() => setPendingProfileAction((current) => (
+                        current ? { ...current, imageSelection: option.value } : current
+                      ))}
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </fieldset>
+            )}
+            <p className="confirm-text">
+              {pendingProfileHasBothImages && !pendingProfileImageSelection
+                ? 'Select Picture, Cover, or All to continue.'
+                : pendingProfileAction.action === 'approve'
+                  ? `This will replace ${pendingProfileAction.request.userName || pendingProfileAction.request.userEmail || 'the user'}'s current ${pendingProfileImageDescription} with the requested change.`
+                  : `This will permanently discard the pending ${pendingProfileImageDescription} change${pendingProfileImageSelection === 'all' ? 's' : ''}.`}
+            </p>
+            <div className="modal-actions">
+              <button
+                type="button"
+                onClick={() => setPendingProfileAction(null)}
+                disabled={processingPendingProfileId === pendingProfileAction.request.id}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={pendingProfileAction.action === 'approve' ? 'btn-primary-solid' : 'btn-danger-solid'}
+                onClick={handlePendingProfileAction}
+                disabled={
+                  processingPendingProfileId === pendingProfileAction.request.id
+                  || (pendingProfileHasBothImages && !pendingProfileImageSelection)
+                }
+              >
+                {processingPendingProfileId === pendingProfileAction.request.id
+                  ? 'Processing…'
+                  : pendingProfileAction.action === 'approve' ? 'Confirm approval' : 'Confirm rejection'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {expandedPendingImage && (
+        createPortal(
+          <div
+            className="pending-profile-image-modal"
+            role="presentation"
+            onClick={() => setExpandedPendingImage(null)}
+          >
+            <div
+              className="image-modal-content"
+              role="dialog"
+              aria-modal="true"
+              aria-label="Expanded profile image"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <button
+                type="button"
+                className="btn-close-image"
+                onClick={() => setExpandedPendingImage(null)}
+                aria-label="Close image preview"
+              >
+                ×
+              </button>
+              <img src={expandedPendingImage} alt="Expanded profile image" />
+            </div>
+          </div>,
+          document.body
+        )
       )}
 
       {roleModalUser && (

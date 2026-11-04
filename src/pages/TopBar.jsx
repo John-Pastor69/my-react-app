@@ -44,13 +44,16 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     avatarName: 'User',
     role: '...',
     avatarUrl: null,
-    roleChangeNotification: null
+    roleChangeNotification: null,
+    profileImageNotifications: [],
+    profileImageNotification: null
   });
   
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [superUsersData, setSuperUsersData] = useState([]);
+  const [pendingProfilesData, setPendingProfilesData] = useState([]);
   
   const [notifications, setNotifications] = useState([]);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
@@ -204,7 +207,11 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           avatarName: finalAvatarName,
           role: fetchedRole,
           avatarUrl: data.avatarUrl || null,
-          roleChangeNotification: data.roleChangeNotification || null
+          roleChangeNotification: data.roleChangeNotification || null,
+          profileImageNotifications: Array.isArray(data.profileImageNotifications)
+            ? data.profileImageNotifications
+            : [],
+          profileImageNotification: data.profileImageNotification || null
         });
       }
     });
@@ -238,6 +245,27 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       unsubSuperUsers();
     };
   }, [currentUser]);
+
+  useEffect(() => {
+    if (!currentUser || !['mis', 'mis admin', 'building admin', 'super admin'].includes(
+      normalizeApprovalRoleKey(userData.role)
+    )) {
+      return undefined;
+    }
+
+    return onSnapshot(
+      collection(db, 'pending_profiles'),
+      (snapshot) => {
+        setPendingProfilesData(snapshot.docs.map((pendingProfile) => ({
+          id: pendingProfile.id,
+          ...pendingProfile.data()
+        })));
+      },
+      (error) => {
+        console.error('Failed to load pending profile notifications:', error);
+      }
+    );
+  }, [currentUser, userData.role]);
 
   useEffect(() => {
     if (!currentUser) return;
@@ -279,15 +307,49 @@ const TopBar = ({ toggleSidebar, userRole }) => {
         || (userEmail && candidate.email === userEmail)
       ))
     );
-    const getProfileName = (user) => (
-      [user?.firstName, user?.lastName].filter(Boolean).join(' ')
-      || user?.name
-      || user?.fullName
-      || user?.displayName
-    );
+    const addMiddleInitial = (name, middleInitial) => {
+      const cleanName = String(name || '').trim();
+      const initial = String(middleInitial || '').trim().replace(/\./g, '').charAt(0);
+      if (!cleanName || !initial || cleanName.includes('@')) return cleanName;
+
+      const hasInitial = cleanName.split(/[\s,.]+/).some(
+        (part) => part.replace(/\./g, '').toLowerCase() === initial.toLowerCase()
+      );
+      if (hasInitial) return cleanName;
+      const middleInitialLabel = `${initial}.`;
+      if (cleanName.includes(',')) {
+        const [lastName, ...firstNameParts] = cleanName.split(',');
+        const firstName = firstNameParts.join(' ').trim();
+        return firstName
+          ? `${firstName} ${middleInitialLabel} ${lastName.trim()}`
+          : `${lastName.trim()} ${middleInitialLabel}`;
+      }
+
+      const nameParts = cleanName.split(/\s+/);
+      if (nameParts.length < 2) return `${cleanName} ${middleInitialLabel}`;
+      return `${nameParts.slice(0, -1).join(' ')} ${middleInitialLabel} ${nameParts[nameParts.length - 1]}`;
+    };
+    const getProfileName = (user) => {
+      const middleInitial = user?.middleInitial;
+      const structuredName = [user?.firstName, middleInitial ? `${String(middleInitial).replace(/\./g, '')[0]}.` : '', user?.lastName]
+        .filter(Boolean)
+        .join(' ');
+      const fallbackName = user?.name || user?.fullName || user?.displayName || '';
+      return structuredName || addMiddleInitial(fallbackName, middleInitial);
+    };
+    const resolveRecordedName = (name) => {
+      if (!name) return '';
+      const matchedUser = name.includes('@')
+        ? findUser(null, name)
+        : [...usersData, ...superUsersData].find((user) => (
+          [user.name, user.fullName, user.displayName]
+            .some((candidate) => candidate && candidate.trim().toLowerCase() === name.trim().toLowerCase())
+        ));
+      return getProfileName(matchedUser) || name;
+    };
     const resolveUserName = (userId, userEmail, fallbackName) => {
       const user = findUser(userId, userEmail);
-      return getProfileName(user) || fallbackName || 'the requestor';
+      return getProfileName(user) || resolveRecordedName(fallbackName) || 'the requestor';
     };
 
     const notificationReservations = [...new Map(
@@ -295,8 +357,12 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     ).values()];
 
     notificationReservations.forEach(res => {
+      const historyLogs = Array.isArray(res.historyLogs) ? res.historyLogs : [];
+      const getLatestDecisionLog = (state) => [...historyLogs].reverse().find(
+        (log) => log.state === state && log.id
+      );
       const requestor = findUser(res.userId, res.userEmail) || {};
-      const requestorName = requestor.name || requestor.fullName || requestor.displayName || res.fullName || 'the requestor';
+      const requestorName = getProfileName(requestor) || resolveRecordedName(res.fullName) || 'the requestor';
       const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
       const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
       const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
@@ -306,10 +372,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
         const status = (res.status || '').toLowerCase().trim();
         if (['approved', 'rejected', 'cancelled', 'expired'].includes(status)) {
           const notificationTitle = status.charAt(0).toUpperCase() + status.slice(1);
-          const latestActionLog = Array.isArray(res.historyLogs)
-            ? [...res.historyLogs].reverse().find(log => log.state === status)
-            : null;
-          const actionBy = latestActionLog?.approverName;
+          const latestActionLog = getLatestDecisionLog(status);
+          const actionBy = resolveRecordedName(latestActionLog?.approverName);
           const actionByText = actionBy ? ` by ${actionBy}` : '';
           const message = status === 'approved'
             ? `Your reservation for ${res.eventName || 'an event'} has been approved${actionByText}.`
@@ -324,7 +388,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
               ? res.expiredAt || res.updatedAt || res.createdAt
               : res.updatedAt || res.createdAt;
           newNotifs.push({
-            id: `${res.id}-${status}`,
+            id: `${res.id}-${status}-${latestActionLog?.id || notificationTime || res.createdAt}`,
             type: status,
             title: notificationTitle,
             message,
@@ -346,7 +410,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
             const actionByProfile = actionBy?.includes('@')
               ? findUser(null, actionBy)
               : null;
-            const actionByName = actionByProfile ? getProfileName(actionByProfile) : actionBy;
+            const actionByName = actionByProfile ? getProfileName(actionByProfile) : resolveRecordedName(actionBy);
             const hasActionBy = actionByName
               && !/^loading(?:\.+)?$/i.test(actionByName.trim())
               && !actionByName.includes('@');
@@ -368,6 +432,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
               fullData: res
             });
           });
+
       }
 
       const myIndex = APPROVAL_ROLE_HIERARCHY.indexOf(myRoleKey);
@@ -419,8 +484,11 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           const approvalRequirement = myRoleKey === 'endorser'
             ? 'requires your endorsement'
             : 'requires your approval';
+          const latestWorkflowEvent = [...historyLogs].reverse().find((log) => (
+            log.id && ['approved', 'rejected', 'to_modify'].includes(log.state)
+          ));
           newNotifs.push({
-            id: `${res.id}-act`,
+            id: `${res.id}-act-${myRoleKey}-${latestWorkflowEvent?.id || res.createdAt}`,
             type: 'action',
             title: 'Action Required',
             message: `A new reservation request (${res.eventName || 'Untitled'}) ${approvalRequirement}.`,
@@ -437,6 +505,9 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       if (status !== 'expired' && status !== 'cancelled') return;
 
       const isCancelled = status === 'cancelled';
+      const cancellationLog = [...(Array.isArray(res.historyLogs) ? res.historyLogs : [])]
+        .reverse()
+        .find((log) => log.state === status && log.id);
       const notificationTime = isCancelled
         ? res.cancelledAt || res.updatedAt || res.createdAt
         : res.expiredAt || res.updatedAt || res.createdAt;
@@ -454,7 +525,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
 
       if (res.userId === uid || res.userEmail === email) {
         newNotifs.push({
-          id: `${res.id}-${status}`,
+          id: `${res.id}-${status}-${cancellationLog?.id || notificationTime || res.createdAt}`,
           type: status,
           title: isCancelled ? 'Cancelled' : 'Expired',
           message: isCancelled
@@ -479,7 +550,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           resolveUserName(res.userId, res.userEmail, res.fullName)
         );
         newNotifs.push({
-          id: `${res.id}-cancelled-admin-${uid}-${res.cancelledAt || res.updatedAt || ''}`,
+          id: `${res.id}-cancelled-admin-${uid}-${cancellationLog?.id || res.cancelledAt || res.updatedAt || res.createdAt}`,
           type: 'cancelled',
           title: 'Reservation Cancelled',
           message: `${res.eventName || 'A reservation'} was cancelled by ${cancelledBy}.${cancellationRemark ? ` Remark: ${cancellationRemark}` : ''}`,
@@ -506,6 +577,34 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       });
     }
 
+    const profileImageNotifications = [
+      ...userData.profileImageNotifications,
+      ...(userData.profileImageNotification ? [userData.profileImageNotification] : [])
+    ];
+    const uniqueProfileImageNotifications = [
+      ...new Map(profileImageNotifications
+        .filter((notification) => notification?.id)
+        .map((notification) => [notification.id, notification])).values()
+    ];
+    uniqueProfileImageNotifications.forEach((profileImageNotification) => {
+      if (!profileImageNotification?.id || !['approved', 'rejected'].includes(profileImageNotification.status)) return;
+      const imageTypes = Array.isArray(profileImageNotification.imageTypes)
+        ? profileImageNotification.imageTypes
+        : [];
+      const imageDescription = imageTypes.length > 0
+        ? imageTypes.join(' and ')
+        : 'profile image';
+      const decision = profileImageNotification.status;
+      newNotifs.push({
+        id: `profile-image-${profileImageNotification.id}`,
+        type: `profile_image_${decision}`,
+        title: `Profile ${decision}`,
+        message: `Your ${imageDescription} change was ${decision}.`,
+        time: profileImageNotification.timestamp,
+        rawDate: new Date(profileImageNotification.timestamp || 0)
+      });
+    });
+
     if (['mis', 'mis admin', 'building admin', 'super admin'].includes(myRoleKey)) {
       usersData
         .filter((user) => normalizeApprovalRoleKey(user.role) === 'pending')
@@ -522,6 +621,30 @@ const TopBar = ({ toggleSidebar, userRole }) => {
             rawDate: new Date(pendingTime || 0)
           });
         });
+
+      pendingProfilesData.forEach((request) => {
+        const requestUser = findUser(request.userId || request.id, request.userEmail);
+        const requestorName = getProfileName(requestUser)
+          || request.userName
+          || request.userEmail
+          || 'A requestor';
+        const pendingTime = request.submittedAt || request.createdAt;
+        const pendingDate = typeof pendingTime?.toDate === 'function'
+          ? pendingTime.toDate()
+          : new Date(pendingTime || 0);
+        const requestedImages = [
+          ...(request.requestedAvatarUrl ? ['profile picture'] : []),
+          ...(request.requestedBannerUrl ? ['cover picture'] : [])
+        ];
+        newNotifs.push({
+          id: `pending-profile-${request.notificationId || request.id}`,
+          type: 'pending_profile',
+          title: 'Pending Profile',
+          message: `${requestorName} submitted ${requestedImages.join(' and ') || 'profile image'} changes for approval.`,
+          time: pendingTime,
+          rawDate: pendingDate
+        });
+      });
     }
 
     const uniqueNotifs = [...new Map(newNotifs.map((notif) => [notif.id, notif])).values()];
@@ -529,7 +652,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     
     filteredNotifs.sort((a, b) => b.rawDate - a.rawDate);
     setNotifications(filteredNotifs);
-  }, [reservationsData, historyData, usersData, superUsersData, userData, deletedNotifs]);
+  }, [reservationsData, historyData, usersData, superUsersData, pendingProfilesData, userData, deletedNotifs]);
 
   const handleNotifItemClick = (notif) => {
     if (!readNotifs.includes(notif.id)) {
@@ -543,7 +666,11 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       navigate('/user');
       return;
     }
-    if (notif.type === 'role_changed') return;
+    if (notif.type === 'pending_profile') {
+      navigate('/user?filter=pending-profile');
+      return;
+    }
+    if (notif.type === 'role_changed' || notif.type.startsWith('profile_image_')) return;
     setSelectedRequest(notif.fullData);
   };
 
@@ -768,6 +895,9 @@ const TopBar = ({ toggleSidebar, userRole }) => {
                           {notif.type === 'cancelled' && <div className="notif-avatar bg-gray">×</div>}
                           {notif.type === 'role_changed' && <div className="notif-avatar bg-green">✓</div>}
                           {notif.type === 'pending_user' && <div className="notif-avatar bg-yellow">!</div>}
+                          {notif.type === 'pending_profile' && <div className="notif-avatar bg-yellow">!</div>}
+                          {notif.type === 'profile_image_approved' && <div className="notif-avatar bg-green">✓</div>}
+                          {notif.type === 'profile_image_rejected' && <div className="notif-avatar bg-red">✕</div>}
                           
                           <div className="notif-content">
                             <p><strong>{notif.title}:</strong> {notif.message.replace(`${notif.title}:`, '')}</p>

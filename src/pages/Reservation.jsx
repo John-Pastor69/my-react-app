@@ -430,6 +430,17 @@ const formatName = (fullName) => {
   return name;
 };
 
+const getProfileDisplayName = (userData, fallbackName) => {
+  const structuredName = [
+    userData.firstName,
+    userData.middleInitial ? `${userData.middleInitial}.` : '',
+    userData.lastName
+  ].filter(Boolean).join(' ');
+  const name = [structuredName, userData.name, fallbackName]
+    .find((candidate) => typeof candidate === 'string' && candidate.trim() && !candidate.includes('@'));
+  return formatName(name || '');
+};
+
 const getRequestorAttributes = (userData, accountType) => {
   const storedAttributes = userData.customAttributes || {};
   const legacyCustomFields = Array.isArray(userData.customFields) ? userData.customFields : [];
@@ -516,6 +527,7 @@ const Reservation = ({ currentUserRole }) => {
   const isAdminEditMode = searchParams.get('adminEdit') === 'true';
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
+  const [currentUserDisplayName, setCurrentUserDisplayName] = useState('');
   const [userRole, setUserRole] = useState(currentUserRole || 'requestor');
   const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
   const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editReservationId));
@@ -640,15 +652,9 @@ const Reservation = ({ currentUserRole }) => {
               || userData.department
               || '';
             
-            const profileName = [
-              userData.firstName,
-              userData.middleInitial ? `${userData.middleInitial}.` : '',
-              userData.lastName
-            ].filter(Boolean).join(' ')
-              || userData.name
-              || user.displayName
+            const cleanName = getProfileDisplayName(userData, user.displayName)
               || (normalizedRole === 'super admin' ? 'Super Admin' : '');
-            const cleanName = formatName(profileName);
+            setCurrentUserDisplayName(cleanName);
 
             setFormData(prev => ({
               ...prev,
@@ -722,6 +728,10 @@ const Reservation = ({ currentUserRole }) => {
         }
 
         if (!isActive) return;
+        setCurrentUserDisplayName(
+          getProfileDisplayName(userData, currentUser.displayName)
+          || (currentRole === 'super admin' ? 'Super Admin' : '')
+        );
 
         const startDate = reservation.eventDate || reservation.date || '';
         const endDate = reservation.endDate
@@ -1148,8 +1158,16 @@ const Reservation = ({ currentUserRole }) => {
   const isStartTimeValid = isWithinReservationHours(startTime);
   const isEndTimeValid = isWithinReservationHours(endTime)
     && (!startTime || (parseTimeToMinutes(endTime) ?? 0) > (parseTimeToMinutes(startTime) ?? 0));
-  const isAirconOnTimeValid = !aircon || isWithinReservationHours(formData.airconOnTime);
-  const isAirconOffTimeValid = !aircon || isWithinReservationHours(formData.airconOffTime);
+  const airconOnMinutes = parseTimeToMinutes(formData.airconOnTime);
+  const airconOffMinutes = parseTimeToMinutes(formData.airconOffTime);
+  const isAirconOnTimeValid = !aircon || (
+    isWithinReservationHours(formData.airconOnTime)
+    && (airconOffMinutes === null || airconOffMinutes > airconOnMinutes)
+  );
+  const isAirconOffTimeValid = !aircon || (
+    isWithinReservationHours(formData.airconOffTime)
+    && (airconOnMinutes === null || airconOffMinutes > airconOnMinutes)
+  );
   const totalScheduledHours = Math.round(reservationSchedule.reduce((total, entry) => {
     const start = parseTimeToMinutes(entry.startTime);
     const end = parseTimeToMinutes(entry.endTime);
@@ -1822,6 +1840,15 @@ const Reservation = ({ currentUserRole }) => {
       return;
     }
 
+    if (aircon && !isValidReservationTimeRange(formData.airconOnTime, formData.airconOffTime)) {
+      setCustomAlert({
+        title: 'Invalid Aircon Time Range',
+        message: 'Aircon must turn on and off between 7:00 AM and 10:00 PM, with the off time later than the on time on the same day.',
+        isSuccess: false
+      });
+      return;
+    }
+
     if (liveConflict) {
       setConflictEvent({
         eventName: liveConflict.eventName || 'Untitled Event',
@@ -2010,7 +2037,7 @@ const Reservation = ({ currentUserRole }) => {
             hour: '2-digit',
             minute: '2-digit'
           }),
-          approverName: currentUser.email || 'Administrator',
+          approverName: currentUserDisplayName || currentUser.displayName || 'Administrator',
           text: 'Reservation details updated by an administrator.',
           state: (editingReservation.status || 'approved').toLowerCase()
         };
@@ -2922,7 +2949,7 @@ const Reservation = ({ currentUserRole }) => {
                   }}
                 />
                 {aircon && formData.airconOnTime && !isAirconOnTimeValid && (
-                  <span className="field-error">                  Choose a time between 7:00 AM and 10:00 PM, with the end later than the start.</span>
+                  <span className="field-error">Choose an ON time between 7:00 AM and 10:00 PM, earlier than the OFF time.</span>
                 )}
               </div>
               <i className="ph ph-arrow-right arrow"></i>
@@ -2947,7 +2974,7 @@ const Reservation = ({ currentUserRole }) => {
                   }}
                 />
                 {aircon && formData.airconOffTime && !isAirconOffTimeValid && (
-                  <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+                  <span className="field-error">Choose an OFF time between 7:00 AM and 10:00 PM, later than the ON time.</span>
                 )}
               </div>
             </div>

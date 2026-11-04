@@ -403,7 +403,15 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
 );
 
 // Summary metrics shown to staff and administrators.
-const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboard, canReviewApprovals }) => {
+const DashboardKpis = ({
+  metrics,
+  pendingApprovals,
+  pendingUsers,
+  pendingProfiles,
+  canManagePendingProfiles,
+  isAdminDashboard,
+  canReviewApprovals
+}) => {
   const awaitingReviewCard = (
     <>
       <span className="kpi-label">Awaiting review</span>
@@ -413,7 +421,10 @@ const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboa
   );
 
   return (
-    <section className="dashboard-kpis admin-dashboard-kpis" aria-label="Key analytics">
+    <section
+      className={`dashboard-kpis admin-dashboard-kpis${canManagePendingProfiles ? ' has-pending-profiles' : ''}`}
+      aria-label="Key analytics"
+    >
       <article className="kpi-card kpi-primary">
         <span className="kpi-label">Reservations in range</span>
         <strong>{metrics.total}</strong>
@@ -443,6 +454,13 @@ const DashboardKpis = ({ metrics, pendingApprovals, pendingUsers, isAdminDashboa
           <span className="kpi-label">Pending users</span>
           <strong>{pendingUsers}</strong>
           <span className="kpi-footnote">View accounts with pending roles</span>
+        </Link>
+      )}
+      {canManagePendingProfiles && (
+        <Link className="kpi-card kpi-card-link" to="/user?filter=pending-profile">
+          <span className="kpi-label">Pending profiles</span>
+          <strong>{pendingProfiles}</strong>
+          <span className="kpi-footnote">Review profile picture and cover changes</span>
         </Link>
       )}
     </section>
@@ -478,6 +496,7 @@ const DashboardContent = ({ currentUserRole }) => {
   const [utilitiesData, setUtilitiesData] = useState([]);
   const [facilitiesData, setFacilitiesData] = useState([]);
   const [usersData, setUsersData] = useState([]);
+  const [pendingProfilesData, setPendingProfilesData] = useState([]);
   const [unavailableDatesData, setUnavailableDatesData] = useState([]);
   const [currentUser, setCurrentUser] = useState(null);
   const [upcomingDays, setUpcomingDays] = useState('7');
@@ -558,10 +577,22 @@ const DashboardContent = ({ currentUserRole }) => {
       }, (error) => console.error('Failed to load unavailable dates:', error))
     ];
 
+    const dashboardRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
+    if (['building admin', 'mis', 'super admin'].includes(dashboardRole)) {
+      unsubscribers.push(
+        onSnapshot(collection(db, 'pending_profiles'), (snapshot) => {
+          setPendingProfilesData(snapshot.docs.map((document) => ({
+            id: document.id,
+            ...document.data()
+          })));
+        }, (error) => console.error('Failed to load pending profile requests:', error))
+      );
+    }
+
     return () => {
       unsubscribers.forEach((unsubscribe) => unsubscribe());
     };
-  }, [currentUser]);
+  }, [currentUser, currentUserRole]);
 
   // Resolve the current user's role and role-specific dashboard permissions.
   const currentUserRecord = usersData.find(
@@ -579,6 +610,7 @@ const DashboardContent = ({ currentUserRole }) => {
     .trim()
     .replace(/_/g, ' ');
   const isAdminDashboard = ['building admin', 'mis', 'mis admin', 'super admin'].includes(dashboardRole);
+  const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
     && !isAdminDashboard;
@@ -593,6 +625,7 @@ const DashboardContent = ({ currentUserRole }) => {
     (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending'
       && user.emailVerified === true
   ).length;
+  const pendingProfileCount = pendingProfilesData.length;
 
   // Load archived reservations for history and cross-source search.
   useEffect(() => {
@@ -1192,6 +1225,8 @@ const DashboardContent = ({ currentUserRole }) => {
             metrics={metrics}
             pendingApprovals={pendingApprovals}
             pendingUsers={pendingUserCount}
+            pendingProfiles={pendingProfileCount}
+            canManagePendingProfiles={canManagePendingProfiles}
             isAdminDashboard={isAdminDashboard}
             canReviewApprovals={canReviewApprovals}
           />

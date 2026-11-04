@@ -1866,8 +1866,8 @@ main,
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
-    .admin-dashboard-kpis {
-      grid-template-columns: repeat(5, minmax(0, 1fr));
+    .admin-dashboard-kpis.has-pending-profiles {
+      grid-template-columns: repeat(6, minmax(0, 1fr));
     }
 
     .reservation-search-fields {

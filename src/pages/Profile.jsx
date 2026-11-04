@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { collection, doc, getDoc, getDocs, updateDoc, deleteDoc } from 'firebase/firestore';
+import React, { useState, useEffect, useRef } from 'react';
+import { collection, doc, getDoc, getDocs, onSnapshot, updateDoc, deleteDoc, serverTimestamp, writeBatch } from 'firebase/firestore';
 import { deleteUser, EmailAuthProvider, reauthenticateWithCredential } from 'firebase/auth'; 
 import { useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
@@ -43,8 +43,12 @@ const Profile = ({ currentUserRole }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [saveSuccess, setSaveSuccess] = useState(false);
+  const [saveSuccessMessage, setSaveSuccessMessage] = useState('Saved!');
   const [saveError, setSaveError] = useState('');
   const [profileLoadError, setProfileLoadError] = useState('');
+  const [pendingProfileChanges, setPendingProfileChanges] = useState(null);
+  const [pendingProfileLoadError, setPendingProfileLoadError] = useState('');
+  const [pendingImageWarning, setPendingImageWarning] = useState(null);
   const [signupConfiguration, setSignupConfiguration] = useState({
     accountTypes: normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES),
     dropdownTypes: DEFAULT_SIGNUP_DROPDOWNS
@@ -54,6 +58,8 @@ const Profile = ({ currentUserRole }) => {
   const [bannerFile, setBannerFile] = useState(null);
   const [avatarPreview, setAvatarPreview] = useState(null);
   const [bannerPreview, setBannerPreview] = useState(null);
+  const avatarInputRef = useRef(null);
+  const bannerInputRef = useRef(null);
 
   const [deleteStep, setDeleteStep] = useState(0); 
   const [deleteVerification, setDeleteVerification] = useState('');
@@ -91,6 +97,44 @@ const Profile = ({ currentUserRole }) => {
   });
   
   const isSuperAdminProfile = formData.role.toLowerCase().trim().replace(/_/g, ' ') === 'super admin';
+  const isRequestorProfile = ['requestor', 'user'].includes(
+    formData.role.toLowerCase().trim().replace(/_/g, ' ')
+  );
+  const hasPendingProfileRequest = pendingProfileChanges?.status === 'pending';
+  const isPendingProfileStatusUnknown = pendingProfileChanges?.status === 'unknown';
+  const isAvatarPending = isRequestorProfile && (
+    isPendingProfileStatusUnknown
+    || (hasPendingProfileRequest && typeof pendingProfileChanges.requestedAvatarUrl === 'string')
+  );
+  const isBannerPending = isRequestorProfile && (
+    isPendingProfileStatusUnknown
+    || (hasPendingProfileRequest && typeof pendingProfileChanges.requestedBannerUrl === 'string')
+  );
+  const pendingImagesMessage = isAvatarPending && isBannerPending
+    ? 'Profile picture and cover are pending for approval'
+    : isAvatarPending
+      ? 'Profile picture is pending for approval'
+      : '';
+  const showPendingImageWarning = (imageName) => {
+    setPendingImageWarning({
+      message: isPendingProfileStatusUnknown
+        ? 'Your profile image approval status could not be verified. Please refresh the page or try again later.'
+        : `Your profile ${imageName} needs to be approved first. Please wait for an administrator to review your request.`,
+      canContinue: false
+    });
+  };
+  const showImageUploadWarning = (imageName) => {
+    setPendingImageWarning({
+      message: `Before adding a ${imageName}, an administrator must approve it. You can choose an image now, but it will not appear on your profile until it is approved.`,
+      imageName,
+      canContinue: true
+    });
+  };
+  const continueImageUpload = () => {
+    const inputRef = pendingImageWarning?.imageName === 'picture' ? avatarInputRef : bannerInputRef;
+    inputRef.current?.click();
+    setPendingImageWarning(null);
+  };
   const selectedSignupAccountType = signupConfiguration.accountTypes.find(
     (accountType) => accountType.value === formData.accountType
   );
@@ -130,6 +174,26 @@ const Profile = ({ currentUserRole }) => {
 
           if (docSnap.exists()) {
             const data = docSnap.data();
+            const profileRole = String(
+              data.role || (data.accountType === 'Faculty' ? 'endorser' : 'requestor')
+            ).toLowerCase().trim().replace(/_/g, ' ');
+            if (!viewedProfileId && ['requestor', 'user'].includes(profileRole)) {
+              try {
+                const pendingProfileSnap = await getDoc(doc(db, 'pending_profiles', user.uid));
+                const pendingProfileData = pendingProfileSnap.exists() ? pendingProfileSnap.data() : null;
+                setPendingProfileChanges(
+                  pendingProfileData?.status === 'pending' ? pendingProfileData : null
+                );
+                setPendingProfileLoadError('');
+              } catch (error) {
+                console.error('Error checking pending profile images:', error);
+                setPendingProfileChanges({ status: 'unknown' });
+                setPendingProfileLoadError('Could not verify whether image changes are pending. Image controls are disabled.');
+              }
+            } else {
+              setPendingProfileChanges(null);
+              setPendingProfileLoadError('');
+            }
             const signupOptionsData = signupOptionsSnap.data() || {};
             const courses = Array.isArray(signupOptionsData.courses)
               ? signupOptionsData.courses
@@ -251,6 +315,73 @@ const Profile = ({ currentUserRole }) => {
     return () => unsubscribe(); 
   }, [viewedProfileId, fetchCollection, myCollection, normalizedUserRole]);
 
+  useEffect(() => {
+    if (viewedProfileId) return undefined;
+
+    let unsubscribeProfile = () => {};
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      unsubscribeProfile();
+      unsubscribeProfile = () => {};
+      if (!user) return;
+
+      unsubscribeProfile = onSnapshot(
+        doc(db, myCollection, user.uid),
+        (snapshot) => {
+          if (!snapshot.exists()) return;
+          const data = snapshot.data();
+          setFormData((previous) => ({
+            ...previous,
+            avatarUrl: data.avatarUrl || '',
+            bannerUrl: data.bannerUrl || ''
+          }));
+        },
+        (error) => {
+          console.error('Failed to listen for profile image updates:', error);
+        }
+      );
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribeProfile();
+    };
+  }, [viewedProfileId, myCollection]);
+
+  useEffect(() => {
+    if (!isRequestorProfile || viewedProfileId) return undefined;
+
+    let unsubscribePendingProfile = () => {};
+    const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      unsubscribePendingProfile();
+      unsubscribePendingProfile = () => {};
+      if (!user) {
+        setPendingProfileChanges(null);
+        return;
+      }
+
+      unsubscribePendingProfile = onSnapshot(
+        doc(db, 'pending_profiles', user.uid),
+        (snapshot) => {
+          const pendingProfile = snapshot.exists() ? snapshot.data() : null;
+          setPendingProfileChanges(
+            pendingProfile?.status === 'pending' ? pendingProfile : null
+          );
+          setPendingProfileLoadError('');
+        },
+        (error) => {
+          console.error('Failed to listen for pending profile updates:', error);
+          setPendingProfileChanges({ status: 'unknown' });
+          setPendingProfileLoadError('Could not verify whether image changes are pending. Image controls are disabled.');
+        }
+      );
+    });
+
+    return () => {
+      unsubscribeAuth();
+      unsubscribePendingProfile();
+    };
+  }, [isRequestorProfile, viewedProfileId]);
+
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     let sanitizedValue = value;
@@ -300,6 +431,7 @@ const Profile = ({ currentUserRole }) => {
   const toggleEditMode = () => {
     setIsEditing(!isEditing);
     setSaveSuccess(false); 
+    setSaveSuccessMessage('Saved!');
     setSaveError('');
     
     if (isEditing) {
@@ -362,6 +494,7 @@ const Profile = ({ currentUserRole }) => {
     
     setIsSaving(true);
     setSaveSuccess(false);
+    setSaveSuccessMessage('Saved!');
     setSaveError('');
 
     try {
@@ -400,6 +533,9 @@ const Profile = ({ currentUserRole }) => {
 
         // --- FIX: Saving to the correct collection ---
         const userDocRef = doc(db, myCollection, user.uid);
+        const normalizedRole = formData.role.toLowerCase().trim().replace(/_/g, ' ');
+        const isRequestor = normalizedRole === 'requestor' || normalizedRole === 'user';
+        const hasPendingImageChanges = isRequestor && Boolean(avatarFile || bannerFile);
         const customAttributes = Object.fromEntries([
           ...(selectedSignupAccountType?.dropdown
             ? [[
@@ -416,7 +552,7 @@ const Profile = ({ currentUserRole }) => {
           ? formData.signupAttributes[`dropdown:${selectedSignupAccountType.dropdown}`] || ''
           : '';
 
-        await updateDoc(userDocRef, {
+        const profileUpdates = {
           accountType: formData.accountType,
           studentNumber: selectedSignupAccountType?.dropdown === 'courses' ? formData.studentNumber.trim() : '',
           course: selectedSignupAccountType?.dropdown === 'courses' ? dropdownValue : '',
@@ -432,16 +568,51 @@ const Profile = ({ currentUserRole }) => {
             id: field.id,
             label: field.label,
             value: formData.signupAttributes[`field:${field.id}`]?.trim() || ''
-          })),
-          avatarUrl: updatedAvatarUrl,
-          bannerUrl: updatedBannerUrl
-        });
+          }))
+        };
 
-        setFormData(prev => ({
-          ...prev,
-          avatarUrl: updatedAvatarUrl,
-          bannerUrl: updatedBannerUrl
-        }));
+        if (hasPendingImageChanges) {
+          const pendingProfileRef = doc(db, 'pending_profiles', user.uid);
+          const pendingProfile = {
+            userId: user.uid,
+            notificationId: hasPendingProfileRequest
+              ? pendingProfileChanges.notificationId || user.uid
+              : crypto.randomUUID(),
+            userName: [
+              formData.firstName,
+              formData.middleInitial,
+              formData.lastName
+            ].filter(Boolean).join(' '),
+            userEmail: formData.email || user.email || '',
+            status: 'pending',
+            submittedAt: serverTimestamp(),
+            ...(avatarFile ? { requestedAvatarUrl: updatedAvatarUrl } : {}),
+            ...(bannerFile ? { requestedBannerUrl: updatedBannerUrl } : {})
+          };
+          const nextPendingProfile = {
+            ...(hasPendingProfileRequest ? pendingProfileChanges : {}),
+            ...pendingProfile
+          };
+          const batch = writeBatch(db);
+          batch.update(userDocRef, profileUpdates);
+          batch.set(pendingProfileRef, pendingProfile, { merge: true });
+          await batch.commit();
+          setPendingProfileChanges(nextPendingProfile);
+          setAvatarPreview(null);
+          setBannerPreview(null);
+          setSaveSuccessMessage('Images pending approval');
+        } else {
+          await updateDoc(userDocRef, {
+            ...profileUpdates,
+            avatarUrl: updatedAvatarUrl,
+            bannerUrl: updatedBannerUrl
+          });
+          setFormData(prev => ({
+            ...prev,
+            avatarUrl: updatedAvatarUrl,
+            bannerUrl: updatedBannerUrl
+          }));
+        }
 
         setAvatarFile(null);
         setBannerFile(null);
@@ -634,14 +805,17 @@ const Profile = ({ currentUserRole }) => {
   return (
     <div className="profile-container">
       {profileLoadError && <p className="profile-save-error" role="alert">{profileLoadError}</p>}
+      {pendingProfileLoadError && <p className="profile-save-error" role="alert">{pendingProfileLoadError}</p>}
       
       {!profileLoadError && (
       <>
       <div className="profile-hero">
         <div 
-          className="banner-bg" 
+          className={`banner-bg${isBannerPending ? ' image-pending' : ''}`}
           onClick={() => {
-            if (!isEditing && (bannerPreview || formData.bannerUrl)) {
+            if (isBannerPending) {
+              showPendingImageWarning('cover');
+            } else if (!isEditing && (bannerPreview || formData.bannerUrl)) {
               setExpandedImage(bannerPreview || formData.bannerUrl);
             }
           }}
@@ -653,9 +827,28 @@ const Profile = ({ currentUserRole }) => {
                 : 'linear-gradient(135deg, #475569 0%, #1E293B 100%)'
           }}
         >
-          {isEditing && (
-            <label className="edit-overlay banner-overlay">
-              <input type="file" accept="image/*,.gif" onChange={(e) => handleImageChange(e, 'banner')} hidden />
+          {isBannerPending && !isAvatarPending && (
+            <span className="pending-image-notice banner-pending-notice" role="status">
+              Profile cover is pending for approval
+            </span>
+          )}
+          {isEditing && !isBannerPending && (
+            <label
+              className="edit-overlay banner-overlay"
+              onClick={(event) => {
+                if (!isRequestorProfile || event.target === bannerInputRef.current) return;
+                event.preventDefault();
+                event.stopPropagation();
+                showImageUploadWarning('cover');
+              }}
+            >
+              <input
+                ref={bannerInputRef}
+                type="file"
+                accept="image/*,.gif"
+                onChange={(e) => handleImageChange(e, 'banner')}
+                hidden
+              />
               <i className="ph-fill ph-camera"></i> Change Cover
             </label>
           )}
@@ -665,8 +858,12 @@ const Profile = ({ currentUserRole }) => {
           <div className="profile-identity">
             <div className="avatar-container">
               <img 
-                onClick={() => {
-                  if (!isEditing) {
+                className={isAvatarPending ? 'image-pending' : ''}
+                onClick={(event) => {
+                  event.stopPropagation();
+                  if (isAvatarPending) {
+                    showPendingImageWarning('picture');
+                  } else if (!isEditing) {
                     setExpandedImage(
                       avatarPreview || 
                       formData.avatarUrl || 
@@ -681,9 +878,23 @@ const Profile = ({ currentUserRole }) => {
                 } 
                 alt="Avatar" 
               />
-              {isEditing && (
-                <label className="edit-overlay avatar-overlay">
-                  <input type="file" accept="image/*,.gif" onChange={(e) => handleImageChange(e, 'avatar')} hidden />
+              {isEditing && !isAvatarPending && (
+                <label
+                  className="edit-overlay avatar-overlay"
+                  onClick={(event) => {
+                    if (!isRequestorProfile || event.target === avatarInputRef.current) return;
+                    event.preventDefault();
+                    event.stopPropagation();
+                    showImageUploadWarning('picture');
+                  }}
+                >
+                  <input
+                    ref={avatarInputRef}
+                    type="file"
+                    accept="image/*,.gif"
+                    onChange={(e) => handleImageChange(e, 'avatar')}
+                    hidden
+                  />
                   <i className="ph-fill ph-camera"></i>
                 </label>
               )}
@@ -692,6 +903,11 @@ const Profile = ({ currentUserRole }) => {
                 title={formData.status}
               ></div> 
             </div>
+            {isAvatarPending && (
+              <span className="pending-image-notice avatar-pending-notice" role="status">
+                {pendingImagesMessage}
+              </span>
+            )}
             
             <div className="user-titles">
               <div className="name-row">
@@ -719,7 +935,7 @@ const Profile = ({ currentUserRole }) => {
                 {isSaving ? (
                   <><i className="ph ph-spinner"></i> Saving...</>
                 ) : saveSuccess ? (
-                  <><i className="ph ph-check-circle"></i> Saved!</>
+                  <><i className="ph ph-check-circle"></i> {saveSuccessMessage}</>
                 ) : (
                   <><i className="ph ph-floppy-disk"></i> Save Changes</>
                 )}
@@ -1054,6 +1270,33 @@ const Profile = ({ currentUserRole }) => {
                 <i className="ph ph-x"></i>
               </button>
               <img src={expandedImage} alt="Expanded Fullscreen" />
+            </div>
+          </div>
+        )}
+
+        {pendingImageWarning && (
+          <div className="modal-overlay" onClick={() => setPendingImageWarning(null)}>
+            <div
+              className="modal-content pending-image-warning-modal"
+              role="alertdialog"
+              aria-modal="true"
+              aria-labelledby="pending-image-warning-title"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <h3 id="pending-image-warning-title">
+                {pendingImageWarning.canContinue ? 'Admin approval required' : 'Profile image pending approval'}
+              </h3>
+              <p>{pendingImageWarning.message}</p>
+              <div className="modal-actions">
+                <button className="btn-cancel" type="button" onClick={() => setPendingImageWarning(null)}>
+                  {pendingImageWarning.canContinue ? 'Cancel' : 'OK'}
+                </button>
+                {pendingImageWarning.canContinue && (
+                  <button className="btn-verify" type="button" onClick={continueImageUpload}>
+                    Continue
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         )}

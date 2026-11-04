@@ -27,6 +27,17 @@ $red-main: #EF4444;
       background-size: cover;
       background-position: center;
 
+      &.image-pending {
+        cursor: default;
+      }
+
+      .banner-pending-notice {
+        position: absolute;
+        top: 0.8rem;
+        right: 0.8rem;
+        max-width: calc(100% - 1.6rem);
+      }
+
       .banner-overlay {
         position: absolute;
         top: 0; left: 0; right: 0; bottom: 0;
@@ -68,6 +79,26 @@ $red-main: #EF4444;
       gap: 0.8rem;
       margin-bottom: 1.6rem;
 
+      .pending-image-notice {
+        display: block;
+        max-width: 16rem;
+        padding: 0.55rem 0.8rem;
+        border: 1px solid #fcd34d;
+        border-radius: 0.5rem;
+        background: #fffbeb;
+        color: #92400e;
+        font-size: var(--font-small);
+        font-weight: 600;
+        line-height: 1.4;
+        text-align: left;
+      }
+
+      .banner-pending-notice {
+        color: #ffffff;
+        border-color: rgba(255, 255, 255, 0.35);
+        background: rgba(15, 23, 42, 0.78);
+      }
+
       .avatar-container {
         position: relative;
         width: 7.2rem;  
@@ -83,6 +114,10 @@ $red-main: #EF4444;
           object-fit: cover;
           display: block;
           cursor: pointer; 
+
+          &.image-pending {
+            cursor: default;
+          }
         }
         
         .avatar-overlay {
