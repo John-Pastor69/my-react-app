@@ -42,6 +42,14 @@ label {
   padding: 24px;
 }
 
+.page-route-content {
+  width: 100%;
+  max-width: 87.5rem;
+  min-width: 0;
+  margin-inline: auto;
+  box-sizing: border-box;
+}
+
 .pending-review-overlay {
   position: fixed;
   inset: 0;

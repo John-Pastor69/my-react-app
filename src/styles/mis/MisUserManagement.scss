@@ -444,27 +444,39 @@ main,
 
     .signup-custom-field-list {
       display: grid;
-      gap: 0.6rem;
+      gap: 0.75rem;
     }
 
     .signup-custom-field-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(8rem, 0.5fr) auto;
-      gap: 0.65rem;
+      grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(8rem, 0.8fr);
+      gap: 0.75rem;
       align-items: end;
+      padding: 0.85rem;
+      border: 1px solid $border-color;
+      border-radius: 0.65rem;
+      background: #ffffff;
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+      &:hover,
+      &:focus-within {
+        border-color: rgba($accent-purple, 0.45);
+        box-shadow: 0 0.2rem 0.65rem rgba(35, 45, 70, 0.06);
+      }
 
       &.has-limits {
-        grid-template-columns: minmax(0, 1.2fr) minmax(8rem, 0.7fr) repeat(2, minmax(7rem, 0.5fr)) auto;
+        grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) minmax(8rem, 0.8fr);
       }
 
       label {
         display: grid;
         min-width: 0;
-        gap: 0.25rem;
+        gap: 0.35rem;
 
         span {
           color: $text-muted;
           font-size: 0.72rem;
+          font-weight: 600;
         }
 
         input,
@@ -477,6 +489,13 @@ main,
           color: $text-main;
           font: inherit;
           background: #ffffff;
+          transition: border-color 0.18s ease, box-shadow 0.18s ease;
+
+          &:focus {
+            border-color: $accent-purple;
+            outline: 0;
+            box-shadow: 0 0 0 0.18rem rgba($accent-purple, 0.12);
+          }
         }
       }
 
@@ -489,6 +508,17 @@ main,
         font-size: 0.8rem;
         white-space: nowrap;
         cursor: pointer;
+        transition: background-color 0.18s ease, border-color 0.18s ease;
+
+        &:hover:not(:disabled) {
+          border-color: #fca5a5;
+          background: #fee2e2;
+        }
+
+        &:disabled {
+          cursor: not-allowed;
+          opacity: 0.6;
+        }
       }
     }
 
@@ -499,8 +529,9 @@ main,
       gap: 0.55rem 1rem;
       margin: 0;
       padding: 0.6rem 0.7rem;
-      border: 1px solid $border-color;
-      border-radius: 0.45rem;
+      border: 1px solid rgba($border-color, 0.8);
+      border-radius: 0.55rem;
+      background: #f8fafc;
 
       legend {
         padding: 0 0.25rem;
@@ -540,6 +571,30 @@ main,
 
     .signup-custom-field-row > .signup-profile-editable-option {
       grid-column: 1 / -1;
+    }
+
+    .signup-custom-field-pattern {
+      min-width: 0;
+    }
+
+    .signup-custom-field-details {
+      grid-column: 1 / -1;
+      display: grid;
+      gap: 0.75rem;
+
+      &.has-limits {
+        grid-template-columns: minmax(0, 1fr) repeat(2, minmax(7rem, 0.9fr)) minmax(6rem, 0.65fr);
+      }
+
+      &.without-limits {
+        grid-template-columns: minmax(0, 1fr) minmax(6rem, 0.65fr);
+      }
+
+      .remove-signup-option-btn {
+        width: auto;
+        justify-self: start;
+        align-self: end;
+      }
     }
 
     .signup-account-custom-fields > .add-signup-option-row {
@@ -689,9 +744,12 @@ main,
           grid-template-columns: repeat(2, minmax(0, 1fr));
         }
 
-        .remove-signup-option-btn {
-          grid-column: 1 / -1;
-          justify-self: end;
+        .signup-custom-field-details {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .signup-custom-field-details.without-limits {
+          grid-template-columns: minmax(0, 1fr);
         }
       }
 
@@ -861,9 +919,30 @@ main,
 
     .table-content-scroll {
       max-height: 28rem;
-      overflow-x: hidden;
+      overflow-x: auto;
       overflow-y: auto;
       -webkit-overflow-scrolling: touch;
+      scrollbar-width: thin;
+      scrollbar-color: #94a3b8 #f1f5f9;
+
+      &::-webkit-scrollbar {
+        height: 0.5333rem;
+        width: 0.5333rem;
+      }
+
+      &::-webkit-scrollbar-track {
+        background: #f1f5f9;
+        border-radius: 0.2667rem;
+      }
+
+      &::-webkit-scrollbar-thumb {
+        background: #cbd5e1;
+        border-radius: 0.2667rem;
+
+        &:hover {
+          background: #94a3b8;
+        }
+      }
     }
 
     .error-banner {
@@ -888,36 +967,11 @@ main,
 
     /* Scrollable Table Area w/ Styled Scrollbar */
     .table-scroll-wrapper {
-      width: 100%;
-      max-width: 100%;
-      min-width: 0;
-      overflow-x: scroll;
-      overflow-y: hidden;
-      -webkit-overflow-scrolling: touch;
+      width: max-content;
+      min-width: 100%;
+      overflow: visible;
       box-sizing: border-box;
       margin-bottom: 0.8rem;
-      scrollbar-width: thin;
-      scrollbar-color: #94a3b8 #f1f5f9;
-
-      /* Custom Horizontal Scrollbar Styling */
-      &::-webkit-scrollbar {
-        height: 0.5333rem;
-        display: block;
-      }
-
-      &::-webkit-scrollbar-track {
-        background: #f1f5f9;
-        border-radius: 0.2667rem;
-      }
-
-      &::-webkit-scrollbar-thumb {
-        background: #cbd5e1;
-        border-radius: 0.2667rem;
-
-        &:hover {
-          background: #94a3b8;
-        }
-      }
     }
 
     /* Table Styling */

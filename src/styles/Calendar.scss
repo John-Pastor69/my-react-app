@@ -603,6 +603,22 @@ $charcoal: #364152;
       
       &.prev-month .date { color: #CBD5E1; }
 
+      .calendar-unavailable-label {
+        display: block;
+        width: 100%;
+        min-width: 0;
+        box-sizing: border-box;
+        margin: 0 0 0.5333rem;
+        padding: 0.2rem 0.4rem;
+        border-radius: 0.2667rem;
+        background: $red-light;
+        color: $red-main;
+        font-size: 0.7333rem;
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+      }
+
       &.unavailable-day {
         background: #FFF7F7;
 

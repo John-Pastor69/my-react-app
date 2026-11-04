@@ -80,6 +80,22 @@ export const filterSignupTextValue = (value, characterTypes) => {
   )).join('');
 };
 
+export const isValidSignupRegex = (pattern) => {
+  if (!pattern) return true;
+  try {
+    new RegExp(pattern);
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+export const matchesSignupRegex = (value, pattern) => {
+  if (!pattern) return true;
+  if (!isValidSignupRegex(pattern)) return false;
+  return new RegExp(`^(?:${pattern})$`).test(String(value));
+};
+
 export const normalizeSignupDropdowns = (dropdowns, accountTypes = []) => {
   const normalizedDropdowns = (Array.isArray(dropdowns) ? dropdowns : DEFAULT_SIGNUP_DROPDOWNS)
     .map((dropdown) => ({
@@ -133,7 +149,9 @@ export const normalizeAccountTypes = (
       ...field,
       type: field.type || 'text',
       editableOnProfile: field.editableOnProfile !== false,
-      characterTypes: normalizeSignupTextCharacterTypes(field.characterTypes)
+      characterTypes: normalizeSignupTextCharacterTypes(field.characterTypes),
+      pattern: field.pattern || '',
+      placeholder: field.placeholder || ''
     }))
     : []
 }));

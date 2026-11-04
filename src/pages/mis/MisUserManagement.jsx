@@ -7,6 +7,7 @@ import {
   DEFAULT_COURSE_OPTIONS,
   DEFAULT_DEPARTMENT_OPTIONS,
   DEFAULT_SIGNUP_DROPDOWNS,
+  isValidSignupRegex,
   normalizeSignupTextCharacterTypes,
   SIGNUP_TEXT_CHARACTER_TYPES,
   normalizeAccountTypes,
@@ -153,7 +154,7 @@ const MisUserManagement = ({ currentUserRole }) => {
   }, []);
 
   useEffect(() => {
-    if (!isSuperAdmin) return undefined;
+    if (!currentUser) return undefined;
 
     return onSnapshot(
       doc(db, 'app_settings', 'signupOptions'),
@@ -172,7 +173,7 @@ const MisUserManagement = ({ currentUserRole }) => {
         setSignupOptionsError('Could not load signup options. Check Firestore access and try again.');
       }
     );
-  }, [isSuperAdmin]);
+  }, [currentUser]);
 
   useEffect(() => {
     if (!currentUser) return; // Added safeguard
@@ -415,11 +416,22 @@ const MisUserManagement = ({ currentUserRole }) => {
   };
 
   const handleAddAccountTypeField = (accountTypeIndex) => {
-    const draft = newAccountTypeFields[accountTypeIndex] || { label: '', type: 'text', min: '', max: '' };
+    const draft = newAccountTypeFields[accountTypeIndex] || {
+      label: '',
+      type: 'text',
+      min: '',
+      max: '',
+      pattern: '',
+      placeholder: ''
+    };
     const label = draft.label.trim();
     if (!label) return;
     if (hasInvalidCustomFieldLimits(draft)) {
       setSignupOptionsError('Set valid minimum and maximum values. The minimum cannot exceed the maximum.');
+      return;
+    }
+    if (!isValidSignupRegex(draft.pattern)) {
+      setSignupOptionsError('Enter a valid regular expression for the input field.');
       return;
     }
 
@@ -448,6 +460,8 @@ const MisUserManagement = ({ currentUserRole }) => {
             type: draft.type || 'text',
             editableOnProfile: true,
             characterTypes: ['all'],
+            ...(draft.pattern?.trim() ? { pattern: draft.pattern.trim() } : {}),
+            ...(draft.placeholder?.trim() ? { placeholder: draft.placeholder.trim() } : {}),
             ...(draft.min !== '' ? { min: draft.min } : {}),
             ...(draft.max !== '' ? { max: draft.max } : {})
           }]
@@ -456,7 +470,7 @@ const MisUserManagement = ({ currentUserRole }) => {
     )));
     setNewAccountTypeFields((current) => ({
       ...current,
-      [accountTypeIndex]: { label: '', type: 'text', min: '', max: '' }
+      [accountTypeIndex]: { label: '', type: 'text', min: '', max: '', pattern: '', placeholder: '' }
     }));
     setSignupOptionsError('');
     setSignupOptionsSuccess('');
@@ -580,7 +594,7 @@ const MisUserManagement = ({ currentUserRole }) => {
       const fieldLabels = accountType.customFields.map((field) => field.label.trim().toLowerCase());
       return accountType.customFields.some((field) => (
         !field.id.trim() || !field.label.trim() || !SIGNUP_FIELD_TYPES.includes(field.type)
-      ) || hasInvalidCustomFieldLimits(field)) || new Set(fieldIds).size !== fieldIds.length
+      ) || hasInvalidCustomFieldLimits(field) || !isValidSignupRegex(field.pattern)) || new Set(fieldIds).size !== fieldIds.length
         || new Set(fieldLabels).size !== fieldLabels.length;
     });
     if (hasInvalidDropdowns) {
@@ -596,7 +610,7 @@ const MisUserManagement = ({ currentUserRole }) => {
       return;
     }
     if (hasInvalidCustomFields) {
-      setSignupOptionsError('Optional input fields need unique names, valid types, and valid min/max limits.');
+      setSignupOptionsError('Optional input fields need unique names, valid types, valid min/max limits, and valid regex patterns.');
       return;
     }
 
@@ -617,6 +631,12 @@ const MisUserManagement = ({ currentUserRole }) => {
     }
   };
 
+  const getAccountTypeLabel = (accountTypeValue) => (
+    accountTypes.find((accountType) => accountType.value === accountTypeValue)?.label
+      || accountTypeValue
+      || '—'
+  );
+
   // Filter users based on search query
   const filteredUsers = usersData.filter((user) => {
     const isPending = (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending';
@@ -632,12 +652,12 @@ const MisUserManagement = ({ currentUserRole }) => {
     }
 
     const query = searchQuery.toLowerCase();
+    const accountTypeLabel = getAccountTypeLabel(user.accountType);
     return (
       (user.name && user.name.toLowerCase().includes(query)) ||
       (user.email && user.email.toLowerCase().includes(query)) ||
       (user.role && user.role.toLowerCase().includes(query)) ||
-      (user.department && user.department.toLowerCase().includes(query)) ||
-      (user.course && user.course.toLowerCase().includes(query))
+      accountTypeLabel.toLowerCase().includes(query)
     );
   });
 
@@ -791,6 +811,16 @@ const MisUserManagement = ({ currentUserRole }) => {
                         disabled={isSavingSignupOptions}
                       />
                     </label>
+                    <label className="signup-custom-field-pattern">
+                      <span>Regex pattern (optional)</span>
+                      <input
+                        value={field.pattern || ''}
+                        placeholder="e.g., ^[A-Z0-9]+$"
+                        title="Must match the full value; applies to every input type."
+                        onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'pattern', event.target.value)}
+                        disabled={isSavingSignupOptions}
+                      />
+                    </label>
                     <label>
                       <span>Input type</span>
                       <select
@@ -803,41 +833,52 @@ const MisUserManagement = ({ currentUserRole }) => {
                         ))}
                       </select>
                     </label>
-                    {['text', 'number'].includes(field.type) && (
-                      <>
-                        <label>
-                          <span>{field.type === 'text' ? 'Min characters' : 'Min value'}</span>
-                          <input
-                            type="number"
-                            min={field.type === 'text' ? 0 : undefined}
-                            step={field.type === 'text' ? 1 : 'any'}
-                            value={field.min ?? ''}
-                            onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'min', event.target.value)}
-                            disabled={isSavingSignupOptions}
-                          />
-                        </label>
-                        <label>
-                          <span>{field.type === 'text' ? 'Max characters' : 'Max value'}</span>
-                          <input
-                            type="number"
-                            min={field.type === 'text' ? 0 : undefined}
-                            step={field.type === 'text' ? 1 : 'any'}
-                            value={field.max ?? ''}
-                            onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'max', event.target.value)}
-                            disabled={isSavingSignupOptions}
-                          />
-                        </label>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      className="remove-signup-option-btn"
-                      onClick={() => handleRemoveAccountTypeField(index, fieldIndex)}
-                      disabled={isSavingSignupOptions}
-                      aria-label={`Remove ${field.label} input field`}
-                    >
-                      Remove
-                    </button>
+                    <div className={`signup-custom-field-details${['text', 'number'].includes(field.type) ? ' has-limits' : ' without-limits'}`}>
+                      <label>
+                        <span>Placeholder text (optional)</span>
+                        <input
+                          value={field.placeholder || ''}
+                          placeholder="e.g., Enter your student number"
+                          onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'placeholder', event.target.value)}
+                          disabled={isSavingSignupOptions}
+                        />
+                      </label>
+                      {['text', 'number'].includes(field.type) && (
+                        <>
+                          <label>
+                            <span>{field.type === 'text' ? 'Min chars' : 'Min value'}</span>
+                            <input
+                              type="number"
+                              min={field.type === 'text' ? 0 : undefined}
+                              step={field.type === 'text' ? 1 : 'any'}
+                              value={field.min ?? ''}
+                              onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'min', event.target.value)}
+                              disabled={isSavingSignupOptions}
+                            />
+                          </label>
+                          <label>
+                            <span>{field.type === 'text' ? 'Max chars' : 'Max value'}</span>
+                            <input
+                              type="number"
+                              min={field.type === 'text' ? 0 : undefined}
+                              step={field.type === 'text' ? 1 : 'any'}
+                              value={field.max ?? ''}
+                              onChange={(event) => handleUpdateAccountTypeField(index, fieldIndex, 'max', event.target.value)}
+                              disabled={isSavingSignupOptions}
+                            />
+                          </label>
+                        </>
+                      )}
+                      <button
+                        type="button"
+                        className="remove-signup-option-btn"
+                        onClick={() => handleRemoveAccountTypeField(index, fieldIndex)}
+                        disabled={isSavingSignupOptions}
+                        aria-label={`Remove ${field.label} input field`}
+                      >
+                        Remove
+                      </button>
+                    </div>
                     {field.type === 'text' && (
                       <fieldset className="signup-character-type-options">
                         <legend>Allowed characters</legend>
@@ -887,6 +928,20 @@ const MisUserManagement = ({ currentUserRole }) => {
                   }))}
                   disabled={isSavingSignupOptions}
                 />
+                <input
+                  aria-label={`Regex pattern for new input field for ${accountType.label}`}
+                  placeholder="Regex pattern (optional)"
+                  title="Must match the full value; applies to every input type."
+                  value={newAccountTypeFields[index]?.pattern || ''}
+                  onChange={(event) => setNewAccountTypeFields((current) => ({
+                    ...current,
+                    [index]: {
+                      ...(current[index] || { label: '', type: 'text', min: '', max: '', placeholder: '' }),
+                      pattern: event.target.value
+                    }
+                  }))}
+                  disabled={isSavingSignupOptions}
+                />
                 <select
                   aria-label={`New input field type for ${accountType.label}`}
                   value={newAccountTypeFields[index]?.type || 'text'}
@@ -900,6 +955,19 @@ const MisUserManagement = ({ currentUserRole }) => {
                     <option key={type} value={type}>{type[0].toUpperCase() + type.slice(1)}</option>
                   ))}
                 </select>
+                <input
+                  aria-label={`Placeholder text for new input field for ${accountType.label}`}
+                  placeholder="Placeholder text (optional)"
+                  value={newAccountTypeFields[index]?.placeholder || ''}
+                  onChange={(event) => setNewAccountTypeFields((current) => ({
+                    ...current,
+                    [index]: {
+                      ...(current[index] || { label: '', type: 'text', min: '', max: '', pattern: '' }),
+                      placeholder: event.target.value
+                    }
+                  }))}
+                  disabled={isSavingSignupOptions}
+                />
                 {['text', 'number'].includes(newAccountTypeFields[index]?.type || 'text') && (
                   <>
                     <input
@@ -1094,8 +1162,7 @@ const MisUserManagement = ({ currentUserRole }) => {
                 <tr>
                   <th>USER</th>
                   <th>ROLE</th>
-                  <th>DEPARTMENT</th>
-                  <th>COURSE</th>
+                  <th>ACCOUNT TYPE</th>
                   {!isSuperAdmin || userFilter === 'all' ? <th>STATUS</th> : <th>TIME CREATED</th>}
                   <th>ACTIONS</th>
                 </tr>
@@ -1103,7 +1170,7 @@ const MisUserManagement = ({ currentUserRole }) => {
               <tbody>
                 {isLoading || loadError || filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={6} className="empty-state-cell">
+                    <td colSpan={5} className="empty-state-cell">
                       <div className="empty-state">
                         <span className="empty-state-icon">{loadError ? '⚠️' : '👥'}</span>
                         <p className="empty-state-title">
@@ -1150,8 +1217,7 @@ const MisUserManagement = ({ currentUserRole }) => {
                             {formatRole(user.role)}
                           </span>
                         </td>
-                        <td>{user.department || '—'}</td>
-                        <td>{user.course || '—'}</td>
+                        <td>{getAccountTypeLabel(user.accountType)}</td>
                         {isSuperAdmin && userFilter === 'unverified' ? (
                           <td>{formatTimeCreated(user.timeCreated || user.createdAt)}</td>
                         ) : (

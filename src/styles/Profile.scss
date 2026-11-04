@@ -15,10 +15,11 @@ $red-main: #EF4444;
   overflow-y: auto;
 
   .profile-hero {
+    height: auto;
     margin-bottom: 2.1333rem;
 
     .banner-bg {
-      height: 8rem;
+      height: 18rem;
       border-radius: 0.8rem;
       position: relative; 
       overflow: hidden;
@@ -168,7 +169,7 @@ $red-main: #EF4444;
         text-align: left;
       }
 
-      button {
+      button {                        
         width: 100%;
         justify-content: center;
         padding: 0.6667rem 1.0667rem;
@@ -840,7 +841,7 @@ $red-main: #EF4444;
 @media (min-width: 68.2667rem) {
   
   .profile-hero {
-    .banner-bg { height: 10.6667rem; }
+    .banner-bg { height: 16rem; }
     
     .profile-header-content {
       flex-direction: row;
@@ -884,6 +885,7 @@ $red-main: #EF4444;
 }
 
 @media (min-width: 68.2667rem) {
+
   .profile-content-grid {
     display: grid;
     grid-template-columns: 2fr 1fr; 

@@ -31,7 +31,8 @@ import {
 } from '../services/unavailableDates';
 import {
   filterSignupTextValue,
-  getSignupConfiguration
+  getSignupConfiguration,
+  matchesSignupRegex
 } from '../services/signupOptions';
 import ReservationDetails from './ReservationDetails';
 import { sanitizeEventName } from '../services/eventName';
@@ -241,10 +242,13 @@ const ReservationTimePicker = ({
   label,
   invalid = false,
   disabled = false,
-  defaultTime = '07:00'
+  defaultTime = '07:00',
+  useViewportPopover = false
 }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0, width: 0 });
   const pickerRef = useRef(null);
+  const triggerRef = useRef(null);
   const totalMinutes = parseTimeToMinutes(value);
   const defaultMinutes = parseTimeToMinutes(defaultTime) ?? 7 * 60;
   const selectedMinutes = totalMinutes ?? defaultMinutes;
@@ -253,6 +257,20 @@ const ReservationTimePicker = ({
   const selectedMinute = selectedMinutes % 60;
   const selectedPeriod = selectedHour24 >= 12 ? 'PM' : 'AM';
   const displayedTime = totalMinutes === null ? 'Select time' : formatTimeForStorage(value);
+
+  const updatePopoverPosition = () => {
+    const trigger = triggerRef.current;
+    if (!trigger) return;
+
+    const bounds = trigger.getBoundingClientRect();
+    const width = Math.min(352, window.innerWidth - 32);
+    const left = Math.max(16, Math.min(bounds.left, window.innerWidth - width - 16));
+    const top = window.innerHeight - bounds.bottom < 260
+      ? Math.max(16, bounds.top - 260)
+      : bounds.bottom + 8;
+
+    setPopoverPosition({ top, left, width });
+  };
 
   useEffect(() => {
     if (!isOpen) return undefined;
@@ -263,16 +281,23 @@ const ReservationTimePicker = ({
     const closeOnEscape = (event) => {
       if (event.key === 'Escape') setIsOpen(false);
     };
+    const updateOnViewportChange = () => {
+      if (useViewportPopover) updatePopoverPosition();
+    };
 
     document.addEventListener('mousedown', closeOnOutsideClick);
     document.addEventListener('touchstart', closeOnOutsideClick);
     document.addEventListener('keydown', closeOnEscape);
+    window.addEventListener('scroll', updateOnViewportChange, true);
+    window.addEventListener('resize', updateOnViewportChange);
     return () => {
       document.removeEventListener('mousedown', closeOnOutsideClick);
       document.removeEventListener('touchstart', closeOnOutsideClick);
       document.removeEventListener('keydown', closeOnEscape);
+      window.removeEventListener('scroll', updateOnViewportChange, true);
+      window.removeEventListener('resize', updateOnViewportChange);
     };
-  }, [isOpen]);
+  }, [isOpen, useViewportPopover]);
 
   const updateTime = (hour, minute, period) => {
     const nextTime = getReservationTimeValue(hour, minute, period);
@@ -294,14 +319,27 @@ const ReservationTimePicker = ({
         aria-haspopup="dialog"
         aria-expanded={isOpen}
         disabled={disabled}
-        onClick={() => setIsOpen((open) => !open)}
+        ref={triggerRef}
+        onClick={() => {
+          if (!isOpen && useViewportPopover) updatePopoverPosition();
+          setIsOpen((open) => !open);
+        }}
       >
         <i className="ph ph-clock" aria-hidden="true"></i>
         <span className={totalMinutes === null ? 'is-placeholder' : ''}>{displayedTime}</span>
         <i className={`ph ph-caret-down reservation-time-chevron ${isOpen ? 'is-open' : ''}`} aria-hidden="true"></i>
       </button>
       {isOpen && (
-        <div className="reservation-time-popover" role="dialog" aria-label={`Choose ${label.toLowerCase()}`}>
+        <div
+          className={`reservation-time-popover${useViewportPopover ? ' is-viewport-positioned' : ''}`}
+          role="dialog"
+          aria-label={`Choose ${label.toLowerCase()}`}
+          style={useViewportPopover ? {
+            top: `${popoverPosition.top}px`,
+            left: `${popoverPosition.left}px`,
+            width: `${popoverPosition.width}px`
+          } : undefined}
+        >
           <div className="reservation-time-popover-header">
             <strong>Choose a time</strong>
             <span>7:00 AM–10:00 PM</span>
@@ -492,6 +530,7 @@ const Reservation = ({ currentUserRole }) => {
   const [endTime, setEndTime] = useState('');
   const [dailyScheduleOverrides, setDailyScheduleOverrides] = useState({});
   const [facilityScheduleOverrides, setFacilityScheduleOverrides] = useState({});
+  const [expandedFacilitySchedules, setExpandedFacilitySchedules] = useState({});
   const [removedScheduleDates, setRemovedScheduleDates] = useState([]);
   const [isDailyScheduleExpanded, setIsDailyScheduleExpanded] = useState(false);
   const [durationHours, setDurationHours] = useState(0);
@@ -1292,6 +1331,7 @@ const Reservation = ({ currentUserRole }) => {
       const updatedFacilities = isCurrentlySelected
         ? formData.facilities.filter((item) => item !== value)
         : [...formData.facilities, value];
+      setExpandedFacilitySchedules((current) => ({ ...current, [value]: false }));
       setParticipantPromptFacilityId(isCurrentlySelected ? null : value);
       setFormData((prev) => ({ ...prev, facilities: updatedFacilities }));
       setSelectedScheduleId('');
@@ -1655,6 +1695,7 @@ const Reservation = ({ currentUserRole }) => {
         ...(selectedRequestorAccountType?.customFields || []).map((field) => {
           const value = formData.requestorAttributes[`field:${field.id}`] || '';
           const invalid = !value.trim()
+            || !matchesSignupRegex(value, field.pattern)
             || (field.type === 'text' && (
               filterSignupTextValue(value, field.characterTypes) !== value
               || (field.min !== '' && field.min != null && value.length < Number(field.min))
@@ -2236,6 +2277,7 @@ const Reservation = ({ currentUserRole }) => {
                       <label>{field.label} <span className="req">*</span></label>
                       <input
                         type={field.type || 'text'}
+                        placeholder={field.placeholder || undefined}
                         value={formData.requestorAttributes[key] || ''}
                         onChange={(event) => handleRequestorAttributeChange(key, event.target.value, field)}
                         readOnly={field.editableOnProfile === false}
@@ -2243,6 +2285,8 @@ const Reservation = ({ currentUserRole }) => {
                         max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
                         minLength={field.type === 'text' && field.min != null && field.min !== '' ? Number(field.min) : undefined}
                         maxLength={field.type === 'text' && field.max != null && field.max !== '' ? Number(field.max) : undefined}
+                        pattern={field.pattern || undefined}
+                        title={field.pattern ? `Must match: ${field.pattern}` : undefined}
                         required
                         className={missingFields[missingKey] ? 'input-error' : ''}
                       />
@@ -2446,6 +2490,8 @@ const Reservation = ({ currentUserRole }) => {
                 const isLocked = item.status === 'Unavailable';
                 const participantFieldKey = getFacilityParticipantFieldKey(item.id);
                 const facilityScheduleFieldKey = `facilitySchedule:${item.id}`;
+                const isFacilityScheduleExpanded = Boolean(expandedFacilitySchedules[item.id]);
+                const facilityScheduleContentId = `facility-schedule-content-${item.id}`;
 
                 return (
                   <div
@@ -2497,75 +2543,99 @@ const Reservation = ({ currentUserRole }) => {
                           className={`facility-schedule ${missingFields[facilityScheduleFieldKey] ? 'field-missing' : ''}`}
                           ref={(element) => { fieldRefs.current[facilityScheduleFieldKey] = element; }}
                         >
-                          <strong>Schedule for {item.name}</strong>
-                          {facilitySchedules[item.id]?.length ? (
-                            <>
-                              <span className="helper-text">
-                                Times for this facility can differ from other selected facilities.
-                              </span>
-                              <div className="facility-schedule-list">
-                                {facilitySchedules[item.id].map((entry) => {
-                                  const invalidRange = !isValidReservationTimeRange(entry.startTime, entry.endTime);
-                                  const startInvalid = !isWithinReservationHours(entry.startTime) || invalidRange;
-                                  const endInvalid = !isWithinReservationHours(entry.endTime) || invalidRange;
-                                  return (
-                                    <div className="facility-schedule-row" key={entry.date}>
-                                      <strong>{formatScheduleDate(entry.date)}</strong>
-                                      <label>
-                                        <span>Start</span>
-                                        <ReservationTimePicker
-                                          value={entry.startTime}
-                                          label={`Start time for ${item.name} on ${formatScheduleDate(entry.date)}`}
-                                          invalid={startInvalid}
-                                          onChange={(value) => {
-                                            setFacilityScheduleOverrides((previous) => ({
-                                              ...previous,
-                                              [item.id]: {
-                                                ...previous[item.id],
-                                                [entry.date]: {
-                                                  startTime: value,
-                                                  endTime: previous[item.id]?.[entry.date]?.endTime ?? entry.endTime
-                                                }
-                                              }
-                                            }));
-                                            clearMissingField(facilityScheduleFieldKey);
-                                          }}
-                                        />
-                                      </label>
-                                      <label>
-                                        <span>End</span>
-                                        <ReservationTimePicker
-                                          value={entry.endTime}
-                                          label={`End time for ${item.name} on ${formatScheduleDate(entry.date)}`}
-                                          defaultTime="22:00"
-                                          invalid={endInvalid}
-                                          onChange={(value) => {
-                                            setFacilityScheduleOverrides((previous) => ({
-                                              ...previous,
-                                              [item.id]: {
-                                                ...previous[item.id],
-                                                [entry.date]: {
-                                                  startTime: previous[item.id]?.[entry.date]?.startTime ?? entry.startTime,
-                                                  endTime: value
-                                                }
-                                              }
-                                            }));
-                                            clearMissingField(facilityScheduleFieldKey);
-                                          }}
-                                        />
-                                      </label>
-                                    </div>
-                                  );
-                                })}
-                              </div>
-                              {facilityScheduleErrors[item.id] && (
-                                <span className="field-error">
-                                  Each facility date must start and end between 7:00 AM and 10:00 PM, with the end later than the start.
-                                </span>
+                          <button
+                            type="button"
+                            className="facility-schedule-toggle"
+                            onClick={() => setExpandedFacilitySchedules((current) => ({
+                              ...current,
+                              [item.id]: !isFacilityScheduleExpanded
+                            }))}
+                            aria-expanded={isFacilityScheduleExpanded}
+                            aria-controls={facilityScheduleContentId}
+                          >
+                            <strong>Schedule for {item.name}</strong>
+                            <span className="schedule-override-action">
+                              {isFacilityScheduleExpanded ? 'Hide' : 'Show'}
+                              <i
+                                className={`schedule-override-chevron ${isFacilityScheduleExpanded ? 'is-expanded' : ''}`}
+                                aria-hidden="true"
+                              ></i>
+                            </span>
+                          </button>
+                          {isFacilityScheduleExpanded && (
+                            <div id={facilityScheduleContentId} className="facility-schedule-content">
+                              {facilitySchedules[item.id]?.length ? (
+                                <>
+                                  <span className="helper-text">
+                                    Times for this facility can differ from other selected facilities.
+                                  </span>
+                                  <div className="facility-schedule-list">
+                                    {facilitySchedules[item.id].map((entry) => {
+                                      const invalidRange = !isValidReservationTimeRange(entry.startTime, entry.endTime);
+                                      const startInvalid = !isWithinReservationHours(entry.startTime) || invalidRange;
+                                      const endInvalid = !isWithinReservationHours(entry.endTime) || invalidRange;
+                                      return (
+                                        <div className="facility-schedule-row" key={entry.date}>
+                                          <strong>{formatScheduleDate(entry.date)}</strong>
+                                          <label>
+                                            <span>Start</span>
+                                            <ReservationTimePicker
+                                              value={entry.startTime}
+                                              label={`Start time for ${item.name} on ${formatScheduleDate(entry.date)}`}
+                                              invalid={startInvalid}
+                                              useViewportPopover
+                                              onChange={(value) => {
+                                                setFacilityScheduleOverrides((previous) => ({
+                                                  ...previous,
+                                                  [item.id]: {
+                                                    ...previous[item.id],
+                                                    [entry.date]: {
+                                                      startTime: value,
+                                                      endTime: previous[item.id]?.[entry.date]?.endTime ?? entry.endTime
+                                                    }
+                                                  }
+                                                }));
+                                                clearMissingField(facilityScheduleFieldKey);
+                                              }}
+                                            />
+                                          </label>
+                                          <label>
+                                            <span>End</span>
+                                            <ReservationTimePicker
+                                              value={entry.endTime}
+                                              label={`End time for ${item.name} on ${formatScheduleDate(entry.date)}`}
+                                              defaultTime="22:00"
+                                              invalid={endInvalid}
+                                              useViewportPopover
+                                              onChange={(value) => {
+                                                setFacilityScheduleOverrides((previous) => ({
+                                                  ...previous,
+                                                  [item.id]: {
+                                                    ...previous[item.id],
+                                                    [entry.date]: {
+                                                      startTime: previous[item.id]?.[entry.date]?.startTime ?? entry.startTime,
+                                                      endTime: value
+                                                    }
+                                                  }
+                                                }));
+                                                clearMissingField(facilityScheduleFieldKey);
+                                              }}
+                                            />
+                                          </label>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                  {facilityScheduleErrors[item.id] && (
+                                    <span className="field-error">
+                                      Each facility date must start and end between 7:00 AM and 10:00 PM, with the end later than the start.
+                                    </span>
+                                  )}
+                                </>
+                              ) : (
+                                <span className="field-error">Select valid dates and times for this facility.</span>
                               )}
-                            </>
-                          ) : (
-                            <span className="field-error">Select valid dates and times for this facility.</span>
+                            </div>
                           )}
                         </div>
                         <div
@@ -2732,7 +2802,8 @@ const Reservation = ({ currentUserRole }) => {
 
         <div className="form-card">
           <div className="section-header">Utility</div>
-          <div className="checkbox-grid facility-list utility-list">
+
+          <div className="checkbox-grid utility-list">
             {inventoryUtilities.length === 0 ? (
               <div className="empty-list">No utilities currently listed.</div>
             ) : (
@@ -2751,7 +2822,7 @@ const Reservation = ({ currentUserRole }) => {
                   >
                     <input
                       type="checkbox"
-                      className="facility-checkbox"
+                      className="utility-checkbox"
                       checked={isSelected}
                       onChange={(e) => handleUtilityUnitsChange(item, e.target.checked ? String(quantity || 1) : '')}
                       disabled={isLocked}
@@ -2816,7 +2887,7 @@ const Reservation = ({ currentUserRole }) => {
         </div>
       </div>
 
-      <div className="form-card">
+      <div className="form-card air-conditioning-card">
         <div className="section-header">Air Conditioning</div>
         <div className="aircon-controls">
 
@@ -3129,7 +3200,7 @@ const Reservation = ({ currentUserRole }) => {
                 </small>
               </span>
               <span className="schedule-override-action">
-                {isDailyScheduleExpanded ? 'Hide dates and times' : 'Show dates and times'}
+                {isDailyScheduleExpanded ? 'Hide' : 'Show'}
                 <i className={`schedule-override-chevron ${isDailyScheduleExpanded ? 'is-expanded' : ''}`} aria-hidden="true"></i>
               </span>
             </button>
@@ -3154,6 +3225,7 @@ const Reservation = ({ currentUserRole }) => {
                           <ReservationTimePicker
                             value={entry.startTime}
                             label={`Start time for ${formatScheduleDate(entry.date)}`}
+                            useViewportPopover
                             invalid={!isWithinReservationHours(entry.startTime)
                               || !isValidReservationTimeRange(entry.startTime, entry.endTime)}
                             onChange={(value) => {
@@ -3174,6 +3246,7 @@ const Reservation = ({ currentUserRole }) => {
                             value={entry.endTime}
                             label={`End time for ${formatScheduleDate(entry.date)}`}
                             defaultTime="22:00"
+                            useViewportPopover
                             invalid={!isWithinReservationHours(entry.endTime)
                               || !isValidReservationTimeRange(entry.startTime, entry.endTime)}
                             onChange={(value) => {

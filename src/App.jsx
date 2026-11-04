@@ -166,12 +166,13 @@ export default function App() {
             const isValidDomain = user.email && (
               user.email.endsWith('@gmail.com') || 
               user.email.endsWith('@outlook.com') ||
-              user.email.endsWith('@yahoo.com') 
+              user.email.endsWith('@globalcity.sti.edu.ph') ||
+              user.email.endsWith('@globalcity.sti.edu') 
             );
 
             if (!isValidDomain) {
               await signOut(auth);
-              setLoginError("Access denied. Only @gmail.com, @outlook.com, or @yahoo.com domains are allowed.");
+              setLoginError("Access denied. Only @gmail.com, @outlook.com, @globalcity.sti.edu.ph, or @globalcity.sti.edu domains are allowed.");
               setIsAuthenticated(false);
               setIsAuthLoading(false);
               return;
@@ -473,20 +474,22 @@ export default function App() {
       <div className="main-content">
         <TopBar toggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)} userRole={userRole}/>
         <div className="page-content">
-          <Suspense fallback={<div className="loading-text">Loading..</div>}>
-            <Routes> 
-              <Route path="*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <Navigate to="/dashboard" replace />} />
-              <Route path="/dashboard/*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <DashboardRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/reserve/*" element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/schedule/*" element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/approval/*" element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/equipment/*" element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/user/*" element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/facility/*" element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/calendar/*" element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />} />
-              <Route path="/account/*" element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />} />
-            </Routes>
-          </Suspense>
+          <div className="page-route-content">
+            <Suspense fallback={<div className="loading-text">Loading..</div>}>
+              <Routes>
+                <Route path="*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <Navigate to="/dashboard" replace />} />
+                <Route path="/dashboard/*" element={userRole.toLowerCase() === 'requestor' ? <Navigate to="/reserve" replace /> : <DashboardRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/reserve/*" element={<ReservationRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/schedule/*" element={<ScheduleRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/approval/*" element={<ApprovalRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/equipment/*" element={<EquipmentManagementRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/user/*" element={<UserManagementRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/facility/*" element={<FacilityRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/calendar/*" element={<CalendarRouter currentUserRole={userRole.toLowerCase()} />} />
+                <Route path="/account/*" element={<ProfileRouter currentUserRole={userRole.toLowerCase()} />} />
+              </Routes>
+            </Suspense>
+          </div>
         </div>
       </div>
       {isPendingNoticeOpen && (

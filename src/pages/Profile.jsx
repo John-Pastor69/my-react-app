@@ -10,6 +10,7 @@ import {
   DEFAULT_DEPARTMENT_OPTIONS,
   DEFAULT_SIGNUP_DROPDOWNS,
   filterSignupTextValue,
+  matchesSignupRegex,
   normalizeAccountTypes,
   normalizeSignupDropdowns
 } from '../services/signupOptions';
@@ -327,6 +328,7 @@ const Profile = ({ currentUserRole }) => {
       .find((field) => {
       const value = formData.signupAttributes[`field:${field.id}`] || '';
       if (!value.trim()) return true;
+      if (!matchesSignupRegex(value, field.pattern)) return true;
       if (field.type === 'text') {
         return filterSignupTextValue(value, field.characterTypes) !== value
           || (field.min !== '' && field.min != null && value.length < Number(field.min))
@@ -802,6 +804,7 @@ const Profile = ({ currentUserRole }) => {
                     <input
                       type={field.type || 'text'}
                       name={fieldKey}
+                      placeholder={field.placeholder || undefined}
                       value={formData.signupAttributes[fieldKey] || ''}
                       onChange={(event) => handleSignupAttributeChange(fieldKey, event.target.value, field)}
                       readOnly={!isEditing || field.editableOnProfile === false}
@@ -810,6 +813,8 @@ const Profile = ({ currentUserRole }) => {
                       max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
                       minLength={field.type === 'text' && field.min != null && field.min !== '' ? Number(field.min) : undefined}
                       maxLength={field.type === 'text' && field.max != null && field.max !== '' ? Number(field.max) : undefined}
+                      pattern={field.pattern || undefined}
+                      title={field.pattern ? `Must match: ${field.pattern}` : undefined}
                       className={`profile-dynamic-input ${isEditing && field.editableOnProfile !== false ? 'editing' : ''}`}
                     />
                   </div>

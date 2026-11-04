@@ -11,6 +11,7 @@ import {
   DEFAULT_DEPARTMENT_OPTIONS,
   DEFAULT_SIGNUP_DROPDOWNS,
   filterSignupTextValue,
+  matchesSignupRegex,
   normalizeAccountTypes,
   normalizeSignupDropdowns
 } from '../services/signupOptions';
@@ -227,6 +228,7 @@ export default function Login({ error, setError }) {
       const invalidCustomField = (selectedSignupAccountType?.customFields || []).find((field) => {
         const value = customFieldValues[field.id] || '';
         if (!value.trim()) return true;
+        if (!matchesSignupRegex(value, field.pattern)) return true;
 
         if (field.type === 'text') {
           return filterSignupTextValue(value, field.characterTypes) !== value
@@ -287,10 +289,11 @@ export default function Login({ error, setError }) {
 
         const isValidDomain = email.endsWith('@gmail.com') || 
                               email.endsWith('@outlook.com') || 
-                              email.endsWith('@yahoo.com');
+                              email.endsWith('@globalcity.sti.edu.ph') ||
+                              email.endsWith('@globalcity.sti.edu');
         
         if (!isValidDomain) {
-          if (setError) setError("You must use a valid @gmail.com, @outlook.com, or @yahoo.com email to register.");
+          if (setError) setError("You must use a valid @gmail.com, @outlook.com, @globalcity.sti.edu.ph, or @globalcity.sti.edu email to register.");
           sessionStorage.removeItem(NEW_LOGIN_KEY);
           return;
         }
@@ -648,11 +651,13 @@ export default function Login({ error, setError }) {
                           <input
                             type={field.type || 'text'}
                             className={`login-input${field.type === 'number' ? ' signup-number-input' : ''}`}
-                            placeholder={`Enter ${field.label}`}
+                            placeholder={field.placeholder || `Enter ${field.label}`}
                             min={field.type === 'number' && field.min != null && field.min !== '' ? field.min : undefined}
                             max={field.type === 'number' && field.max != null && field.max !== '' ? field.max : undefined}
                             minLength={field.type === 'text' && field.min != null && field.min !== '' ? Number(field.min) : undefined}
                             maxLength={field.type === 'text' && field.max != null && field.max !== '' ? Number(field.max) : undefined}
+                            pattern={field.pattern || undefined}
+                            title={field.pattern ? `Must match: ${field.pattern}` : undefined}
                             step={field.type === 'number' ? 'any' : undefined}
                             required
                             value={customFieldValues[field.id] || ''}
