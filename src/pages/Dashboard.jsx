@@ -3,7 +3,12 @@ import { collection, onSnapshot } from 'firebase/firestore';
 import { Link, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase';
 import MonthYearPicker from '../components/MonthYearPicker';
-import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import {
+  APPROVAL_ROLE_HIERARCHY,
+  isApprovalStepReady,
+  isReservationAssignedToEndorser,
+  normalizeApprovalRoleKey
+} from '../services/approvalWorkflow';
 import { isReservationActive } from '../services/reservationStatus';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import { formatTimeForDisplay } from '../services/timeFormatting';
@@ -182,13 +187,6 @@ const getStatusClass = (status) => {
   if (normalizedStatus === 'approved') return 'approved';
   if (normalizedStatus === 'rejected' || normalizedStatus === 'cancelled') return 'rejected';
   return 'pending';
-};
-
-const normalizeName = (value) => {
-  const name = (value || '').replace(/\s*\(Student\)/i, '').trim();
-  if (!name.includes(',')) return name;
-  const [lastName, ...firstNames] = name.split(',');
-  return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
 };
 
 // Reusable selector for dashboard time filters.
@@ -664,8 +662,11 @@ const DashboardContent = ({ currentUserRole }) => {
     const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker';
 
     if (!isSuperAdmin && approverRoleKey === 'endorser') {
-      if (isStaffRequestor || !reservation.endorserName) return false;
-      if (normalizeName(reservation.endorserName).toLowerCase() !== normalizeName(currentUserRecord?.name).toLowerCase()) {
+      if (isStaffRequestor || (!reservation.endorserName && !reservation.endorserEmail)) return false;
+      if (!isReservationAssignedToEndorser(reservation, {
+        email: currentUserRecord?.email || currentUser?.email,
+        name: currentUserRecord?.name
+      })) {
         return false;
       }
     }
@@ -680,7 +681,7 @@ const DashboardContent = ({ currentUserRole }) => {
     const firstDate = parseDate(first.createdAt || first.eventDate)?.getTime() || 0;
     const secondDate = parseDate(second.createdAt || second.eventDate)?.getTime() || 0;
     return secondDate - firstDate;
-  }), [reservationsData, usersData, approverRoleKey, currentUserRecord, isSuperAdmin]);
+  }), [reservationsData, usersData, approverRoleKey, currentUserRecord, currentUser?.email, isSuperAdmin]);
   const pendingApprovals = pendingApprovalReservations.length;
   const canReviewApprovals = isSuperAdmin || APPROVAL_ROLE_HIERARCHY.indexOf(approverRoleKey) > 0;
   const matchingUsers = useMemo(() => {

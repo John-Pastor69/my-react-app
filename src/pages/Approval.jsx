@@ -6,6 +6,7 @@ import PendingRequest from './PendingRequest';
 import { archiveReservation } from '../services/archiveReservation';
 import {
     getApprovalTrackerSteps,
+    isReservationAssignedToEndorser,
     isApprovalStepReady,
     normalizeApprovalRoleKey
 } from '../services/approvalWorkflow';
@@ -133,8 +134,8 @@ const Approval = ({ currentUserRole = '' }) => {
     };
 
     // --- GET CURRENT LOGGED-IN USER NAME ---
-    const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email)
-        || superUsersData.find(u => u.id === currentUser?.uid || u.email === currentUser?.email)
+    const currentUserDoc = usersData.find(u => u.id === currentUser?.uid || u.uid === currentUser?.uid || u.email === currentUser?.email)
+        || superUsersData.find(u => u.id === currentUser?.uid || u.uid === currentUser?.uid || u.email === currentUser?.email)
         || {};
     const currentUserName = formatName(currentUserDoc.name || '');
 
@@ -249,9 +250,11 @@ const Approval = ({ currentUserRole = '' }) => {
             // Endorser specific check: matches the endorser name set up on the reservation, and must NOT be a staff requestor
             if (approverRoleKey === 'endorser') {
                 if (isStaffRequestor) return null;
-                if (!res.endorserName) return null;
-                const cleanEndorserName = formatName(res.endorserName);
-                if (cleanEndorserName.toLowerCase() !== currentUserName.toLowerCase()) {
+                if (!res.endorserName && !res.endorserEmail) return null;
+                if (!isReservationAssignedToEndorser(res, {
+                    email: currentUser?.email,
+                    name: currentUserDoc.name
+                })) {
                     return null;
                 }
                 return 'your-turn';

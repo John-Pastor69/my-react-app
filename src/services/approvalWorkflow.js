@@ -15,6 +15,23 @@ export const normalizeApprovalRoleKey = (role) => (
   (role || '').toLowerCase().trim().replace(/_/g, ' ')
 );
 
+const normalizeApprovalName = (value) => {
+  const name = (value || '').replace(/\s*\(Student\)/i, '').trim();
+  if (!name.includes(',')) return name;
+  const [lastName, ...firstNames] = name.split(',');
+  return `${firstNames.join(',').trim()} ${lastName.trim()}`.trim();
+};
+
+export const isReservationAssignedToEndorser = (reservation, { email, name } = {}) => {
+  const reservationEmail = (reservation?.endorserEmail || '').trim().toLowerCase();
+  const approverEmail = (email || '').trim().toLowerCase();
+  if (reservationEmail && approverEmail) return reservationEmail === approverEmail;
+
+  const endorserName = normalizeApprovalName(reservation?.endorserName).toLowerCase();
+  const approverName = normalizeApprovalName(name).toLowerCase();
+  return Boolean(endorserName && approverName && endorserName === approverName);
+};
+
 export const isApprovalStepReady = (
   approvals,
   roleKey,
