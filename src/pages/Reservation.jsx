@@ -2534,9 +2534,6 @@ const Reservation = ({ currentUserRole }) => {
                       disabled={isLocked}
                     />
                     <label className="facility-info" htmlFor={`facility-${item.id}`}>
-                      <div className="facility-icon">
-                        <i className="ph ph-buildings"></i>
-                      </div>
                       <div>
                         <strong>{item.name}</strong>
                         <span className="facility-meta">
@@ -2775,9 +2772,6 @@ const Reservation = ({ currentUserRole }) => {
                       disabled={isLocked || (!count && !isAvailable)}
                     />
                     <div className="equip-info">
-                      <div className="icon-box bg-blue">
-                        <i className="ph ph-package"></i>
-                      </div>
                       <div>
                         <strong>{item.name}</strong>
                         <span>{item.sku}</span>
@@ -2854,9 +2848,6 @@ const Reservation = ({ currentUserRole }) => {
                       onChange={(e) => handleUtilityUnitsChange(item, e.target.checked ? String(quantity || 1) : '')}
                       disabled={isLocked}
                     />
-                    <div className="facility-icon">
-                      <i className="ph ph-lightning"></i>
-                    </div>
                     <div className="utility-info">
                       <strong>{item.name || 'Untitled Utility'}</strong>
                       <span className="facility-meta">{item.sku || 'Utility'}</span>

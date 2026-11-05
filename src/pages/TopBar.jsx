@@ -670,7 +670,13 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       navigate('/user?filter=pending-profile');
       return;
     }
-    if (notif.type === 'role_changed' || notif.type.startsWith('profile_image_')) return;
+    if (notif.type.startsWith('profile_image_')) {
+      if (normalizeApprovalRoleKey(userRole) === 'requestor') {
+        navigate('/account');
+      }
+      return;
+    }
+    if (notif.type === 'role_changed') return;
     setSelectedRequest(notif.fullData);
   };
 
