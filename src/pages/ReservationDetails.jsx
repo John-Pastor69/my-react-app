@@ -494,7 +494,7 @@ const ReservationDetails = ({
     'endorser',
     signupConfiguration
   );
-  const endorsedBy = currentData.endorserName ? endorserName : 'N/A';
+  const endorsedBy = currentData.endorserName ? endorserName : '';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
   const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'

@@ -368,17 +368,20 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
 
   const hasEndorser = !!currentData.endorserName;
   const endorserName = currentData.endorserName ? formatName(currentData.endorserName) : 'N/A';
-  const endorserDesignation = currentData.endorserInfo?.department
-    || currentData.endorserInfo?.designation
-    || currentData.endorserDesignation
-    || 'N/A';
+  const endorserDesignation = [
+    currentData.endorserInfo?.department,
+    currentData.endorserInfo?.designation,
+    currentData.endorserDesignation
+  ].find(value => typeof value === 'string' && value.trim() && value.trim().toLowerCase() !== 'n/a')?.trim();
   const endorserEmail = currentData.endorserEmail || 'N/A';
   const endorserDynamicAttributes = getReservationDynamicAttributes(
     currentData,
     'endorser',
     signupConfiguration
   );
-  const endorsedBy = currentData.endorserName ? `${endorserName} (${endorserDesignation})` : 'N/A';
+  const endorsedBy = currentData.endorserName
+    ? endorserDesignation ? `${endorserName} (${endorserDesignation})` : endorserName
+    : '';
 
   const isStaffRequestor = requestorRole && requestorRole !== 'requestor' && requestorRole !== 'user';
   const isRoomCheckerRequestor = normalizeApprovalRoleKey(requestorRole) === 'room checker'
