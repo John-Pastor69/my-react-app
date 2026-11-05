@@ -58,7 +58,9 @@ $danger-red: #ef4444;
 
     .daily-time-facility {
       flex: 1 1 100%;
+      min-width: 0;
       color: $text-dark;
+      overflow-wrap: anywhere;
     }
 
     .daily-time-expanded-dates {
@@ -123,8 +125,46 @@ $danger-red: #ef4444;
       color: $text-dark;
       font-size: var(--font-body);
       font-weight: 600;
-      text-align: right;
-      white-space: nowrap;
+      min-width: 0;
+      text-align: left;
+      white-space: normal;
+    }
+
+    &:not(.summary) {
+      .daily-time-entry {
+        display: grid;
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .daily-time-date-group {
+        justify-content: flex-start;
+        text-align: left;
+      }
+
+      .daily-time-expanded-dates {
+        grid-column: 1;
+      }
+
+      @media (min-width: 42.7333rem) {
+        .daily-time-entry {
+          grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+        }
+
+        .daily-time-facility {
+          grid-column: 1;
+        }
+
+        .daily-time-range {
+          grid-column: 2;
+          justify-self: end;
+          text-align: right;
+        }
+
+        .daily-time-date-group,
+        .daily-time-expanded-dates {
+          grid-column: 1 / -1;
+        }
+      }
     }
 
     &.summary {

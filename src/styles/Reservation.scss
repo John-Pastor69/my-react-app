@@ -1970,6 +1970,10 @@ $orange-main: #F59E0B;
   .modal-actions { 
     display: flex; 
     justify-content: flex-end; 
+
+    &.has-submit-again {
+      justify-content: space-between;
+    }
   }
 
   .modal-button { 
@@ -1983,6 +1987,12 @@ $orange-main: #F59E0B;
     font-size: var(--font-body); 
     font-weight: 600; 
     cursor: pointer; 
+  }
+
+  .modal-button-secondary {
+    border: 1px solid $blue-main;
+    background: #fff;
+    color: $blue-main;
   }
 }
 

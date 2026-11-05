@@ -2106,6 +2106,24 @@ const Reservation = ({ currentUserRole }) => {
         console.warn("Inventory update skipped due to permissions:", inventoryErr);
       }
 
+      const submitAgainData = editingReservation ? null : {
+        formData: {
+          contactNumber: formData.contactNumber,
+          eventName: formData.eventName,
+          expectedParticipants: formData.expectedParticipants,
+          eventType: [...formData.eventType],
+          purpose: formData.purpose
+        },
+        eventDate,
+        endDateInput,
+        days,
+        dailyScheduleOverrides: Object.fromEntries(
+          Object.entries(dailyScheduleOverrides).map(([date, schedule]) => [date, { ...schedule }])
+        ),
+        removedScheduleDates: [...removedScheduleDates],
+        selectedScheduleId
+      };
+
       handleDiscard(Boolean(editingReservation));
       if (editingReservation) setEditingReservation(null);
       setCustomAlert({
@@ -2116,6 +2134,7 @@ const Reservation = ({ currentUserRole }) => {
             : `Reservation ${generatedRefNo} has been updated and resubmitted for approval.`
           : `Reservation submitted successfully! Your Reference No. is ${generatedRefNo}.`,
         isSuccess: true,
+        submitAgainData,
         returnToSchedule: Boolean(editingReservation && !isAdminEditMode),
         returnToCalendar: Boolean(editingReservation && isAdminEditMode)
       });
@@ -3430,7 +3449,27 @@ const Reservation = ({ currentUserRole }) => {
             <p className="modal-message">
               {customAlert.message}
             </p>
-            <div className="modal-actions">
+            <div className={`modal-actions ${customAlert.submitAgainData ? 'has-submit-again' : ''}`}>
+              {customAlert.submitAgainData && (
+                <button
+                  onClick={() => {
+                    const { formData: retainedFormData, ...retainedScheduleData } = customAlert.submitAgainData;
+                    setFormData((previous) => ({ ...previous, ...retainedFormData }));
+                    setEventDate(retainedScheduleData.eventDate);
+                    setEndDateInput(retainedScheduleData.endDateInput);
+                    setDays(retainedScheduleData.days);
+                    setDailyScheduleOverrides(retainedScheduleData.dailyScheduleOverrides);
+                    setRemovedScheduleDates(retainedScheduleData.removedScheduleDates);
+                    setSelectedScheduleId(retainedScheduleData.selectedScheduleId);
+                    setStartTime('');
+                    setEndTime('');
+                    setCustomAlert(null);
+                  }}
+                  className="modal-button modal-button-secondary"
+                >
+                  Submit Again
+                </button>
+              )}
               <button
                 onClick={() => {
                   const returnToSchedule = customAlert.returnToSchedule;
