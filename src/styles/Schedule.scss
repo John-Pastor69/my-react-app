@@ -26,12 +26,12 @@ $blue-main: #3B82F6;
     h1 {
       margin: 0;
       color: #172033;
-      font-size: 1.333rem;
+      font-size: var(--font-h2);
       font-weight: 700;
       line-height: 1.25;
 
       @media (min-width: 46.667rem) {
-        font-size: 1.467rem;
+        font-size: var(--font-h1);
       }
     }
   }
@@ -99,10 +99,34 @@ $blue-main: #3B82F6;
     .controls-group {
       width: 100%;
       min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+
+      .status-filter {
+        width: 100%;
+        min-height: 38px;
+        padding: 8px 30px 8px 12px;
+        border: 1px solid $border-color;
+        border-radius: 7px;
+        outline: none;
+        background: #FFFFFF;
+        color: $text-dark;
+        font-family: inherit;
+        font-size: var(--font-body);
+        cursor: pointer;
+        transition: border-color 0.2s, box-shadow 0.2s;
+
+        &:focus {
+          border-color: $blue-main;
+          box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.10);
+        }
+      }
 
       .search-box {
         position: relative;
         width: 100%;
+        min-width: 0;
 
         i {
           position: absolute;
@@ -144,9 +168,9 @@ $blue-main: #3B82F6;
   .table-container {
     width: 100%;
     background: #F8FAFC;
-    height: 100%;
+    height: 25rem;
+    overflow-y: auto;       
     overflow-x: auto;
-    overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
 
@@ -456,8 +480,19 @@ $blue-main: #3B82F6;
       padding: 20px 24px;
 
       .controls-group {
-        width: min(100%, 420px);
-        flex: 0 1 420px;
+        width: min(100%, 540px);
+        flex: 0 1 540px;
+        flex-direction: row;
+        align-items: center;
+
+        .status-filter {
+          width: 120px;
+          flex: 0 0 120px;
+        }
+
+        .search-box {
+          flex: 1 1 auto;
+        }
       }
     }
 

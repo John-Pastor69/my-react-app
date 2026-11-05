@@ -258,7 +258,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
       {/* Header */}
       <div className="page-header">
         <div>
-          <h1>All Facilities</h1>
+          <h1>Facilities</h1>
         </div>
       </div>
 

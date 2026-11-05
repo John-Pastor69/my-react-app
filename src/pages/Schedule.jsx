@@ -11,6 +11,7 @@ const Schedule = ({ currentUserRole = '' }) => {
   const navigate = useNavigate();
   // --- STATE MANAGEMENT ---
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusFilter, setStatusFilter] = useState('all');
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [deleteModalData, setDeleteModalData] = useState(null);
   const [isDeleting, setIsDeleting] = useState(false);
@@ -147,12 +148,18 @@ const Schedule = ({ currentUserRole = '' }) => {
     }).sort((a, b) => b.rawDate - a.rawDate); 
 
   // --- SEARCH & FILTER LOGIC ---
-  const filteredData = scheduleData.filter((row) =>
-    row.event.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.role.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    row.refNo.toLowerCase().includes(searchQuery.toLowerCase())
-  );
+  const filteredData = scheduleData.filter((row) => {
+    const matchesSearch = row.event.toLowerCase().includes(searchQuery.toLowerCase())
+      || row.name.toLowerCase().includes(searchQuery.toLowerCase())
+      || row.role.toLowerCase().includes(searchQuery.toLowerCase())
+      || row.refNo.toLowerCase().includes(searchQuery.toLowerCase());
+    const matchesStatus = statusFilter === 'all'
+      || (statusFilter === 'modify'
+        ? row.scheduleStatus === 'to_modify'
+        : row.scheduleStatus === statusFilter);
+
+    return matchesSearch && matchesStatus;
+  });
 
   // --- DELETION LOGIC ---
   const confirmDelete = async () => {
@@ -214,6 +221,17 @@ const Schedule = ({ currentUserRole = '' }) => {
             </div>
           </div>
           <div className="controls-group">
+            <select
+              className="status-filter"
+              aria-label="Filter reservations by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+            >
+              <option value="all">All</option>
+              <option value="pending">Pending</option>
+              <option value="approved">Approved</option>
+              <option value="modify">Modify</option>
+            </select>
             <div className="search-box">
               <i className="ph ph-magnifying-glass"></i>
               <input 
@@ -310,7 +328,7 @@ const Schedule = ({ currentUserRole = '' }) => {
 
         <div className="card-footer">
           <span className="showing-text">
-            Showing all {filteredData.length} requests
+            Showing {filteredData.length} requests
           </span>
         </div>
       </div>

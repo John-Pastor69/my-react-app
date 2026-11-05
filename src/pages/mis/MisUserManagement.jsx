@@ -1210,7 +1210,7 @@ const MisUserManagement = ({ currentUserRole }) => {
     <div className="user-management-content">
       <div className="page-header">
         <div>
-          <h1>All Users</h1>
+          <h1>Users</h1>
         </div>
       </div>
 

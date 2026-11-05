@@ -260,6 +260,9 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   return (
     <div className="equipment-management-content">
       {/* Top Metric Cards */}
+      <div className="metrics-header">
+        <h1>Equipments & Utilities</h1>
+      </div>
       <div className="metrics-grid">
         <div className="metric-card">
           <div className="metric-info">

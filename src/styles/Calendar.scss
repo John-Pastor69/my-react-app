@@ -564,15 +564,16 @@ $charcoal: #364152;
   .calendar-grid {
     display: grid;
     grid-template-columns: repeat(7, minmax(0, 1fr)); 
-    grid-auto-rows: minmax(130px, auto);
+    grid-template-rows: 2.5rem;
+    grid-auto-rows: minmax(5.5rem, auto);
     gap: 0;
     border-top: 0.0667rem solid $border-color;
     border-left: 0.0667rem solid $border-color;
     border-radius: 0.5333rem 0.5333rem 0 0;
     
     .weekday {
-      display: block; 
-      padding: 0.8rem; text-align: center; font-size: 0.8rem; font-weight: 600; color: #94A3B8;
+      display: block;     
+      padding: 0.5rem; text-align: center; font-size: 0.8rem; font-weight: 700; color: #000000;
       border-right: 0.0667rem solid $border-color; border-bottom: 0.0667rem solid $border-color;
     }
     
@@ -581,7 +582,7 @@ $charcoal: #364152;
       flex-direction: column; 
       min-width: 0;           
       overflow: visible; 
-      min-height: 8rem;
+      min-height: 5.5rem;
       height: auto;
       padding: 0.5333rem;
       border-radius: 0;
@@ -595,7 +596,7 @@ $charcoal: #364152;
       }
       
       .date {
-        font-size: 0.9333rem; font-weight: 500; color: $text-dark; margin-bottom: 0.5333rem;
+        font-size: 0.9333rem; font-weight: 500; color: $text-dark; margin-bottom: 0.3333rem;
         width: 1.6rem; height: 1.6rem; display: flex; align-items: center; justify-content: center;
         border: none; padding: 0;
         span { display: none; } 

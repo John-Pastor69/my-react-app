@@ -826,7 +826,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             <div className="card">
               <strong>Reservation is Fully Approved</strong>
             </div>
-          ) : isReservationOwner ? null : <div className="card">
+          ) : isReservationOwner && !canOverrideApprovalWorkflow ? null : <div className="card">
             <div className="card-header-small">
               <h3>🛡️ {approver.role} Approval</h3>
               <p>Your administrative decision</p>

@@ -4,7 +4,6 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { BadgeCheck, CalendarDays, ClipboardList, FileDown, Network, ShieldCheck } from 'lucide-react';
 import { auth, db } from '../Firebase'; 
 import { NEW_LOGIN_KEY } from '../services/browserSession';
-import { useNavigate } from 'react-router-dom';
 import {
   DEFAULT_ACCOUNT_TYPES,
   DEFAULT_COURSE_OPTIONS,
@@ -29,7 +28,6 @@ const capitalizeInitial = (value) => value.replace(/^(\s*)([a-z])/, (_, leadingS
 ));
 
 export default function Login({ error, setError }) {
-  const navigate = useNavigate();
   const [showForm, setShowForm] = useState(false);
   const [isLogin, setIsLogin] = useState(true); 
   const [showTerms, setShowTerms] = useState(false);
@@ -265,21 +263,9 @@ export default function Login({ error, setError }) {
       sessionStorage.setItem(NEW_LOGIN_KEY, 'true');
 
       if (isLogin) {
-        const userCredential = await signInWithEmailAndPassword(auth, email, password);
+        await signInWithEmailAndPassword(auth, email, password);
         
-        // --- NEW: Force the redirect manually on successful login ---
-        // We fetch the role from localStorage (or default to requestor) to know where to send them
-        const savedRole = localStorage.getItem(`userRole_${userCredential.user.uid}`) || 'requestor';
-        
-        // Force modal to close visually immediately
-        setShowForm(false); 
-        
-        // Push the manual navigation to bypass mobile state-lag
-        if (savedRole.toLowerCase() === 'requestor') {
-            navigate('/reserve', { replace: true });
-        } else {
-            navigate('/dashboard', { replace: true });
-        }
+        setShowForm(false);
       } else {
         if (password !== confirmPassword) {
           if (setError) setError("Passwords do not match.");

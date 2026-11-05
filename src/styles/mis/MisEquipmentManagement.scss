@@ -30,6 +30,17 @@ main,
   max-width: 100%;
   min-width: 0;
   box-sizing: border-box;
+  margin-bottom: 1.333rem;
+
+  .metrics-header {
+      margin-bottom: 1.0667rem;
+      h1 {
+        margin: 0;
+        font-size: var(--font-h1);
+        font-weight: 700;
+        line-height: 1.25;
+      }
+    }
 
   /* Top Metrics */
   .metrics-grid {

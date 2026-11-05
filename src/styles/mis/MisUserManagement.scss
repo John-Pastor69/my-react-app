@@ -108,7 +108,7 @@ main,
     .header-text {
       h1 {
         margin: 0 0 0.2667rem 0;
-        font-size: 1.5rem;
+        font-size: var(--font-h1);
         font-weight: 700;
         white-space: nowrap;
       }
