@@ -23,6 +23,8 @@ test('logout removes account data and permits a fresh browser session', async ()
   assert.notEqual(await getBrowserSessionId('account2'), firstTab);
   localStorage.setItem('reservationDraft', 'private draft');
   localStorage.setItem('facilityResReadNotifs', '[1]');
+  localStorage.setItem('facilityResDeletedNotifs_account1', '["reservation-approved"]');
+  localStorage.setItem('facilityResDeletedNotifs', '["legacy-notification"]');
   localStorage.setItem('2fa_verified_account1', firstTab);
   sessionStorage.setItem('2fa_verified_account1', 'true');
   sessionStorage.setItem('active_session_account1', 'legacy tab session');
@@ -31,6 +33,8 @@ test('logout removes account data and permits a fresh browser session', async ()
   clearAccountStorage();
   assert.equal(localStorage.getItem('reservationDraft'), null);
   assert.equal(localStorage.getItem('facilityResReadNotifs'), null);
+  assert.equal(localStorage.getItem('facilityResDeletedNotifs_account1'), '["reservation-approved"]');
+  assert.equal(localStorage.getItem('facilityResDeletedNotifs'), null);
   assert.equal(localStorage.getItem('2fa_verified_account1'), null);
   assert.equal(sessionStorage.getItem('2fa_verified_account1'), null);
   assert.equal(sessionStorage.getItem('active_session_account1'), null);

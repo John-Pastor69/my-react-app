@@ -10,6 +10,7 @@ import { archiveExpiredApprovedReservations, isReservationEndReached } from '../
 import '../styles/TopBar.scss'; 
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
+const getDeletedNotifsStorageKey = (uid) => `facilityResDeletedNotifs_${uid}`;
 
 const timeAgo = (dateInput) => {
   if (!dateInput) return 'Just now';
@@ -73,10 +74,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     return saved ? JSON.parse(saved) : [];
   });
 
-  const [deletedNotifs, setDeletedNotifs] = useState(() => {
-    const saved = localStorage.getItem('facilityResDeletedNotifs');
-    return saved ? JSON.parse(saved) : [];
-  });
+  const [deletedNotifs, setDeletedNotifs] = useState([]);
 
   const hasUnread = notifications.some(notif => !readNotifs.includes(notif.id));
 
@@ -164,6 +162,22 @@ const TopBar = ({ toggleSidebar, userRole }) => {
 
   useEffect(() => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => {
+      if (user) {
+        const storageKey = getDeletedNotifsStorageKey(user.uid);
+        const saved = localStorage.getItem(storageKey);
+        const legacySaved = localStorage.getItem('facilityResDeletedNotifs');
+        const deletedIds = JSON.parse(saved || legacySaved || '[]');
+
+        if (saved === null && legacySaved !== null) {
+          localStorage.setItem(storageKey, legacySaved);
+        }
+        if (legacySaved !== null) {
+          localStorage.removeItem('facilityResDeletedNotifs');
+        }
+        setDeletedNotifs(deletedIds);
+      } else {
+        setDeletedNotifs([]);
+      }
       setCurrentUser(user);
     });
     return () => unsubscribeAuth();
@@ -681,10 +695,14 @@ const TopBar = ({ toggleSidebar, userRole }) => {
   };
 
   const handleClearAllNotifs = () => {
+    if (!currentUser) return;
     const allCurrentIds = notifications.map(n => n.id);
     const updatedDeleted = [...new Set([...deletedNotifs, ...allCurrentIds])];
     setDeletedNotifs(updatedDeleted);
-    localStorage.setItem('facilityResDeletedNotifs', JSON.stringify(updatedDeleted));
+    localStorage.setItem(
+      getDeletedNotifsStorageKey(currentUser.uid),
+      JSON.stringify(updatedDeleted)
+    );
   };
 
   const globalSearchControl = canOpenDashboardSearch ? (
