@@ -1,0 +1,81 @@
+.aircon-schedule-display {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.45rem;
+  min-width: 0;
+
+  &__status,
+  &__state {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 999px;
+    font-weight: 700;
+    line-height: 1.2;
+    white-space: nowrap;
+  }
+
+  &__status {
+    padding: 0.2rem 0.55rem;
+    font-size: 0.75rem;
+  }
+
+  &__state {
+    min-width: 2rem;
+    padding: 0.12rem 0.4rem;
+    font-size: 0.68rem;
+  }
+
+  &__status.is-on,
+  &__state.is-on {
+    color: #166534;
+    background: #dcfce7;
+  }
+
+  &__status.is-off,
+  &__state.is-off {
+    color: #475569;
+    background: #e2e8f0;
+  }
+
+  &__group {
+    width: 100%;
+    min-width: 0;
+
+    h4 {
+      margin: 0 0 0.25rem;
+      color: #334155;
+      font-size: 0.82rem;
+      font-weight: 700;
+    }
+
+    ul {
+      display: flex;
+      flex-direction: column;
+      gap: 0.25rem;
+      margin: 0;
+      padding: 0;
+      list-style: none;
+    }
+  }
+
+  &__entry {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.35rem 0.5rem;
+    min-width: 0;
+    font-size: 0.85rem;
+  }
+
+  &__date {
+    color: #334155;
+    font-weight: 600;
+  }
+
+  &__time {
+    color: #475569;
+    font-variant-numeric: tabular-nums;
+  }
+}

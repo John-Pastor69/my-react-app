@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, updateDoc, arrayUnion, query, where, getDocs } from 'firebase/firestore';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../Firebase';
+import AirconScheduleDisplay from '../components/AirconScheduleDisplay';
 import { sendReservationEmail } from '../services/emailService'; 
 import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
@@ -612,7 +613,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
       <div className="main-content-grid">
         <div className="details-col">
           {/* Card 1: Event Information */}
-          <div className="card">
+          <div className="card event-info-card">
             <h3><span className="card-icon">📋</span> Event Information</h3>
             <div className="info-grid">
               <div>
@@ -665,7 +666,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
           </div>
 
           {/* Card 2: Facility Details */}
-          <div className="card">
+          <div className="card facility-info-card">
             <h3><span className="card-icon">🏢</span> Facility Details</h3>
             <div className="info-grid">
               <div>
@@ -686,11 +687,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
               </div>
               <div>
                 <label>AIR CONDITIONING</label>
-                <div className="val">
-                  {currentData.aircon 
-                    ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
-                    : "OFF"}
-                </div>
+                <AirconScheduleDisplay reservation={currentData} facilities={facilitiesMap} />
               </div>
               <div className="equipment-grid-col">
                 <label>UTILITY REQUESTED</label>
@@ -704,7 +701,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
           </div>
 
           {/* Card 3: Requestor Information */}
-          <div className="card">
+          <div className="card requestor-info-card">
             <h3><span className="card-icon">👤</span> Requestor Information</h3>
             <div className="info-grid people-info-grid">
               <div>
@@ -738,7 +735,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
 
           {/* Card 4: Endorser Information (Conditional) */}
           {hasEndorser && (
-            <div className="card">
+            <div className="card endorser-info-card">
               <div className="endorser-header-row">
                 <h3><span className="card-icon">🤵</span> Endorser Information</h3>
                 <span className="endorser-badge">Student Role Only</span>

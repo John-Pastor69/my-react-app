@@ -193,6 +193,7 @@ $orange-main: #F59E0B;
         "start-date"
         "end-date"
         "event-times"
+        "event-aircon-toggle"
         "daily-schedule";
 
       > .event-name-field { grid-area: event-name; }
@@ -206,6 +207,7 @@ $orange-main: #F59E0B;
         flex-direction: column;
         gap: 1rem;
       }
+      > .event-aircon-toggle { grid-area: event-aircon-toggle; }
       > .event-daily-schedule { grid-area: daily-schedule; }
     }
   }
@@ -323,7 +325,7 @@ $orange-main: #F59E0B;
 
     .schedule-override-row {
       display: grid;
-      grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 0.7fr) auto;
+      grid-template-columns: minmax(0, 1fr) minmax(0, 0.7fr) minmax(0, 0.7fr) auto auto;
       align-items: end;
       gap: 0.75rem;
       min-width: 0;
@@ -365,6 +367,47 @@ $orange-main: #F59E0B;
           font-size: var(--font-small);
         }
       }
+
+      label.schedule-aircon-toggle {
+        flex-direction: row;
+        align-items: center;
+        min-width: max-content;
+      }
+    }
+
+    .schedule-aircon-toggle {
+      display: flex;
+      flex-direction: row;
+      align-items: center;
+      justify-content: flex-start;
+      gap: 0.45rem;
+      min-width: max-content;
+      color: $text-dark;
+      font-size: var(--font-small);
+      font-weight: 600;
+      cursor: pointer;
+
+      input {
+        width: 1rem;
+        height: 1rem;
+        margin: 0;
+        accent-color: $blue-main;
+        cursor: pointer;
+
+        &:disabled {
+          cursor: not-allowed;
+        }
+      }
+
+      span {
+        color: inherit;
+        font-size: inherit;
+      }
+    }
+
+    .facility-aircon-master-toggle {
+      width: fit-content;
+      padding: 0.25rem 0;
     }
 
     .schedule-day-remove {
@@ -1362,9 +1405,41 @@ $orange-main: #F59E0B;
         min-width: 0;
       }
 
+      .facility-aircon-master-toggle,
+      .facility-schedule-row .schedule-aircon-toggle {
+        display: flex;
+        flex-direction: row;
+        align-items: center;
+        justify-content: flex-start;
+        gap: 0.45rem;
+        color: $text-dark;
+        font-size: var(--font-small);
+        font-weight: 600;
+        cursor: pointer;
+
+        input {
+          width: 1rem;
+          height: 1rem;
+          min-height: 1rem;
+          margin: 0;
+          padding: 0;
+          accent-color: $blue-main;
+          cursor: pointer;
+
+          &:disabled {
+            cursor: not-allowed;
+          }
+        }
+      }
+
+      .facility-aircon-master-toggle {
+        width: fit-content;
+        padding: 0.25rem 0;
+      }
+
       .facility-schedule-row {
         display: grid;
-        grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr));
+        grid-template-columns: minmax(0, 0.8fr) repeat(2, minmax(0, 1fr)) auto;
         align-items: end;
         gap: 0.625rem;
         min-width: 0;
@@ -1410,6 +1485,17 @@ $orange-main: #F59E0B;
             color: $text-muted;
             font-size: var(--font-small);
           }
+        }
+
+        label.schedule-aircon-toggle {
+          flex-direction: row;
+          align-items: center;
+          min-width: max-content;
+        }
+
+        .schedule-aircon-toggle {
+          flex-direction: row;
+          align-items: center;
         }
       }
     }
@@ -1570,6 +1656,13 @@ $orange-main: #F59E0B;
       background: #F8FAFC; 
       cursor: pointer; 
       user-select: none;
+
+      &.default-aircon-toggle {
+        width: 100%;
+        margin-top: 0.625rem;
+        text-align: left;
+        font: inherit;
+      }
 
       .toggle-switch { 
         position: relative; 
@@ -2145,8 +2238,21 @@ $orange-main: #F59E0B;
         grid-template-areas:
           "event-name event-type"
           "start-date taken-schedules"
-          "end-date event-times"
+          "end-date event-start-time"
+          "event-aircon-toggle event-end-time"
           "daily-schedule daily-schedule";
+
+        > .event-time-fields {
+          display: contents;
+
+          > .input-group:first-child {
+            grid-area: event-start-time;
+          }
+
+          > .input-group:last-child {
+            grid-area: event-end-time;
+          }
+        }
       }
     }
 
@@ -2283,7 +2389,14 @@ $orange-main: #F59E0B;
       }
 
       .schedule-day-remove {
-        grid-column: 1 / -1;
+        grid-column: 2;
+        grid-row: 3;
+        justify-self: end;
+      }
+
+      .schedule-aircon-toggle {
+        grid-column: 1;
+        grid-row: 3;
       }
     }
 
@@ -2294,8 +2407,13 @@ $orange-main: #F59E0B;
         grid-column: 1 / -1;
       }
 
-      > label {
+      > label:not(.schedule-aircon-toggle) {
         width: 100%;
+      }
+
+      .schedule-aircon-toggle {
+        grid-column: 1 / -1;
+        grid-row: 3;
       }
 
       .reservation-time-picker {
@@ -2325,8 +2443,13 @@ $orange-main: #F59E0B;
         justify-self: end;
       }
 
-      > label {
+      > label:not(.schedule-aircon-toggle) {
         grid-row: 2;
+      }
+
+      .schedule-aircon-toggle {
+        grid-column: 1;
+        grid-row: 3;
       }
     }
 
@@ -2338,8 +2461,13 @@ $orange-main: #F59E0B;
         grid-column: 1 / -1;
       }
 
-      > label {
+      > label:not(.schedule-aircon-toggle) {
         width: 100%;
+      }
+
+      .schedule-aircon-toggle {
+        grid-column: 1 / -1;
+        grid-row: 3;
       }
 
       .reservation-time-picker {

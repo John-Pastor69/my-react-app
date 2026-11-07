@@ -2,6 +2,8 @@ import { jsPDF } from 'jspdf';
 import React, { useState, useEffect } from 'react';
 import { doc, getDoc, collection, onSnapshot, query, where, getDocs } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
+import AirconScheduleDisplay from '../components/AirconScheduleDisplay';
+import { getAirconScheduleDetails } from '../services/airconSchedule';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
@@ -536,9 +538,7 @@ const ReservationDetails = ({
   ));
   const canDownloadPdf = isApprovedStatus && (isPdfAdmin || isReservationOwner);
 
-  const airconDisplay = currentData.aircon 
-    ? "ON" + ((currentData.airconOnTime || currentData.airconOffTime) ? ` (${currentData.airconOnTime || '?'} - ${currentData.airconOffTime || '?'})` : "") 
-    : "OFF";
+  const airconSchedule = getAirconScheduleDetails(currentData, facilitiesMap);
 
   // --- PROGRAMMATIC VECTOR PDF GENERATOR ---
   const handleDownloadPDF = () => {
@@ -680,6 +680,78 @@ const ReservationDetails = ({
       });
     };
 
+    const drawAirconSchedule = () => {
+      checkPageBreak(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.2);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text('AIR CONDITIONING', margin, y);
+      y += 3.5;
+
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(15, 23, 42);
+      pdf.text(`Status: ${airconSchedule.enabled ? 'ON' : 'OFF'}`, margin, y);
+      y += 4;
+
+      airconSchedule.groups.forEach(({ name, entries }) => {
+        if (name) {
+          checkPageBreak(5);
+          pdf.setFont('helvetica', 'bold');
+          pdf.setFontSize(8.5);
+          pdf.setTextColor(30, 41, 59);
+          pdf.text(name, margin, y);
+          y += 3.5;
+        }
+
+        entries.forEach((entry) => {
+          const value = entry.date
+            ? `${entry.date}  |  ${entry.enabled ? `ON  ${entry.time}` : 'OFF'}`
+            : entry.time;
+          if (!value) return;
+
+          pdf.setFont('helvetica', 'normal');
+          pdf.setFontSize(8.5);
+          const lines = pdf.splitTextToSize(value, contentWidth - 3);
+          const lineHeight = 3.5;
+          checkPageBreak(lines.length * lineHeight + 1);
+          pdf.setTextColor(71, 85, 105);
+          pdf.text(lines, margin + 2, y);
+          y += lines.length * lineHeight + 1;
+        });
+      });
+
+      y += 1;
+    };
+
+    const drawParticipantBreakdown = () => {
+      if (participantBreakdown.length === 0) return;
+
+      checkPageBreak(10);
+      pdf.setFont('helvetica', 'bold');
+      pdf.setFontSize(7.2);
+      pdf.setTextColor(100, 116, 139);
+      pdf.text('PARTICIPANT BREAKDOWN', margin, y);
+      y += 3.8;
+
+      participantBreakdown.forEach(({ name, participants }) => {
+        pdf.setFont('helvetica', 'normal');
+        pdf.setFontSize(8.5);
+        const rowLines = pdf.splitTextToSize(
+          `${name} — ${participants} attendees`,
+          contentWidth
+        );
+        const lineHeight = 3.5;
+        const rowHeight = rowLines.length * lineHeight + 1.5;
+        checkPageBreak(rowHeight);
+
+        pdf.setTextColor(15, 23, 42);
+        pdf.text(rowLines, margin, y);
+        y += rowHeight;
+      });
+      y += 1;
+    };
+
     // 3. Section: Requestor Information
     drawSectionHeader('Requestor Information');
     drawGrid([
@@ -710,14 +782,9 @@ const ReservationDetails = ({
       { label: 'Time', value: eventTime.replace('–', '-') },
       { label: 'Expected Attendees', value: expectedAttendees }
     ];
-    if (participantBreakdown.length > 0) {
-      eventItems.push({
-        label: 'Participant Breakdown',
-        value: participantBreakdown.map(({ name, participants }) => `${name}: ${participants} attendees`).join('; ')
-      });
-    }
-    eventItems.push({ label: 'Event Description / Purpose', value: description });
     drawGrid(eventItems);
+    drawParticipantBreakdown();
+    drawGrid([{ label: 'Event Description / Purpose', value: description, span: 3 }]);
 
     // 6. Section: Facility & Equipment Details
     drawSectionHeader('Facility & Equipment Details');
@@ -726,10 +793,10 @@ const ReservationDetails = ({
       { label: 'Room Capacity', value: capacityDisplay },
       { label: 'Floor / Location', value: locationDisplay },
       { label: 'Specific Room', value: specificRoomDisplay },
-      { label: 'Air Conditioning', value: airconDisplay },
       { label: 'Utility Requested', value: utilityRequested },
       { label: 'Equipment Requested', value: equipmentRequested }
     ]);
+    drawAirconSchedule();
 
     // 7. Section: Approvals
     const approvalHistory = Array.isArray(currentData.historyLogs) ? currentData.historyLogs : [];
@@ -830,7 +897,7 @@ const ReservationDetails = ({
       <div className="main-content-grid">
         <div className="details-col">
           {/* Card 1: Event Information */}
-          <div className="card">
+          <div className="card event-info-card">
             <h3><span className="card-icon">📋</span> Event Information</h3>
             <div className="info-grid">
               <div>
@@ -883,7 +950,7 @@ const ReservationDetails = ({
           </div>
 
           {/* Card 2: Facility Details */}
-          <div className="card">
+          <div className="card facility-info-card">
             <h3><span className="card-icon">🏢</span> Facility Details</h3>
             <div className="info-grid">
               <div>
@@ -904,7 +971,7 @@ const ReservationDetails = ({
               </div>
               <div>
                 <label>AIR CONDITIONING</label>
-                <div className="val">{airconDisplay}</div>
+                <AirconScheduleDisplay reservation={currentData} facilities={facilitiesMap} />
               </div>
               <div className="equipment-requested-field">
                 <label>UTILITY REQUESTED</label>
@@ -919,7 +986,7 @@ const ReservationDetails = ({
 
           {/* Card 3: Requestor Information */}
           {showRequestorInfo && (
-            <div className="card">
+            <div className="card requestor-info-card">
               <h3><span className="card-icon">👤</span> Requestor Information</h3>
               <div className="info-grid people-info-grid">
                 <div>
@@ -954,7 +1021,7 @@ const ReservationDetails = ({
 
           {/* Card 4: Endorser Information (Conditional) */}
           {showRequestorInfo && hasEndorser && (
-            <div className="card">
+            <div className="card endorser-info-card">
               <div className="endorser-header-row">
                 <h3><span className="card-icon">🤵</span> Endorser Information</h3>
                 <span className="endorser-badge">Student Role Only</span>

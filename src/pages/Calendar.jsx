@@ -3,6 +3,7 @@ import { db, auth } from "../Firebase";
 import { collection, onSnapshot, doc, getDoc, writeBatch, setDoc, deleteDoc } from "firebase/firestore";
 import { useNavigate } from 'react-router-dom';
 import "../styles/Calendar.scss";
+import { getAirconScheduleSummary } from '../services/airconSchedule';
 import ReservationDetails from './ReservationDetails';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationEndReached } from '../services/reservationExpiration';
@@ -926,7 +927,7 @@ const Calendar = ({ currentUserRole }) => {
                       <div><div className="details-label">Facility Name</div><div className="details-value">{historySelectedRequest.facility || 'None'}</div></div>
                       <div><div className="details-label">Room Capacity</div><div className="details-value">{historySelectedRequest.fullData.capacity || 'N/A'}</div></div>
                       <div><div className="details-label">Floor / Location</div><div className="details-value">{historySelectedRequest.fullData.location || 'N/A'}</div></div>
-                      <div><div className="details-label">Air Conditioning</div><div className="details-value">{historySelectedRequest.fullData.aircon === true ? `ON${historySelectedRequest.fullData.airconOnTime || historySelectedRequest.fullData.airconOffTime ? ` (${historySelectedRequest.fullData.airconOnTime || '?'} - ${historySelectedRequest.fullData.airconOffTime || '?'})` : ''}` : (historySelectedRequest.fullData.aircon === false ? 'OFF' : 'N/A')}</div></div>
+                      <div><div className="details-label">Air Conditioning</div><div className="details-value">{getAirconScheduleSummary(historySelectedRequest.fullData, facilitiesMap)}</div></div>
                       <div className="details-full-width"><div className="details-label">Utility Requested</div><div className="details-value">{[
                         ...(Array.isArray(historySelectedRequest.fullData.selectedUtilities)
                           ? historySelectedRequest.fullData.selectedUtilities.map((id) => `${Number(historySelectedRequest.fullData.selectedUtilityUnits?.[id]) || 1}x ${utilitiesMap[id]?.name || id}`)

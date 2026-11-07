@@ -541,7 +541,9 @@ const Reservation = ({ currentUserRole }) => {
   const [startTime, setStartTime] = useState('');
   const [endTime, setEndTime] = useState('');
   const [dailyScheduleOverrides, setDailyScheduleOverrides] = useState({});
+  const [dailyAirconOverrides, setDailyAirconOverrides] = useState({});
   const [facilityScheduleOverrides, setFacilityScheduleOverrides] = useState({});
+  const [facilityAirconEnabled, setFacilityAirconEnabled] = useState({});
   const [expandedFacilitySchedules, setExpandedFacilitySchedules] = useState({});
   const [removedScheduleDates, setRemovedScheduleDates] = useState([]);
   const [isDailyScheduleExpanded, setIsDailyScheduleExpanded] = useState(false);
@@ -742,7 +744,8 @@ const Reservation = ({ currentUserRole }) => {
             return dateOrdinal === null ? [] : [{
               date: new Date(dateOrdinal * 86400000).toISOString().slice(0, 10),
               startTime: formatTimeForPicker(entry.startTime || ''),
-              endTime: formatTimeForPicker(entry.endTime || '')
+              endTime: formatTimeForPicker(entry.endTime || ''),
+              aircon: typeof entry.aircon === 'boolean' ? entry.aircon : undefined
             }];
           })
           : null;
@@ -822,6 +825,15 @@ const Reservation = ({ currentUserRole }) => {
             { startTime: dayStartTime, endTime: dayEndTime }
           ]))
           : {});
+        setDailyAirconOverrides(
+          reservation.dailyAirconOverrides && typeof reservation.dailyAirconOverrides === 'object'
+            ? reservation.dailyAirconOverrides
+            : normalizedSchedule
+              ? Object.fromEntries(normalizedSchedule
+                .filter((entry) => typeof entry.aircon === 'boolean')
+                .map((entry) => [entry.date, entry.aircon]))
+              : {}
+        );
         setFacilityScheduleOverrides(
           reservation.facilitySchedules && typeof reservation.facilitySchedules === 'object'
             ? Object.fromEntries(Object.entries(reservation.facilitySchedules)
@@ -830,15 +842,21 @@ const Reservation = ({ currentUserRole }) => {
                 facilityId,
                 Object.fromEntries(schedule.flatMap((entry) => {
                   const dateOrdinal = parseDateOrdinal(entry.date);
-                  return dateOrdinal === null ? [] : [[
-                    new Date(dateOrdinal * 86400000).toISOString().slice(0, 10),
-                    {
-                      startTime: formatTimeForPicker(entry.startTime || ''),
-                      endTime: formatTimeForPicker(entry.endTime || '')
-                    }
-                  ]];
+                  if (dateOrdinal === null) return [];
+                  const date = new Date(dateOrdinal * 86400000).toISOString().slice(0, 10);
+                  const savedOverride = reservation.facilityScheduleOverrides?.[facilityId]?.[date] || {};
+                  return [[date, {
+                    startTime: formatTimeForPicker(savedOverride.startTime || entry.startTime || ''),
+                    endTime: formatTimeForPicker(savedOverride.endTime || entry.endTime || ''),
+                    ...(typeof savedOverride.aircon === 'boolean' ? { aircon: savedOverride.aircon } : {})
+                  }]];
                 }))
               ]))
+            : {}
+        );
+        setFacilityAirconEnabled(
+          reservation.facilityAirconEnabled && typeof reservation.facilityAirconEnabled === 'object'
+            ? reservation.facilityAirconEnabled
             : {}
         );
         setRemovedScheduleDates(normalizedSchedule
@@ -914,8 +932,14 @@ const Reservation = ({ currentUserRole }) => {
             }
           ])));
         }
+        if (parsed.dailyAirconOverrides && typeof parsed.dailyAirconOverrides === 'object') {
+          setDailyAirconOverrides(parsed.dailyAirconOverrides);
+        }
         if (parsed.facilityScheduleOverrides && typeof parsed.facilityScheduleOverrides === 'object') {
           setFacilityScheduleOverrides(parsed.facilityScheduleOverrides);
+        }
+        if (parsed.facilityAirconEnabled && typeof parsed.facilityAirconEnabled === 'object') {
+          setFacilityAirconEnabled(parsed.facilityAirconEnabled);
         }
         if (Array.isArray(parsed.removedScheduleDates)) setRemovedScheduleDates(parsed.removedScheduleDates);
         if (parsed.selectedEquip) setSelectedEquip(parsed.selectedEquip);
@@ -943,7 +967,7 @@ const Reservation = ({ currentUserRole }) => {
   // Reset Draft toggle when form changes
   useEffect(() => {
     if (isDraftSaved) setIsDraftSaved(false);
-  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, facilityScheduleOverrides, removedScheduleDates, selectedEquip, selectedUtilities, selectedUtilityUnits, facilityParticipants]);
+  }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, dailyAirconOverrides, facilityScheduleOverrides, facilityAirconEnabled, removedScheduleDates, selectedEquip, selectedUtilities, selectedUtilityUnits, facilityParticipants]);
 
   // Automatically calculate `days` from `eventDate` and `endDateInput`
   useEffect(() => {
@@ -1077,16 +1101,20 @@ const Reservation = ({ currentUserRole }) => {
     .filter((date) => !removedScheduleDates.includes(date))
     .map((date) => ({
       date,
-      startTime: dailyScheduleOverrides[date]?.startTime ?? startTime,
-      endTime: dailyScheduleOverrides[date]?.endTime ?? endTime
+      startTime: dailyScheduleOverrides[date]?.startTime || startTime,
+      endTime: dailyScheduleOverrides[date]?.endTime || endTime,
+      aircon: aircon && (dailyAirconOverrides[date] ?? true)
     }));
   const facilitySchedules = Object.fromEntries(
     formData.facilities.map((facilityId) => [
       facilityId,
       dailySchedule.map((entry) => ({
         ...entry,
-        startTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.startTime ?? entry.startTime,
-        endTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.endTime ?? entry.endTime
+        startTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.startTime || entry.startTime,
+        endTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.endTime || entry.endTime,
+        aircon: entry.aircon
+          && (facilityAirconEnabled[facilityId] ?? true)
+          && (facilityScheduleOverrides[facilityId]?.[entry.date]?.aircon ?? true)
       }))
     ])
   );
@@ -1158,16 +1186,6 @@ const Reservation = ({ currentUserRole }) => {
   const isStartTimeValid = isWithinReservationHours(startTime);
   const isEndTimeValid = isWithinReservationHours(endTime)
     && (!startTime || (parseTimeToMinutes(endTime) ?? 0) > (parseTimeToMinutes(startTime) ?? 0));
-  const airconOnMinutes = parseTimeToMinutes(formData.airconOnTime);
-  const airconOffMinutes = parseTimeToMinutes(formData.airconOffTime);
-  const isAirconOnTimeValid = !aircon || (
-    isWithinReservationHours(formData.airconOnTime)
-    && (airconOffMinutes === null || airconOffMinutes > airconOnMinutes)
-  );
-  const isAirconOffTimeValid = !aircon || (
-    isWithinReservationHours(formData.airconOffTime)
-    && (airconOnMinutes === null || airconOffMinutes > airconOnMinutes)
-  );
   const totalScheduledHours = Math.round(reservationSchedule.reduce((total, entry) => {
     const start = parseTimeToMinutes(entry.startTime);
     const end = parseTimeToMinutes(entry.endTime);
@@ -1357,6 +1375,9 @@ const Reservation = ({ currentUserRole }) => {
         Object.entries(prev).filter(([facilityId]) => updatedFacilities.includes(facilityId))
       ));
       setFacilityScheduleOverrides((previous) => Object.fromEntries(
+        Object.entries(previous).filter(([facilityId]) => updatedFacilities.includes(facilityId))
+      ));
+      setFacilityAirconEnabled((previous) => Object.fromEntries(
         Object.entries(previous).filter(([facilityId]) => updatedFacilities.includes(facilityId))
       ));
       clearMissingField(getFacilityParticipantFieldKey(value));
@@ -1627,7 +1648,9 @@ const Reservation = ({ currentUserRole }) => {
       setStartTime('');
       setEndTime('');
       setDailyScheduleOverrides({});
+      setDailyAirconOverrides({});
       setFacilityScheduleOverrides({});
+      setFacilityAirconEnabled({});
       setRemovedScheduleDates([]);
     }
     setDateError('');
@@ -1637,6 +1660,8 @@ const Reservation = ({ currentUserRole }) => {
     setSelectedScheduleId('');
     setParticipantPromptFacilityId(null);
     setAircon(false);
+    setDailyAirconOverrides({});
+    setFacilityAirconEnabled({});
     setSelectedEquip({});
     setSelectedUtilities([]);
     setSelectedUtilityUnits({});
@@ -1657,7 +1682,9 @@ const Reservation = ({ currentUserRole }) => {
       startTime,
       endTime,
       dailyScheduleOverrides,
+      dailyAirconOverrides,
       facilityScheduleOverrides,
+      facilityAirconEnabled,
       removedScheduleDates,
       selectedEquip,
       selectedUtilities,
@@ -1758,10 +1785,6 @@ const Reservation = ({ currentUserRole }) => {
         missing: facilityScheduleErrors[facilityId]
       })),
       { key: 'purpose', missing: !formData.purpose.trim() },
-      ...(aircon ? [
-        { key: 'airconOnTime', missing: !isAirconOnTimeValid },
-        { key: 'airconOffTime', missing: !isAirconOffTimeValid }
-      ] : [])
     ];
 
     const newMissing = {};
@@ -1835,15 +1858,6 @@ const Reservation = ({ currentUserRole }) => {
       setCustomAlert({
         title: 'Invalid Time Range',
         message: 'Reservations must start and end between 7:00 AM and 10:00 PM, and the end time must be later than the start time on the same day.',
-        isSuccess: false
-      });
-      return;
-    }
-
-    if (aircon && !isValidReservationTimeRange(formData.airconOnTime, formData.airconOffTime)) {
-      setCustomAlert({
-        title: 'Invalid Aircon Time Range',
-        message: 'Aircon must turn on and off between 7:00 AM and 10:00 PM, with the off time later than the on time on the same day.',
         isSuccess: false
       });
       return;
@@ -2008,12 +2022,29 @@ const Reservation = ({ currentUserRole }) => {
           : latestDailySchedule).map((entry) => ({
           date: entry.date,
           startTime: formatTimeForStorage(entry.startTime),
-          endTime: formatTimeForStorage(entry.endTime)
+          endTime: formatTimeForStorage(entry.endTime),
+          aircon: Boolean(entry.aircon),
+          airconOnTime: entry.aircon ? formatTimeForStorage(entry.startTime) : '',
+          airconOffTime: entry.aircon ? formatTimeForStorage(entry.endTime) : ''
         })),
-        facilitySchedules: latestFacilitySchedules,
+        facilitySchedules: Object.fromEntries(
+          Object.entries(latestFacilitySchedules).map(([facilityId, schedule]) => [
+            facilityId,
+            schedule.map((entry) => ({
+              ...entry,
+              airconOnTime: entry.aircon ? formatTimeForStorage(entry.startTime) : '',
+              airconOffTime: entry.aircon ? formatTimeForStorage(entry.endTime) : ''
+            }))
+          ])
+        ),
         durationHours,
         days,
         aircon,
+        airconOnTime: aircon ? formatTimeForStorage(startTime) : '',
+        airconOffTime: aircon ? formatTimeForStorage(endTime) : '',
+        dailyAirconOverrides,
+        facilityScheduleOverrides,
+        facilityAirconEnabled,
         selectedEquip,
         selectedUtilities,
         selectedUtilityUnits,
@@ -2120,6 +2151,7 @@ const Reservation = ({ currentUserRole }) => {
         dailyScheduleOverrides: Object.fromEntries(
           Object.entries(dailyScheduleOverrides).map(([date, schedule]) => [date, { ...schedule }])
         ),
+        dailyAirconOverrides: { ...dailyAirconOverrides },
         removedScheduleDates: [...removedScheduleDates],
         selectedScheduleId
       };
@@ -2586,6 +2618,18 @@ const Reservation = ({ currentUserRole }) => {
                           className={`facility-schedule ${missingFields[facilityScheduleFieldKey] ? 'field-missing' : ''}`}
                           ref={(element) => { fieldRefs.current[facilityScheduleFieldKey] = element; }}
                         >
+                          <label className="schedule-aircon-toggle facility-aircon-master-toggle">
+                            <input
+                              type="checkbox"
+                              checked={aircon && (facilityAirconEnabled[item.id] ?? true)}
+                              disabled={!aircon}
+                              onChange={(event) => setFacilityAirconEnabled((previous) => ({
+                                ...previous,
+                                [item.id]: event.target.checked
+                              }))}
+                            />
+                            <span>Aircon for this facility</span>
+                          </label>
                           <button
                             type="button"
                             className="facility-schedule-toggle"
@@ -2610,7 +2654,7 @@ const Reservation = ({ currentUserRole }) => {
                               {facilitySchedules[item.id]?.length ? (
                                 <>
                                   <span className="helper-text">
-                                    Times for this facility can differ from other selected facilities.
+                                    Times for this facility can differ from other selected facilities. Aircon follows these times for each date.
                                   </span>
                                   <div className="facility-schedule-list">
                                     {facilitySchedules[item.id].map((entry) => {
@@ -2664,6 +2708,26 @@ const Reservation = ({ currentUserRole }) => {
                                                 clearMissingField(facilityScheduleFieldKey);
                                               }}
                                             />
+                                          </label>
+                                          <label className="schedule-aircon-toggle">
+                                            <input
+                                              type="checkbox"
+                                              checked={entry.aircon}
+                                              disabled={!aircon
+                                                || !(facilityAirconEnabled[item.id] ?? true)
+                                                || !(dailyAirconOverrides[entry.date] ?? true)}
+                                              onChange={(event) => setFacilityScheduleOverrides((previous) => ({
+                                                ...previous,
+                                                [item.id]: {
+                                                  ...previous[item.id],
+                                                  [entry.date]: {
+                                                    ...previous[item.id]?.[entry.date],
+                                                    aircon: event.target.checked
+                                                  }
+                                                }
+                                              }))}
+                                            />
+                                            <span>Aircon</span>
                                           </label>
                                         </div>
                                       );
@@ -2924,80 +2988,6 @@ const Reservation = ({ currentUserRole }) => {
         </div>
       </div>
 
-      <div className="form-card air-conditioning-card">
-        <div className="section-header">Air Conditioning</div>
-        <div className="aircon-controls">
-
-          <div className="aircon-inputs-row">
-            <div className={`toggle-box ${aircon ? 'is-enabled' : 'is-disabled'}`} onClick={() => setAircon(!aircon)}>
-              <div className="toggle-switch">
-                <div className="toggle-knob"></div>
-              </div>
-              <div>
-                <strong>Aircon {aircon ? 'Enabled' : 'Disabled'}</strong>
-                <span>Click to toggle</span>
-              </div>
-            </div>
-
-            <div className="time-inputs">
-              <div
-                className={`input-group ${missingFields.airconOnTime ? 'field-missing' : ''}`}
-                ref={el => fieldRefs.current.airconOnTime = el}
-              >
-                <label>Aircon ON Time {aircon && <span className="req">*</span>}</label>
-                <ReservationTimePicker
-                  value={formData.airconOnTime}
-                  label="Aircon ON time"
-                  disabled={!aircon}
-                  invalid={Boolean(missingFields.airconOnTime || (formData.airconOnTime && !isAirconOnTimeValid))}
-                  onChange={(value) => {
-                    setFormData((previous) => ({
-                      ...previous,
-                      airconOnTime: formatTimeForStorage(value)
-                    }));
-                    clearMissingField('airconOnTime');
-                  }}
-                />
-                {aircon && formData.airconOnTime && !isAirconOnTimeValid && (
-                  <span className="field-error">Choose an ON time between 7:00 AM and 10:00 PM, earlier than the OFF time.</span>
-                )}
-              </div>
-              <i className="ph ph-arrow-right arrow"></i>
-
-              <div
-                className={`input-group ${missingFields.airconOffTime ? 'field-missing' : ''}`}
-                ref={el => fieldRefs.current.airconOffTime = el}
-              >
-                <label>Aircon OFF Time {aircon && <span className="req">*</span>}</label>
-                <ReservationTimePicker
-                  value={formData.airconOffTime}
-                  label="Aircon OFF time"
-                  disabled={!aircon}
-                  defaultTime="22:00"
-                  invalid={Boolean(missingFields.airconOffTime || (formData.airconOffTime && !isAirconOffTimeValid))}
-                  onChange={(value) => {
-                    setFormData((previous) => ({
-                      ...previous,
-                      airconOffTime: formatTimeForStorage(value)
-                    }));
-                    clearMissingField('airconOffTime');
-                  }}
-                />
-                {aircon && formData.airconOffTime && !isAirconOffTimeValid && (
-                  <span className="field-error">Choose an OFF time between 7:00 AM and 10:00 PM, later than the ON time.</span>
-                )}
-              </div>
-            </div>
-          </div>
-
-          <div className="info-box blue aircon-note">
-            <i className="ph ph-info"></i>
-            <div>Aircon will be scheduled based on approved timing. Choose times between 7:00 AM and 10:00 PM.</div>
-          </div>
-
-        </div>
-      </div>
-
       {/* Event Information */}
       <div className="form-card event-information-card">
         <div className="section-header">
@@ -3219,6 +3209,23 @@ const Reservation = ({ currentUserRole }) => {
             </div>
           </div>
 
+          <div className="aircon-controls event-aircon-toggle">
+            <button
+              type="button"
+              className={`toggle-box default-aircon-toggle ${aircon ? 'is-enabled' : 'is-disabled'}`}
+              onClick={() => setAircon((enabled) => !enabled)}
+              aria-pressed={aircon}
+            >
+              <div className="toggle-switch" aria-hidden="true">
+                <div className="toggle-knob"></div>
+              </div>
+              <div className="toggle-copy">
+                <strong>Aircon {aircon ? 'Enabled' : 'Disabled'}</strong>
+                <span>{aircon ? 'Uses each scheduled start and end time' : 'Click to enable aircon'}</span>
+              </div>
+            </button>
+          </div>
+
           <div
             className={`input-group full-width schedule-override-group event-daily-schedule ${missingFields.schedule ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.schedule = el}
@@ -3297,6 +3304,18 @@ const Reservation = ({ currentUserRole }) => {
                               clearMissingField('schedule');
                             }}
                           />
+                        </label>
+                        <label className="schedule-aircon-toggle">
+                          <input
+                            type="checkbox"
+                            checked={entry.aircon}
+                            disabled={!aircon}
+                            onChange={(event) => setDailyAirconOverrides((overrides) => ({
+                              ...overrides,
+                              [entry.date]: event.target.checked
+                            }))}
+                          />
+                          <span>Aircon</span>
                         </label>
                         <button
                           type="button"
@@ -3459,6 +3478,7 @@ const Reservation = ({ currentUserRole }) => {
                     setEndDateInput(retainedScheduleData.endDateInput);
                     setDays(retainedScheduleData.days);
                     setDailyScheduleOverrides(retainedScheduleData.dailyScheduleOverrides);
+                    setDailyAirconOverrides(retainedScheduleData.dailyAirconOverrides);
                     setRemovedScheduleDates(retainedScheduleData.removedScheduleDates);
                     setSelectedScheduleId(retainedScheduleData.selectedScheduleId);
                     setStartTime('');

@@ -27,7 +27,7 @@ export const sendReservationEmail = async (userEmail, userName, resData, notific
 */
 
 // Change this to true when you actually want to send emails
-const SEND_EMAILS = false;
+const SEND_EMAILS = true;
 
 export const sendReservationEmail = async (
     userEmail,

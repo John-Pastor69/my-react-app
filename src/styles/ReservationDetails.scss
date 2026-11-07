@@ -326,8 +326,15 @@ $danger-red: #ef4444;
 
   /* Left Column Forms */
   .details-col {
+    display: flex;
+    flex-direction: column;
     width: 100%;
     min-width: 0;
+
+    .requestor-info-card { order: 1; }
+    .endorser-info-card { order: 2; }
+    .event-info-card { order: 3; }
+    .facility-info-card { order: 4; }
 
     .info-grid {
       display: flex;

@@ -1,16 +1,28 @@
-# React + Vite
+# STI Global Reservation System
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+This project is a web-based facility reservation and approval system for STI Global. It supports users submitting room and facility requests, approvers reviewing requests, and administrators managing facilities, equipment, utilities, and user records.
 
-Currently, two official plugins are available:
+## Quick links
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
+- [User guide](./docs/user-guide.md)
+- [Project docs](./docs)
 
-## React Compiler
+## Features
 
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
+- Reservation creation with facility, equipment, and utility selection
+- Real-time conflict checks and availability validation
+- Approval workflow with role-based processing
+- Calendar and schedule viewing
+- Account management, email verification, and optional 2FA
+- Facility, equipment, and user administration for authorized roles
 
-## Expanding the Oxlint configuration
+## Getting started
 
-If you are developing a production application, we recommend using TypeScript with type-aware lint rules enabled. Check out the [TS template](https://github.com/vitejs/vite/tree/main/packages/create-vite/template-react-ts) for information on how to integrate TypeScript and Oxlint's TypeScript related rules in your project.
+1. Install dependencies with `npm install`.
+2. Start the app with `npm run dev`.
+3. Open the local Vite URL shown in the terminal.
+4. Sign in with an approved account or create a new account.
+
+## Documentation
+
+The full user guide is available in [docs/user-guide.md](./docs/user-guide.md). It covers login, account setup, reservation flow, admin tools, and troubleshooting.
