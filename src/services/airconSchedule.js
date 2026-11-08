@@ -13,12 +13,83 @@ const formatDate = (value) => {
     });
 };
 
-const formatEntry = (entry) => (
-  `${formatDate(entry.date)} (${formatTimeRange(
-    entry.airconOnTime || entry.startTime,
-    entry.airconOffTime || entry.endTime
-  )})`
-);
+const getDateOrdinal = (value) => {
+  const match = String(value || '').match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!match) return null;
+
+  const [, year, month, day] = match.map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  if (
+    date.getUTCFullYear() !== year
+    || date.getUTCMonth() !== month - 1
+    || date.getUTCDate() !== day
+  ) return null;
+  return Math.floor(date.getTime() / 86_400_000);
+};
+
+const formatDateRange = (startValue, endValue) => {
+  if (startValue === endValue) return formatDate(startValue);
+
+  const [, startYear, startMonth, startDay] = startValue.match(/^(\d{4})-(\d{2})-(\d{2})$/).map(Number);
+  const [, endYear, endMonth, endDay] = endValue.match(/^(\d{4})-(\d{2})-(\d{2})$/).map(Number);
+  const start = new Date(Date.UTC(startYear, startMonth - 1, startDay));
+  const end = new Date(Date.UTC(endYear, endMonth - 1, endDay));
+  const monthFormatter = new Intl.DateTimeFormat('en-US', { month: 'short', timeZone: 'UTC' });
+  const startMonthName = monthFormatter.format(start);
+  const endMonthName = monthFormatter.format(end);
+
+  if (startYear === endYear && startMonth === endMonth) {
+    return `${startMonthName} ${startDay}–${endDay}, ${startYear}`;
+  }
+  if (startYear === endYear) {
+    return `${startMonthName} ${startDay} – ${endMonthName} ${endDay}, ${startYear}`;
+  }
+  return `${formatDate(startValue)} – ${formatDate(endValue)}`;
+};
+
+const formatScheduleEntries = (schedule) => {
+  const entries = schedule
+    .filter((entry) => typeof entry.aircon === 'boolean' && entry.aircon)
+    .map((entry) => ({
+      date: entry.date,
+      dateOrdinal: getDateOrdinal(entry.date),
+      time: formatTimeRange(
+        entry.airconOnTime || entry.startTime,
+        entry.airconOffTime || entry.endTime
+      ),
+      enabled: true
+    }));
+  const groupedEntries = [];
+
+  entries.forEach((entry) => {
+    const previous = groupedEntries[groupedEntries.length - 1];
+    if (
+      previous
+      && entry.dateOrdinal !== null
+      && previous.endDateOrdinal !== null
+      && entry.dateOrdinal === previous.endDateOrdinal + 1
+      && entry.time === previous.time
+    ) {
+      previous.endDate = entry.date;
+      previous.endDateOrdinal = entry.dateOrdinal;
+      return;
+    }
+
+    groupedEntries.push({
+      ...entry,
+      endDate: entry.date,
+      endDateOrdinal: entry.dateOrdinal
+    });
+  });
+
+  return groupedEntries.map((entry) => ({
+    date: entry.dateOrdinal === null || entry.endDateOrdinal === null
+      ? formatDate(entry.date)
+      : formatDateRange(entry.date, entry.endDate),
+    time: entry.time,
+    enabled: entry.enabled
+  }));
+};
 
 export const getAirconScheduleDetails = (reservation, facilities = {}) => {
   const facilitySchedules = reservation.facilitySchedules
@@ -31,17 +102,7 @@ export const getAirconScheduleDetails = (reservation, facilities = {}) => {
 
   if (hasFacilityAirconSchedule) {
     const groups = facilitySchedules.flatMap(([facilityId, schedule], index) => {
-      const entries = schedule
-        .filter((entry) => typeof entry.aircon === 'boolean')
-        .filter((entry) => entry.aircon)
-        .map((entry) => ({
-          date: formatDate(entry.date),
-          time: formatTimeRange(
-            entry.airconOnTime || entry.startTime,
-            entry.airconOffTime || entry.endTime
-          ),
-          enabled: true
-        }));
+      const entries = formatScheduleEntries(schedule);
       if (entries.length === 0) return [];
 
       return [{
@@ -57,17 +118,7 @@ export const getAirconScheduleDetails = (reservation, facilities = {}) => {
 
   const schedule = Array.isArray(reservation.schedule) ? reservation.schedule : [];
   if (schedule.some((entry) => typeof entry.aircon === 'boolean')) {
-    const entries = schedule
-      .filter((entry) => typeof entry.aircon === 'boolean')
-      .filter((entry) => entry.aircon)
-      .map((entry) => ({
-        date: formatDate(entry.date),
-        time: formatTimeRange(
-          entry.airconOnTime || entry.startTime,
-          entry.airconOffTime || entry.endTime
-        ),
-        enabled: true
-      }));
+    const entries = formatScheduleEntries(schedule);
     return {
       enabled: entries.some((entry) => entry.enabled),
       groups: [{ name: '', entries }]

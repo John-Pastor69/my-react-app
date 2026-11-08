@@ -68,6 +68,52 @@ test('returns facility-grouped aircon details for readable views and exports', (
   });
 });
 
+test('condenses consecutive dates with matching hours into a single range', () => {
+  const reservation = {
+    facilitySchedules: {
+      hall: [
+        { date: '2026-11-09', startTime: '07:00 AM', endTime: '10:00 PM', aircon: true },
+        { date: '2026-11-10', startTime: '07:00 AM', endTime: '10:00 PM', aircon: true },
+        { date: '2026-11-11', startTime: '07:00 AM', endTime: '10:00 PM', aircon: true }
+      ]
+    }
+  };
+  const facilities = { hall: { name: 'Dance Studio' } };
+
+  assert.deepEqual(getAirconScheduleDetails(reservation, facilities), {
+    enabled: true,
+    groups: [{
+      name: 'Dance Studio',
+      entries: [{
+        date: 'Nov 9–11, 2026',
+        time: '7:00 AM – 10:00 PM',
+        enabled: true
+      }]
+    }]
+  });
+  assert.equal(
+    getAirconScheduleSummary(reservation, facilities),
+    'ON — Dance Studio: Nov 9–11, 2026 (7:00 AM – 10:00 PM)'
+  );
+});
+
+test('keeps schedule ranges separate when dates have gaps or hours differ', () => {
+  const details = getAirconScheduleDetails({
+    schedule: [
+      { date: '2026-11-09', startTime: '07:00 AM', endTime: '10:00 PM', aircon: true },
+      { date: '2026-11-10', startTime: '07:00 AM', endTime: '10:00 PM', aircon: true },
+      { date: '2026-11-11', startTime: '08:00 AM', endTime: '10:00 PM', aircon: true },
+      { date: '2026-11-13', startTime: '08:00 AM', endTime: '10:00 PM', aircon: true }
+    ]
+  });
+
+  assert.deepEqual(details.groups[0].entries.map(({ date, time }) => ({ date, time })), [
+    { date: 'Nov 9–10, 2026', time: '7:00 AM – 10:00 PM' },
+    { date: 'Nov 11, 2026', time: '8:00 AM – 10:00 PM' },
+    { date: 'Nov 13, 2026', time: '8:00 AM – 10:00 PM' }
+  ]);
+});
+
 test('summarizes a reservation with all per-date aircon disabled as off', () => {
   assert.equal(getAirconScheduleSummary({
     aircon: true,

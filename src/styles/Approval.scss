@@ -394,6 +394,12 @@ $blue: #3b82f6;
       white-space: nowrap;
       text-overflow: ellipsis;
     }
+
+    .request-resource-details {
+      margin-top: 0.2rem;
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
   }
 
   // --- Buttons ---

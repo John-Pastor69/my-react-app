@@ -74,14 +74,22 @@ const Schedule = ({ currentUserRole = '' }) => {
         submitDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
       }
 
-      let equipCount = 0;
-      if (res.selectedEquip) {
-        equipCount = Object.values(res.selectedEquip).filter(val => Number(val) > 0).length;
-      }
-      const facCount = (res.facilities || []).length;
-      let reqSubtext = '';
-      if (facCount > 0 || equipCount > 0) reqSubtext = `${facCount} Facility, ${equipCount} Equipment`;
-      else reqSubtext = 'No items requested';
+      const equipmentCount = Object.values(res.selectedEquip || {})
+        .filter((quantity) => Number(quantity) > 0).length
+        + (typeof res.otherEquipment === 'string' && res.otherEquipment.trim() ? 1 : 0);
+      const facilityCount = (Array.isArray(res.facilities) ? res.facilities.length : 0)
+        + (typeof res.specificRoom === 'string' && res.specificRoom.trim() ? 1 : 0);
+      const utilityCount = (Array.isArray(res.selectedUtilities) ? res.selectedUtilities : [])
+        .filter((utilityId) => Number(res.selectedUtilityUnits?.[utilityId] ?? 1) > 0).length
+        + (typeof res.otherUtility === 'string' && res.otherUtility.trim() ? 1 : 0);
+      const requestedResources = [
+        facilityCount > 0 && `${facilityCount} ${facilityCount === 1 ? 'Facility' : 'Facilities'}`,
+        equipmentCount > 0 && `${equipmentCount} Equipment item${equipmentCount === 1 ? '' : 's'}`,
+        utilityCount > 0 && `${utilityCount} ${utilityCount === 1 ? 'Utility' : 'Utilities'}`
+      ].filter(Boolean);
+      const reqSubtext = requestedResources.length
+        ? requestedResources.join(', ')
+        : 'No items requested';
 
       const icons = ['icon-blue', 'icon-purple', 'icon-yellow', 'icon-green', 'icon-pink'];
       const iconClass = icons[index % icons.length];

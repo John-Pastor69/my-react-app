@@ -12,6 +12,7 @@ $green-light: #D1FAE5;
 $red-main: #DC2626;
 $red-light: #FEE2E2;
 $charcoal: #364152;
+$expired-color: #526174;
 
 .calendar-page-container { 
   display: flex;
@@ -148,7 +149,7 @@ $charcoal: #364152;
       .dot-green { background: $green-main; }
       .dot-red { background: $red-main; }
       .dot-gray { background: #94A3B8; }
-      .dot-charcoal { background: $charcoal; }
+      .dot-charcoal { background: $expired-color; }
     }
   }
 }
@@ -238,7 +239,7 @@ $charcoal: #364152;
         &.status-rejected { background: $red-light; color: $red-main; }
         &.status-cancelled { background: #F1F5F9; color: #64748B; }
         &.status-pending { background: $yellow-light; color: $yellow-main; }
-        &.status-expired { background: $charcoal; color: #FFFFFF; }
+        &.status-expired { background: $expired-color; color: #FFFFFF; }
       }
 
       .item-actions {
@@ -341,10 +342,10 @@ $charcoal: #364152;
       &.pill-red { border-left-color: $red-main; color: $text-dark; }
       &.pill-gray { border-left-color: #94A3B8; color: #64748B; }
       &.pill-charcoal {
-        border-left-color: $charcoal;
-        background: $charcoal;
+        border-left-color: $expired-color;
+        background: $expired-color;
         color: #FFFFFF;
-        &:hover, &:active { background: $charcoal !important; }
+        &:hover, &:active { background: $expired-color !important; }
       }
     }
   }
@@ -690,10 +691,10 @@ $charcoal: #364152;
           &:hover, &:active { background: #F1F5F9 !important; }
         }
         &.pill-charcoal {
-          background: $charcoal;
-          border-left-color: $charcoal;
+          background: $expired-color;
+          border-left-color: $expired-color;
           color: #FFFFFF;
-          &:hover, &:active { background: $charcoal !important; }
+          &:hover, &:active { background: $expired-color !important; }
         }
       }
     }

@@ -203,9 +203,20 @@ const Approval = ({ currentUserRole = '' }) => {
             equipCount = Object.values(res.selectedEquip).filter(val => Number(val) > 0).length;
         }
         const facCount = (res.facilities || []).length;
-        let reqSubtext = '';
-        if (facCount > 0 || equipCount > 0) reqSubtext = `${facCount} Facility, ${equipCount} Equipment`;
-        else reqSubtext = 'No items requested';
+        const resourceDetails = [
+            res.specificRoom?.trim() && `Specific room: ${res.specificRoom.trim()}`,
+            typeof res.otherEquipment === 'string'
+                && res.otherEquipment.trim()
+                && `Other equipment: ${res.otherEquipment.trim()}${Number(res.otherEquipmentUnits) > 0 ? ` (${res.otherEquipmentUnits} units)` : ''}`,
+            typeof res.otherUtility === 'string'
+                && res.otherUtility.trim()
+                && `Other utility: ${res.otherUtility.trim()}${Number(res.otherUtilityUnits) > 0 ? ` (${res.otherUtilityUnits} units)` : ''}`
+        ].filter(Boolean).join(' · ');
+        const reqSubtext = facCount > 0 || equipCount > 0
+            ? `${facCount} Facility, ${equipCount} Equipment`
+            : resourceDetails
+                ? 'Other resources requested'
+                : 'No items requested';
 
         let displayRole = 'Requestor';
         if (requestor.role) {
@@ -282,6 +293,7 @@ const Approval = ({ currentUserRole = '' }) => {
             refNo: String(res.refNo || ''),
             event: res.eventName || 'Untitled Event',
             equip: reqSubtext,
+            resourceDetails,
             submit: submitDate,
             name: cleanName,
             role: displayRole,
@@ -392,6 +404,9 @@ const Approval = ({ currentUserRole = '' }) => {
                                                 {request.userActionStatus === 'your-turn' && <span className="status-dot pending" title="Your Turn to Approve"></span>}
                                             </strong>
                                             <p>Submitted {request.submit} · {request.equip}</p>
+                                            {request.resourceDetails && (
+                                                <p className="request-resource-details">{request.resourceDetails}</p>
+                                            )}
                                         </div>
                                     </div>
 

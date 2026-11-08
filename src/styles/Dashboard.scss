@@ -1017,6 +1017,10 @@ main,
     padding: 1rem;
   }
 
+  .reservations-trend-panel {
+    align-self: start;
+  }
+
   .panel-heading {
     margin-bottom: 1rem;
   }
@@ -1511,7 +1515,7 @@ main,
   .resource-stat-copy {
     display: flex;
     min-width: 0;
-    flex-direction: column;
+    align-items: baseline;
     gap: 0.25rem;
 
     > span,
@@ -1672,6 +1676,19 @@ main,
       transform: translateY(-1px);
       border-color: #cbd7ff;
       box-shadow: 0 0.35rem 1rem rgba(35, 69, 150, 0.08);
+    }
+  }
+
+  .equipment-history-row-clickable {
+    width: 100%;
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+
+    &:focus-visible {
+      outline: 2px solid $blue;
+      outline-offset: 2px;
     }
   }
 

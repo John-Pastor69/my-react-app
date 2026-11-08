@@ -52,6 +52,9 @@ const TopBar = ({ toggleSidebar, userRole }) => {
   
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
+  const [equipmentData, setEquipmentData] = useState([]);
+  const [utilitiesData, setUtilitiesData] = useState([]);
+  const [facilitiesData, setFacilitiesData] = useState([]);
   const [usersData, setUsersData] = useState([]);
   const [superUsersData, setSuperUsersData] = useState([]);
   const [pendingProfilesData, setPendingProfilesData] = useState([]);
@@ -87,9 +90,30 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     const query = globalSearchQuery.trim().toLowerCase();
     if (query.length < 2) return { users: [], reservations: [] };
 
+    const equipmentById = new Map(equipmentData.map((item) => [item.id, item]));
+    const utilitiesById = new Map(utilitiesData.map((item) => [item.id, item]));
+    const facilitiesById = new Map(facilitiesData.map((item) => [item.id, item]));
     const reservations = [...new Map(
       [...historyData, ...reservationsData].map((reservation) => [reservation.id, reservation])
     ).values()].filter((reservation) => {
+      const facilityValues = (reservation.facilities || []).flatMap((id) => [
+        id,
+        facilitiesById.get(id)?.name || ''
+      ]);
+      const equipmentValues = Object.entries(reservation.selectedEquip || {})
+        .filter(([, quantity]) => Number(quantity) > 0)
+        .flatMap(([id, quantity]) => [
+          id,
+          equipmentById.get(id)?.name || '',
+          quantity
+        ]);
+      const utilityValues = (Array.isArray(reservation.selectedUtilities)
+        ? reservation.selectedUtilities
+        : []).flatMap((id) => [
+        id,
+        utilitiesById.get(id)?.name || '',
+        reservation.selectedUtilityUnits?.[id] ?? 1
+      ]);
       const searchableText = [
         reservation.refNo,
         reservation.eventName,
@@ -106,6 +130,12 @@ const TopBar = ({ toggleSidebar, userRole }) => {
         reservation.status,
         reservation.purpose,
         reservation.eventType,
+        reservation.specificRoom,
+        reservation.otherEquipment,
+        reservation.otherUtility,
+        ...facilityValues,
+        ...equipmentValues,
+        ...utilityValues,
         JSON.stringify(reservation)
       ].filter(Boolean).join(' ').toLowerCase();
       return searchableText.includes(query);
@@ -122,7 +152,16 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       : [];
 
     return { users, reservations };
-  }, [globalSearchQuery, historyData, reservationsData, usersData, canSearchUsers]);
+  }, [
+    globalSearchQuery,
+    historyData,
+    reservationsData,
+    usersData,
+    equipmentData,
+    utilitiesData,
+    facilitiesData,
+    canSearchUsers
+  ]);
   const openDashboardSearch = () => {
     const query = globalSearchQuery.trim();
     if (!query || !canOpenDashboardSearch) return;
@@ -251,12 +290,24 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     const unsubSuperUsers = onSnapshot(collection(db, 'super_users'), (snapshot) => {
       setSuperUsersData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
     });
+    const unsubEquipment = onSnapshot(collection(db, 'equipments'), (snapshot) => {
+      setEquipmentData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    const unsubUtilities = onSnapshot(collection(db, 'utilities'), (snapshot) => {
+      setUtilitiesData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
+    const unsubFacilities = onSnapshot(collection(db, 'facilities'), (snapshot) => {
+      setFacilitiesData(snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() })));
+    });
 
     return () => {
       unsubRes();
       unsubHistory();
       unsubUsers();
       unsubSuperUsers();
+      unsubEquipment();
+      unsubUtilities();
+      unsubFacilities();
     };
   }, [currentUser]);
 
