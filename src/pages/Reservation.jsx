@@ -2766,7 +2766,9 @@ const Reservation = ({ currentUserRole }) => {
                             <span className="field-error">
                               {limits.min !== null && Number(facilityParticipants[item.id]) < limits.min
                                 ? `Enter at least ${limits.min} participants.`
-                                : `Enter no more than ${displayCapacityLeft} participants.`}
+                                : availability.hasUnknownCapacity
+                                ? 'Capacity cannot be verified for this time.'
+                                : `Enter no more than ${availability.availableCapacity} participants for this schedule.`}
                             </span>
                           )}
                           {missingFields[participantFieldKey] && (
@@ -3224,6 +3226,7 @@ const Reservation = ({ currentUserRole }) => {
           <div
             className={`input-group full-width schedule-override-group event-daily-schedule ${missingFields.schedule ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.schedule = el}
+            hidden={dailySchedule.length === 1}
           >
             <button
               type="button"

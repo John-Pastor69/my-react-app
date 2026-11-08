@@ -626,6 +626,10 @@ $orange-main: #F59E0B;
     flex-direction: column; 
     gap: 0.4375rem;
 
+    &[hidden] {
+      display: none;
+    }
+
     select.requestor-dropdown-select {
       appearance: none;
       -webkit-appearance: none;
