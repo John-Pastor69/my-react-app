@@ -1,4 +1,6 @@
 import emailjs from '@emailjs/browser';
+const EMAILJS_ENABLED = false;
+
 /*
 export const sendReservationEmail = async (userEmail, userName, resData, notificationMessage) => {
   try {
@@ -32,6 +34,8 @@ export const sendReservationEmail = async (
     resData,
     notificationMessage
 ) => {
+    if (!EMAILJS_ENABLED) return;
+
     try {
         const templateParams = {
             to_email: userEmail,

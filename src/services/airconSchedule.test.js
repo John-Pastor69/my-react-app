@@ -34,17 +34,17 @@ test('summarizes enabled aircon schedules by facility and date', () => {
 
   assert.equal(
     summary,
-    'ON — Main Hall: Nov 8, 2026 (9:00 AM – 12:00 PM), Nov 9, 2026 (OFF); Computer Lab: Nov 8, 2026 (1:00 PM – 3:00 PM)'
+    'ON — Main Hall: Nov 8, 2026 (9:00 AM – 12:00 PM); Computer Lab: Nov 8, 2026 (1:00 PM – 3:00 PM)'
   );
 });
 
-test('shows disabled dates alongside enabled dates in a daily aircon schedule', () => {
+test('omits dates with aircon disabled from a daily aircon schedule', () => {
   assert.equal(getAirconScheduleSummary({
     schedule: [
       { date: '2026-11-08', startTime: '09:00 AM', endTime: '12:00 PM', aircon: true },
       { date: '2026-11-09', startTime: '09:00 AM', endTime: '12:00 PM', aircon: false }
     ]
-  }), 'ON — Nov 8, 2026 (9:00 AM – 12:00 PM), Nov 9, 2026 (OFF)');
+  }), 'ON — Nov 8, 2026 (9:00 AM – 12:00 PM)');
 });
 
 test('returns facility-grouped aircon details for readable views and exports', () => {
@@ -62,8 +62,7 @@ test('returns facility-grouped aircon details for readable views and exports', (
     groups: [{
       name: 'Main Hall',
       entries: [
-        { date: 'Nov 8, 2026', time: '9:00 AM – 12:00 PM', enabled: true },
-        { date: 'Nov 9, 2026', time: '9:00 AM – 12:00 PM', enabled: false }
+        { date: 'Nov 8, 2026', time: '9:00 AM – 12:00 PM', enabled: true }
       ]
     }]
   });

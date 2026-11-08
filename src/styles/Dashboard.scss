@@ -1585,7 +1585,7 @@ main,
 
   .ranking-row {
     display: grid;
-    grid-template-columns: 2rem minmax(5rem, 1fr) minmax(3rem, 1.4fr) 2rem;
+    grid-template-columns: 1.5rem minmax(0, 1fr) minmax(2.5rem, 1fr) max-content;
     align-items: center;
     gap: 0.55rem;
 
@@ -1593,6 +1593,7 @@ main,
       color: $ink;
       font-size: var(--font-body);
       text-align: right;
+      white-space: nowrap;
     }
   }
 
@@ -1603,12 +1604,11 @@ main,
   }
 
   .ranking-name {
-    overflow: hidden;
+    min-width: 0;
     color: $ink;
     font-size: var(--font-body);
     font-weight: 600;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
 
   .ranking-track {
@@ -1742,6 +1742,25 @@ main,
     align-items: center;
     justify-content: space-between;
     gap: 0.5rem;
+  }
+
+  .equipment-history-request-details {
+    display: flex;
+    flex-direction: column;
+    gap: 0.15rem;
+    padding-top: 0.25rem;
+    border-top: 1px solid $border;
+
+    span {
+      overflow-wrap: anywhere;
+      white-space: normal;
+    }
+
+    strong {
+      color: $ink;
+      font-size: inherit;
+      font-weight: 600;
+    }
 
     > span:first-child {
       overflow: hidden;
@@ -2109,7 +2128,7 @@ main,
     }
 
     .ranking-row {
-      grid-template-columns: 1.5rem minmax(4rem, 1fr) minmax(2rem, 1fr) 1.5rem;
+      grid-template-columns: 1.5rem minmax(0, 1fr) minmax(2rem, 0.8fr) max-content;
       gap: 0.35rem;
     }
   }

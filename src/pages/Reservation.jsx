@@ -55,7 +55,9 @@ const initialFormState = {
   specificRoom: '', 
   specificRoomParticipants: '',
   otherEquipment: '',
+  otherEquipmentUnits: '',
   otherUtility: '',
+  otherUtilityUnits: '',
   airconOnTime: '', 
   airconOffTime: '',
   endorserName: '', 
@@ -798,7 +800,9 @@ const Reservation = ({ currentUserRole }) => {
           specificRoomParticipants: reservation.specificRoomParticipants
             ?? ((reservation.facilities || []).length === 0 ? String(reservation.expectedParticipants || '') : ''),
           otherEquipment: reservation.otherEquipment || '',
+          otherEquipmentUnits: String(reservation.otherEquipmentUnits ?? ''),
           otherUtility: reservation.otherUtility || '',
+          otherUtilityUnits: String(reservation.otherUtilityUnits ?? ''),
           airconOnTime: reservation.airconOnTime || '',
           airconOffTime: reservation.airconOffTime || '',
           endorserName: sanitizeAlphabeticName(reservation.endorserName || ''),
@@ -1090,6 +1094,10 @@ const Reservation = ({ currentUserRole }) => {
     return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
   const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
+  const otherEquipmentUnitsInvalid = Boolean(formData.otherEquipment.trim())
+    && (!/^\d+$/.test(formData.otherEquipmentUnits) || Number(formData.otherEquipmentUnits) <= 0);
+  const otherUtilityUnitsInvalid = Boolean(formData.otherUtility.trim())
+    && (!/^\d+$/.test(formData.otherUtilityUnits) || Number(formData.otherUtilityUnits) <= 0);
   const selectedFacilityParticipants = Object.fromEntries(
     formData.facilities.map((facilityId) => [facilityId, Number(facilityParticipants[facilityId])])
   );
@@ -1187,6 +1195,7 @@ const Reservation = ({ currentUserRole }) => {
         && Number.isInteger(participants)
         && participants > 0
         && ((limits.min !== null && participants < limits.min)
+          || (limits.max !== null && participants > limits.max)
           || (availability.availableCapacity !== null && participants > availability.availableCapacity))
       ];
     })
@@ -1347,6 +1356,11 @@ const Reservation = ({ currentUserRole }) => {
     }
   };
 
+  const handleResourceUnitsChange = (field, value) => {
+    if (!/^\d*$/.test(value)) return;
+    handleInputChange(field, value);
+  };
+
   const handleRequestorAttributeChange = (key, value, field) => {
     const nextValue = field?.type === 'text'
       ? filterSignupTextValue(value, field.characterTypes)
@@ -1381,6 +1395,8 @@ const Reservation = ({ currentUserRole }) => {
   const handleCheckboxArrayChange = (field, value) => {
     if (field === 'facilities') {
       const isCurrentlySelected = formData.facilities.includes(value);
+      const facility = inventoryFacilities.find((item) => item.id === value);
+      if (!isCurrentlySelected && facility?.status?.trim().toLowerCase() === 'maintenance') return;
       const updatedFacilities = isCurrentlySelected
         ? formData.facilities.filter((item) => item !== value)
         : [...formData.facilities, value];
@@ -1421,8 +1437,13 @@ const Reservation = ({ currentUserRole }) => {
 
   const handleFacilityParticipantsChange = (facilityId, value) => {
     if (value !== '' && (!/^\d+$/.test(value) || Number(value) <= 0)) return;
-    setFacilityParticipants((prev) => ({ ...prev, [facilityId]: value }));
-    if (value !== '') clearMissingField(getFacilityParticipantFieldKey(facilityId));
+    const facility = inventoryFacilities.find((item) => item.id === facilityId);
+    const maxCapacity = facility ? getFacilityCapacityLimits(facility).max : null;
+    const boundedValue = maxCapacity !== null && Number(value) > maxCapacity
+      ? String(maxCapacity)
+      : value;
+    setFacilityParticipants((prev) => ({ ...prev, [facilityId]: boundedValue }));
+    if (boundedValue !== '') clearMissingField(getFacilityParticipantFieldKey(facilityId));
   };
 
   const updateEquip = (item, delta) => {
@@ -1791,6 +1812,14 @@ const Reservation = ({ currentUserRole }) => {
         missing: !Number.isInteger(Number(formData.specificRoomParticipants))
           || Number(formData.specificRoomParticipants) <= 0
       }] : []),
+      ...(formData.otherEquipment.trim() ? [{
+        key: 'otherEquipmentUnits',
+        missing: otherEquipmentUnitsInvalid
+      }] : []),
+      ...(formData.otherUtility.trim() ? [{
+        key: 'otherUtilityUnits',
+        missing: otherUtilityUnitsInvalid
+      }] : []),
       { key: 'eventType', missing: formData.eventType.length === 0 },
       { key: 'eventDate', missing: !eventDate.trim() || !!dateError || Boolean(blockedStartDate) },
       { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
@@ -1834,7 +1863,9 @@ const Reservation = ({ currentUserRole }) => {
       const invalidFacility = selectedFacilityCapacities.find(({ facility, limits, availability }) => {
         const participants = Number(facilityParticipants[facility.id]);
         return (limits.min !== null && participants < limits.min)
-          || (availability.availableCapacity !== null && participants > availability.availableCapacity);
+          || (limits.max !== null && participants > limits.max)
+          || (availability.availableCapacity !== null
+            && participants > availability.availableCapacity);
       });
 
       if (invalidFacility) {
@@ -1844,7 +1875,9 @@ const Reservation = ({ currentUserRole }) => {
         setMissingFields({ [key]: true });
         setCustomAlert({
           title: 'Participant Limit',
-          message: availability.hasUnknownCapacity
+          message: limits.max !== null && participants > limits.max
+            ? `${facility.name} has a maximum capacity of ${limits.max} participants.`
+            : availability.hasUnknownCapacity
             ? `${facility.name} availability cannot be confirmed for the selected time because an overlapping reservation is missing participant information.`
             : limits.min !== null && participants < limits.min
             ? `${facility.name} requires at least ${limits.min} participants.`
@@ -2577,7 +2610,8 @@ const Reservation = ({ currentUserRole }) => {
                 const limits = getFacilityCapacityLimits(item);
                 const maxCapacity = limits.max;
                 const availability = facilityCapacityAvailabilities[item.id];
-                const isLocked = item.status === 'Unavailable';
+                const isMaintenance = item.status?.trim().toLowerCase() === 'maintenance';
+                const isLocked = isMaintenance || item.status?.trim().toLowerCase() === 'unavailable';
                 const participantFieldKey = getFacilityParticipantFieldKey(item.id);
                 const facilityScheduleFieldKey = `facilitySchedule:${item.id}`;
                 const isFacilityScheduleExpanded = Boolean(expandedFacilitySchedules[item.id]);
@@ -2594,7 +2628,7 @@ const Reservation = ({ currentUserRole }) => {
                       id={`facility-${item.id}`}
                       checked={isSelected}
                       onChange={() => handleCheckboxArrayChange('facilities', item.id)}
-                      disabled={isLocked}
+                      disabled={isLocked && !isSelected}
                     />
                     <label className="facility-info" htmlFor={`facility-${item.id}`}>
                       <div>
@@ -2642,7 +2676,7 @@ const Reservation = ({ currentUserRole }) => {
                             />
                             <span>Aircon for this facility</span>
                           </label>
-                          {dailySchedule.length !== 1 && (
+                          {dailySchedule.length > 1 && (
                             <>
                               <button
                                 type="button"
@@ -2785,9 +2819,16 @@ const Reservation = ({ currentUserRole }) => {
                             placeholder="Enter whole number"
                             className={`facility-participants-input ${missingFields[participantFieldKey] || facilityParticipantErrors[item.id] ? 'input-error' : ''}`}
                           />
+                          {maxCapacity !== null && (
+                            <span className="helper-text">
+                              Maximum capacity: {maxCapacity} participants.
+                            </span>
+                          )}
                           {facilityParticipantErrors[item.id] && (
                             <span className="field-error">
-                              {limits.min !== null && Number(facilityParticipants[item.id]) < limits.min
+                              {limits.max !== null && Number(facilityParticipants[item.id]) > limits.max
+                                ? `Enter no more than ${limits.max} participants.`
+                                : limits.min !== null && Number(facilityParticipants[item.id]) < limits.min
                                 ? `Enter at least ${limits.min} participants.`
                                 : availability.hasUnknownCapacity
                                 ? 'Capacity cannot be verified for this time.'
@@ -2921,6 +2962,28 @@ const Reservation = ({ currentUserRole }) => {
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
           </div>
+          {formData.otherEquipment.trim() && (
+            <div
+              className={`input-group room-field ${otherEquipmentUnitsInvalid || missingFields.otherEquipmentUnits ? 'field-missing' : ''}`}
+              ref={(element) => { fieldRefs.current.otherEquipmentUnits = element; }}
+            >
+              <label>Add Units <span className="req">*</span></label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={formData.otherEquipmentUnits}
+                onChange={(event) => handleResourceUnitsChange('otherEquipmentUnits', event.target.value)}
+                placeholder="Enter whole number"
+                required
+                aria-required="true"
+                className={otherEquipmentUnitsInvalid || missingFields.otherEquipmentUnits ? 'input-error' : ''}
+              />
+              {missingFields.otherEquipmentUnits && (
+                <span className="field-error">Enter a positive whole number of units for the other equipment.</span>
+              )}
+            </div>
+          )}
 
         </div>
 
@@ -3005,6 +3068,28 @@ const Reservation = ({ currentUserRole }) => {
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
           </div>
+          {formData.otherUtility.trim() && (
+            <div
+              className={`input-group room-field ${otherUtilityUnitsInvalid || missingFields.otherUtilityUnits ? 'field-missing' : ''}`}
+              ref={(element) => { fieldRefs.current.otherUtilityUnits = element; }}
+            >
+              <label>Add Units <span className="req">*</span></label>
+              <input
+                type="text"
+                inputMode="numeric"
+                pattern="[0-9]*"
+                value={formData.otherUtilityUnits}
+                onChange={(event) => handleResourceUnitsChange('otherUtilityUnits', event.target.value)}
+                placeholder="Enter whole number"
+                required
+                aria-required="true"
+                className={otherUtilityUnitsInvalid || missingFields.otherUtilityUnits ? 'input-error' : ''}
+              />
+              {missingFields.otherUtilityUnits && (
+                <span className="field-error">Enter a positive whole number of units for the other utility.</span>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -3248,10 +3333,10 @@ const Reservation = ({ currentUserRole }) => {
             </button>
           </div>
 
+          {dailySchedule.length > 1 && (
           <div
             className={`input-group full-width schedule-override-group event-daily-schedule ${missingFields.schedule ? 'field-missing' : ''}`}
             ref={el => fieldRefs.current.schedule = el}
-            hidden={dailySchedule.length === 1}
           >
             <button
               type="button"
@@ -3364,6 +3449,7 @@ const Reservation = ({ currentUserRole }) => {
               </div>
             )}
           </div>
+          )}
 
           {liveConflict && (
             <div className="schedule-conflict-notice full-width" role="alert" aria-live="assertive">

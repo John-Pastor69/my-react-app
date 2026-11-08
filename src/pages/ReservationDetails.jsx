@@ -315,14 +315,15 @@ const ReservationDetails = ({
   const eventType = Array.isArray(currentData.eventType) ? currentData.eventType.join(', ') : (currentData.eventType || 'N/A');
   const eventDate = formatEventDateRange(currentData.eventDate, currentData.days);
   const facilityIds = currentData.facilities || [];
+  const specificRoomValue = currentData.specificRoom?.trim() || '';
   const facilityScheduleEntries = facilityIds.length > 0
     ? facilityIds.flatMap((id) => getReservationScheduleForFacility(currentData, id).map((entry) => ({
       ...entry,
-      facilityName: facilitiesMap[id]?.name || id
+      facilityName: [facilitiesMap[id]?.name || id, specificRoomValue].filter(Boolean).join(', ')
     })))
     : getReservationScheduleForFacility(currentData, null).map((entry) => ({
       ...entry,
-      facilityName: ''
+      facilityName: specificRoomValue
     }));
   const scheduledYears = new Set(facilityScheduleEntries.map((entry) => (
     String(entry.date || '').match(/^\d{4}-/)?.[0]
@@ -361,10 +362,20 @@ const ReservationDetails = ({
     ? dailyTimeEntries.map(({ rawDates, time, facilityName }) => (
       `${facilityName ? `${facilityName}: ` : ''}${time} [${condenseDateList(rawDates)}]`
     )).join('\n')
-    : formatTimeRange(currentData.startTime, currentData.endTime);
+    : `${specificRoomValue ? `${specificRoomValue}: ` : ''}${formatTimeRange(currentData.startTime, currentData.endTime)}`;
 
   const renderDailyTimeDisplay = (variant) => {
-    if (dailyTimeEntries.length === 0) return eventTime;
+    if (dailyTimeEntries.length === 0) {
+      if (!specificRoomValue) return eventTime;
+      return (
+        <div className={`daily-time-list ${variant}`}>
+          <div className="daily-time-entry">
+            <strong className="daily-time-facility">{specificRoomValue}</strong>
+            <span className="daily-time-range">{formatTimeRange(currentData.startTime, currentData.endTime)}</span>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div className={`daily-time-list ${variant}`}>
@@ -440,7 +451,7 @@ const ReservationDetails = ({
   const description = currentData.purpose || 'No description provided.';
   
   const facilityNames = (currentData.facilities || []).map(id => facilitiesMap[id]?.name || id);
-  const facilityDisplay = facilityNames.length > 0 ? facilityNames.join(', ') : 'None';
+  const facilityDisplay = [...facilityNames, specificRoomValue].filter(Boolean).join(', ') || 'None';
   
   const roomCapacities = (currentData.facilities || []).map((id) => {
     const facility = facilitiesMap[id];
@@ -464,13 +475,19 @@ const ReservationDetails = ({
     .filter(([id, qty]) => Number(qty) > 0)
     .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
   if (typeof currentData.otherEquipment === 'string' && currentData.otherEquipment.trim()) {
-    equipArray.push(currentData.otherEquipment.trim());
+    const units = Number(currentData.otherEquipmentUnits);
+    equipArray.push(Number.isInteger(units) && units > 0
+      ? `${currentData.otherEquipment.trim()} - ${units} units`
+      : currentData.otherEquipment.trim());
   }
   const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'None';
   const utilityNames = (Array.isArray(currentData.selectedUtilities) ? currentData.selectedUtilities : [])
     .map((id) => `${Number(currentData.selectedUtilityUnits?.[id]) || 1}x ${utilitiesMap[id]?.name || id}`);
   if (typeof currentData.otherUtility === 'string' && currentData.otherUtility.trim()) {
-    utilityNames.push(currentData.otherUtility.trim());
+    const units = Number(currentData.otherUtilityUnits);
+    utilityNames.push(Number.isInteger(units) && units > 0
+      ? `${currentData.otherUtility.trim()} - ${units} units`
+      : currentData.otherUtility.trim());
   }
   const utilityRequested = utilityNames.length > 0 ? utilityNames.join(', ') : 'None';
 
@@ -691,7 +708,7 @@ const ReservationDetails = ({
       pdf.setFont('helvetica', 'bold');
       pdf.setFontSize(8.5);
       pdf.setTextColor(15, 23, 42);
-      pdf.text(`Status: ${airconSchedule.enabled ? 'ON' : 'OFF'}`, margin, y);
+      pdf.text(airconSchedule.enabled ? 'ON' : 'OFF', margin, y);
       y += 4;
 
       airconSchedule.groups.forEach(({ name, entries }) => {
@@ -779,7 +796,10 @@ const ReservationDetails = ({
       { label: 'Event Name', value: eventName },
       { label: 'Event Type', value: eventType },
       { label: 'Event Date', value: eventDate },
-      { label: 'Time', value: eventTime.replace('–', '-') },
+      {
+        label: 'Time',
+        value: eventTime.replace('–', '-')
+      },
       { label: 'Expected Attendees', value: expectedAttendees }
     ];
     drawGrid(eventItems);

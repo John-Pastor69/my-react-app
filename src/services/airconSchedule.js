@@ -33,13 +33,14 @@ export const getAirconScheduleDetails = (reservation, facilities = {}) => {
     const groups = facilitySchedules.flatMap(([facilityId, schedule], index) => {
       const entries = schedule
         .filter((entry) => typeof entry.aircon === 'boolean')
+        .filter((entry) => entry.aircon)
         .map((entry) => ({
           date: formatDate(entry.date),
           time: formatTimeRange(
             entry.airconOnTime || entry.startTime,
             entry.airconOffTime || entry.endTime
           ),
-          enabled: entry.aircon
+          enabled: true
         }));
       if (entries.length === 0) return [];
 
@@ -58,13 +59,14 @@ export const getAirconScheduleDetails = (reservation, facilities = {}) => {
   if (schedule.some((entry) => typeof entry.aircon === 'boolean')) {
     const entries = schedule
       .filter((entry) => typeof entry.aircon === 'boolean')
+      .filter((entry) => entry.aircon)
       .map((entry) => ({
         date: formatDate(entry.date),
         time: formatTimeRange(
           entry.airconOnTime || entry.startTime,
           entry.airconOffTime || entry.endTime
         ),
-        enabled: entry.aircon
+        enabled: true
       }));
     return {
       enabled: entries.some((entry) => entry.enabled),

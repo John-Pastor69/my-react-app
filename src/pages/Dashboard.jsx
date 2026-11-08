@@ -75,6 +75,18 @@ const formatDate = (date) => date
   ? date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   : 'Date unavailable';
 
+const getReservationAdditionalDetails = (reservation) => ({
+  otherEquipment: typeof reservation.otherEquipment === 'string'
+    ? reservation.otherEquipment.trim()
+    : '',
+  otherUtility: typeof reservation.otherUtility === 'string'
+    ? reservation.otherUtility.trim()
+    : '',
+  specificRoom: typeof reservation.specificRoom === 'string'
+    ? reservation.specificRoom.trim()
+    : ''
+});
+
 const DashboardDatePicker = ({ id, value, min, max, label, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [viewDate, setViewDate] = useState(() => parseDate(value) || new Date());
@@ -975,7 +987,8 @@ const DashboardContent = ({ currentUserRole }) => {
               date: reservationDate,
               quantity: Number(quantity),
               borrower: reservation.fullName || reservation.userEmail || 'Unknown borrower',
-              startTime: reservation.startTime || ''
+              startTime: reservation.startTime || '',
+              ...getReservationAdditionalDetails(reservation)
             });
           }
         });
@@ -989,7 +1002,8 @@ const DashboardContent = ({ currentUserRole }) => {
                 date: reservationDate,
                 quantity,
                 borrower: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-                startTime: reservation.startTime || ''
+                startTime: reservation.startTime || '',
+                ...getReservationAdditionalDetails(reservation)
               });
             }
           });
@@ -1001,6 +1015,7 @@ const DashboardContent = ({ currentUserRole }) => {
   // Rank approved equipment, utility, and facility usage.
   const { most: usageByEquipment, least: leastUsedEquipment } = useMemo(() => {
     const totals = new Map();
+    const otherRequests = new Map();
     filteredReservations
       .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
       .forEach((reservation) => {
@@ -1008,13 +1023,26 @@ const DashboardContent = ({ currentUserRole }) => {
           const amount = Number(quantity) || 0;
           totals.set(equipmentId, (totals.get(equipmentId) || 0) + amount);
         });
+        const otherEquipment = getReservationAdditionalDetails(reservation).otherEquipment;
+        if (otherEquipment) {
+          const key = otherEquipment.toLowerCase();
+          const current = otherRequests.get(key) || { name: otherEquipment, quantity: 0 };
+          otherRequests.set(key, { ...current, quantity: current.quantity + 1 });
+        }
       });
 
     const rankedUsage = equipmentData.map((equipment) => ({
       id: equipment.id,
       quantity: totals.get(equipment.id) || 0,
-      name: equipment.name || 'Equipment'
-    }));
+      name: equipment.name || 'Equipment',
+      isOtherRequest: false
+    })).concat(
+      [...otherRequests.entries()].map(([id, value]) => ({
+        id: `other-${id}`,
+        ...value,
+        isOtherRequest: true
+      }))
+    );
 
     return {
       most: [...rankedUsage].sort((first, second) => second.quantity - first.quantity),
@@ -1024,6 +1052,7 @@ const DashboardContent = ({ currentUserRole }) => {
 
   const { most: utilityUsage, least: leastUsedUtilities } = useMemo(() => {
     const totals = new Map();
+    const otherRequests = new Map();
     filteredReservations
       .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
       .forEach((reservation) => {
@@ -1033,13 +1062,26 @@ const DashboardContent = ({ currentUserRole }) => {
             if (!Number.isFinite(quantity) || quantity <= 0) return;
             totals.set(utilityId, (totals.get(utilityId) || 0) + quantity);
           });
+        const otherUtility = getReservationAdditionalDetails(reservation).otherUtility;
+        if (otherUtility) {
+          const key = otherUtility.toLowerCase();
+          const current = otherRequests.get(key) || { name: otherUtility, quantity: 0 };
+          otherRequests.set(key, { ...current, quantity: current.quantity + 1 });
+        }
       });
 
     const rankedUsage = utilitiesData.map((utility) => ({
       id: utility.id,
       quantity: totals.get(utility.id) || 0,
-      name: utility.name || 'Utility'
-    }));
+      name: utility.name || 'Utility',
+      isOtherRequest: false
+    })).concat(
+      [...otherRequests.entries()].map(([id, value]) => ({
+        id: `other-${id}`,
+        ...value,
+        isOtherRequest: true
+      }))
+    );
 
     return {
       most: [...rankedUsage].sort((first, second) => second.quantity - first.quantity),
@@ -1688,7 +1730,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <div className="panel-heading">
                 <div>
                   <h2>Resource snapshot</h2>
-                  <p>Current state of managed facilities and equipment.</p>
+                  <p>Current state of managed facilities, equipment, and utilities.</p>
                 </div>
               </div>
               <div className="resource-stat">
@@ -1697,6 +1739,13 @@ const DashboardContent = ({ currentUserRole }) => {
                   <strong>{equipmentData.length} <small>items</small></strong>
                 </div>
                 <span className="resource-stat-detail">{metrics.availableUnits} available units</span>
+              </div>
+              <div className="resource-stat">
+                <div className="resource-stat-copy">
+                  <span>Utility catalog</span>
+                  <strong>{utilitiesData.length} <small>utilities</small></strong>
+                </div>
+                <span className="resource-stat-detail">Managed utility items</span>
               </div>
               <div className="resource-stat">
                 <div className="resource-stat-copy">
@@ -1722,7 +1771,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <div className="panel-heading">
                 <div>
                   <h2>{rankingModes.equipment === 'most' ? 'Most' : 'Least'} Requested Equipment</h2>
-                  <p>Approved equipment units in the selected period{rankingModes.equipment === 'least' ? ', including items with no requests' : ''}.</p>
+                  <p>Approved equipment units and other equipment requests in the selected period{rankingModes.equipment === 'least' ? ', including items with no requests' : ''}.</p>
                 </div>
                 <RankingModeToggle
                   label="Equipment"
@@ -1735,7 +1784,12 @@ const DashboardContent = ({ currentUserRole }) => {
                   {equipmentRanking.map((equipment, index) => (
                     <div className="ranking-row" key={equipment.id}>
                       <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                      <span className="ranking-name" title={equipment.name}>{equipment.name}</span>
+                      <span
+                        className="ranking-name"
+                        title={equipment.isOtherRequest ? `Other equipment: ${equipment.name}` : equipment.name}
+                      >
+                        {equipment.isOtherRequest ? `Other: ${equipment.name}` : equipment.name}
+                      </span>
                       <div className="ranking-track">
                         <span style={{ width: `${equipment.quantity / equipmentMaximum * 100}%` }} />
                       </div>
@@ -1752,7 +1806,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <div className="panel-heading">
                 <div>
                   <h2>{rankingModes.utilities === 'most' ? 'Most' : 'Least'} Requested Utilities</h2>
-                  <p>Approved utility units in the selected period{rankingModes.utilities === 'least' ? ', including items with no requests' : ''}.</p>
+                  <p>Approved utility units and other utility requests in the selected period{rankingModes.utilities === 'least' ? ', including items with no requests' : ''}.</p>
                 </div>
                 <RankingModeToggle
                   label="Utilities"
@@ -1765,7 +1819,12 @@ const DashboardContent = ({ currentUserRole }) => {
                   {utilitiesRanking.map((utility, index) => (
                     <div className="ranking-row" key={utility.id}>
                       <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                      <span className="ranking-name" title={utility.name}>{utility.name}</span>
+                      <span
+                        className="ranking-name"
+                        title={utility.isOtherRequest ? `Other utility: ${utility.name}` : utility.name}
+                      >
+                        {utility.isOtherRequest ? `Other: ${utility.name}` : utility.name}
+                      </span>
                       <div className="ranking-track utility-track">
                         <span style={{ width: `${utility.quantity / utilityMaximum * 100}%` }} />
                       </div>
@@ -1852,6 +1911,21 @@ const DashboardContent = ({ currentUserRole }) => {
                                 {equipment.lastBorrow.quantity} unit{equipment.lastBorrow.quantity === 1 ? '' : 's'}
                               </span>
                             </div>
+                            {(equipment.lastBorrow.otherEquipment
+                              || equipment.lastBorrow.otherUtility
+                              || equipment.lastBorrow.specificRoom) && (
+                              <div className="equipment-history-request-details">
+                                {equipment.lastBorrow.otherEquipment && (
+                                  <span><strong>Other equipment:</strong> {equipment.lastBorrow.otherEquipment}</span>
+                                )}
+                                {equipment.lastBorrow.otherUtility && (
+                                  <span><strong>Other utility:</strong> {equipment.lastBorrow.otherUtility}</span>
+                                )}
+                                {equipment.lastBorrow.specificRoom && (
+                                  <span><strong>Specific room number/name:</strong> {equipment.lastBorrow.specificRoom}</span>
+                                )}
+                              </div>
+                            )}
                           </div>
                         ) : (
                           <div className="equipment-history-borrow no-history">
@@ -1908,6 +1982,21 @@ const DashboardContent = ({ currentUserRole }) => {
                                   {utility.lastReservation.quantity} unit{utility.lastReservation.quantity === 1 ? '' : 's'}
                                 </span>
                               </div>
+                              {(utility.lastReservation.otherEquipment
+                                || utility.lastReservation.otherUtility
+                                || utility.lastReservation.specificRoom) && (
+                                <div className="equipment-history-request-details">
+                                  {utility.lastReservation.otherEquipment && (
+                                    <span><strong>Other equipment:</strong> {utility.lastReservation.otherEquipment}</span>
+                                  )}
+                                  {utility.lastReservation.otherUtility && (
+                                    <span><strong>Other utility:</strong> {utility.lastReservation.otherUtility}</span>
+                                  )}
+                                  {utility.lastReservation.specificRoom && (
+                                    <span><strong>Specific room number/name:</strong> {utility.lastReservation.specificRoom}</span>
+                                  )}
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="equipment-history-borrow no-history">
