@@ -1,5 +1,6 @@
 const { randomUUID } = require('node:crypto');
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 
 const ARCHIVE_RETENTION_DAYS = 30;
 const ARCHIVE_BATCH_SIZE = 200;
@@ -199,8 +200,8 @@ const deleteExpiredArchiveRecords = async (db, now) => {
 
 const runCleanup = async () => {
   const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-  const db = admin.firestore();
+  initializeApp({ credential: cert(serviceAccount) });
+  const db = getFirestore();
   const now = new Date();
 
   console.log('Starting scheduled reservation and archive cleanup...');
