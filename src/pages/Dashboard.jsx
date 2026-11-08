@@ -424,10 +424,23 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
       </label>
     </div>
     <div className="date-presets" aria-label="Quick date ranges">
-      <span>Quick range</span>
-      <button type="button" onClick={() => setDatePreset(7)}>Last 7 days</button>
-      <button type="button" onClick={() => setDatePreset(30)}>Last 30 days</button>
-      <button type="button" onClick={() => setDatePreset(90)}>Last 90 days</button>
+      <span className="date-presets-label">Quick range</span>
+      <div className="date-preset-group" aria-label="Past date ranges">
+        <span>Last</span>
+        {[7, 14, 30].map((days) => (
+          <button type="button" key={`last-${days}`} onClick={() => setDatePreset(days, 'last')}>
+            {days} days
+          </button>
+        ))}
+      </div>
+      <div className="date-preset-group" aria-label="Upcoming date ranges">
+        <span>Next</span>
+        {[7, 14, 30].map((days) => (
+          <button type="button" key={`next-${days}`} onClick={() => setDatePreset(days, 'next')}>
+            {days} days
+          </button>
+        ))}
+      </div>
     </div>
   </section>
 );
@@ -458,7 +471,7 @@ const DashboardKpis = ({
       <article className="kpi-card kpi-primary">
         <span className="kpi-label">Reservations in range</span>
         <strong>{metrics.total}</strong>
-        <span className="kpi-footnote">Across the selected filters</span>
+        <span className="kpi-footnote">Pending and approved across selected filters</span>
       </article>
       <article className="kpi-card">
         <span className="kpi-label">Approved reservation</span>
@@ -544,6 +557,7 @@ const DashboardContent = ({ currentUserRole }) => {
     utilities: 'most',
     facilities: 'most'
   });
+  const [isSpecificRoomsOpen, setIsSpecificRoomsOpen] = useState(false);
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [reservationSearchFilters, setReservationSearchFilters] = useState({
     query: dashboardSearchQuery,
@@ -653,6 +667,7 @@ const DashboardContent = ({ currentUserRole }) => {
     .trim()
     .replace(/_/g, ' ');
   const isAdminDashboard = ['building admin', 'mis', 'mis admin', 'super admin'].includes(dashboardRole);
+  const canViewResourceSnapshot = isAdminDashboard || dashboardRole === 'room checker';
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
@@ -814,6 +829,9 @@ const DashboardContent = ({ currentUserRole }) => {
 
     return true;
   }), [reservationsData, filters.status, startDate, endDate, startMinutes, endMinutes]);
+  const countedReservations = useMemo(() => filteredReservations.filter((reservation) => (
+    ['approved', 'pending'].includes((reservation.status || 'pending').toLowerCase().trim())
+  )), [filteredReservations]);
 
   // Index inventory by ID to support fast lookups in calculations and search.
   const equipmentById = useMemo(
@@ -828,6 +846,15 @@ const DashboardContent = ({ currentUserRole }) => {
     () => new Map(facilitiesData.map((facility) => [facility.id, facility])),
     [facilitiesData]
   );
+  const specificRoomReservations = useMemo(() => [
+    ...reservationsData.map((reservation) => ({ ...reservation, source: 'active' })),
+    ...historyData.map((reservation) => ({ ...reservation, source: 'archived' }))
+  ].flatMap((reservation) => {
+    const specificRoom = typeof reservation.specificRoom === 'string'
+      ? reservation.specificRoom.trim()
+      : '';
+    return specificRoom ? [{ ...reservation, specificRoom }] : [];
+  }), [reservationsData, historyData]);
   // Combine and normalize active and archived reservations for global search.
   const searchableReservations = useMemo(() => {
     const activeRecords = reservationsData.map((reservation) => ({ ...reservation, source: 'active' }));
@@ -948,17 +975,11 @@ const DashboardContent = ({ currentUserRole }) => {
   }), [equipmentData, reservationsData]);
 
   const metrics = useMemo(() => {
-    const approved = filteredReservations.filter(
-      (reservation) => (reservation.status || '').toLowerCase() === 'approved'
+    const approved = countedReservations.filter(
+      (reservation) => (reservation.status || '').toLowerCase().trim() === 'approved'
     );
-    const pending = filteredReservations.filter(
-      (reservation) => (reservation.status || 'pending').toLowerCase() === 'pending'
-    );
-    const cancelled = filteredReservations.filter(
-      (reservation) => (reservation.status || '').toLowerCase() === 'cancelled'
-    );
-    const rejected = filteredReservations.filter(
-      (reservation) => (reservation.status || '').toLowerCase() === 'rejected'
+    const pending = countedReservations.filter(
+      (reservation) => (reservation.status || 'pending').toLowerCase().trim() === 'pending'
     );
     const reservedUnits = approved.reduce((total, reservation) => (
       total + Object.values(reservation.selectedEquip || {}).reduce(
@@ -969,15 +990,13 @@ const DashboardContent = ({ currentUserRole }) => {
     const availableUnits = equipmentInventory.reduce((total, equipment) => total + equipment.available, 0);
 
     return {
-      total: filteredReservations.length,
+      total: countedReservations.length,
       approved: approved.length,
       pending: pending.length,
-      rejected: rejected.length,
-      cancelled: cancelled.length,
       reservedUnits,
       availableUnits
     };
-  }, [filteredReservations, equipmentInventory]);
+  }, [countedReservations, equipmentInventory]);
 
   // Prepare recent bookings and the latest borrower/reservation per resource.
   const activity = useMemo(() => {
@@ -1239,14 +1258,14 @@ const DashboardContent = ({ currentUserRole }) => {
         label: dayCount <= 7
           ? bucketStart.toLocaleDateString(undefined, { weekday: 'short' })
           : bucketStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        count: filteredReservations.filter((reservation) => {
+        count: countedReservations.filter((reservation) => {
           const date = parseDate(reservation.eventDate || reservation.date);
           return date && date >= bucketStart && date < bucketEnd;
         }).length
       };
     });
     return buckets;
-  }, [filteredReservations, startDate, endDate]);
+  }, [countedReservations, startDate, endDate]);
 
   const facilitiesAvailable = facilitiesData.filter((facility) => facility.status === 'Available').length;
   const facilitiesUnderMaintenance = facilitiesData.filter((facility) => facility.status === 'Maintenance').length;
@@ -1346,9 +1365,15 @@ const DashboardContent = ({ currentUserRole }) => {
     (second.lastReservation?.date.getTime() || 0) - (first.lastReservation?.date.getTime() || 0)
   )).slice(0, 6);
 
-  const setDatePreset = (days) => {
-    const end = new Date();
-    const start = new Date(end.getTime() - (days - 1) * DAY_IN_MS);
+  const setDatePreset = (days, direction) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const start = direction === 'next'
+      ? today
+      : new Date(today.getTime() - (days - 1) * DAY_IN_MS);
+    const end = direction === 'next'
+      ? new Date(today.getTime() + (days - 1) * DAY_IN_MS)
+      : today;
     setFilters((current) => ({
       ...current,
       startDate: toDateInputValue(start),
@@ -1358,7 +1383,7 @@ const DashboardContent = ({ currentUserRole }) => {
 
   // Render dashboard operations, search, analytics, and resource summaries.
   return (
-    <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : hasAnalyticsDashboard ? 'staff-dashboard' : 'personal-dashboard'}`}>
+    <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : hasAnalyticsDashboard ? 'staff-dashboard' : 'personal-dashboard'}${dashboardRole === 'room checker' ? ' room-checker-dashboard' : ''}`}>
       <header className="dashboard-header">
         <div className="dashboard-title">
           <h1>{isAdminDashboard ? 'Admin dashboard' : 'Dashboard'}</h1>
@@ -1792,7 +1817,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <div className="panel-heading">
                 <div>
                   <h2>Reservation activity</h2>
-                  <p>Requests created for events within the selected date range.</p>
+                  <p>Pending and approved reservations matching the selected filters.</p>
                 </div>
                 <span className="panel-total">{metrics.total} total</span>
               </div>
@@ -1815,11 +1840,10 @@ const DashboardContent = ({ currentUserRole }) => {
               <div className="status-breakdown">
                 <span><i className="status-key approved" /> Approved <strong>{metrics.approved}</strong></span>
                 <span><i className="status-key pending" /> Pending <strong>{metrics.pending}</strong></span>
-                <span><i className="status-key rejected" /> Rejected <strong>{metrics.rejected + metrics.cancelled}</strong></span>
               </div>
             </article>
 
-            {isAdminDashboard && (
+            {canViewResourceSnapshot && (
             <article className="dashboard-panel resource-summary-panel">
               <div className="panel-heading">
                 <div>
@@ -1847,6 +1871,20 @@ const DashboardContent = ({ currentUserRole }) => {
                   <strong>{facilitiesData.length} <small>facilities</small></strong>
                 </div>
                 <span className="resource-stat-detail">{facilitiesAvailable} available now</span>
+              </div>
+              <div className="resource-stat">
+                <div className="resource-stat-copy">
+                  <span>Specific rooms</span>
+                  <strong>{specificRoomReservations.length} <small>requests</small></strong>
+                </div>
+                <button
+                  type="button"
+                  className="resource-stat-detail specific-room-view-button"
+                  onClick={() => setIsSpecificRoomsOpen(true)}
+                  aria-haspopup="dialog"
+                >
+                  View details
+                </button>
               </div>
               <div className="facility-status-summary">
                 <span><i className="status-key approved" /> Available <strong>{facilitiesAvailable}</strong></span>
@@ -2191,6 +2229,88 @@ const DashboardContent = ({ currentUserRole }) => {
       )}
 
       {/* Display the selected active or archived reservation in a lazy-loaded dialog. */}
+      {isSpecificRoomsOpen && (
+        <div
+          className="specific-rooms-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsSpecificRoomsOpen(false);
+          }}
+        >
+          <section
+            className="specific-rooms-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="specific-rooms-title"
+          >
+            <div className="specific-rooms-heading">
+              <div>
+                <h2 id="specific-rooms-title">Specific room requests</h2>
+                <p>Click a request to view its reservation details.</p>
+              </div>
+              <button
+                className="specific-rooms-close"
+                type="button"
+                aria-label="Close specific room requests"
+                onClick={() => setIsSpecificRoomsOpen(false)}
+              >
+                ×
+              </button>
+            </div>
+            {specificRoomReservations.length ? (
+              <div className="specific-rooms-list">
+                {specificRoomReservations.map((reservation) => {
+                  const participantCount = Number(
+                    reservation.specificRoomParticipants ?? reservation.expectedParticipants
+                  );
+                  const startDate = parseDate(reservation.eventDate || reservation.date);
+                  const savedEndDate = parseDate(reservation.endDate);
+                  const endDate = savedEndDate || (startDate ? new Date(startDate.getTime()) : null);
+                  if (!savedEndDate && endDate) {
+                    endDate.setDate(endDate.getDate() + Math.max(0, (Number(reservation.days) || 1) - 1));
+                  }
+                  const status = (reservation.status || 'Unknown').trim();
+                  const statusClass = status.toLowerCase().replace(/\s+/g, '-');
+                  return (
+                    <button
+                      className="specific-room-request"
+                      key={`${reservation.source}-${reservation.id}`}
+                      type="button"
+                      onClick={() => {
+                        setIsSpecificRoomsOpen(false);
+                        setSelectedReservation({
+                          data: reservation,
+                          source: reservation.source
+                        });
+                      }}
+                    >
+                      <span className="specific-room-request-copy">
+                        <strong>{reservation.specificRoom}</strong>
+                        <span>{reservation.eventName || reservation.title || 'Untitled reservation'}</span>
+                        <span className="specific-room-date-range">
+                          Start: {startDate ? formatDate(startDate) : 'Not set'}
+                          {' · '}
+                          End: {endDate ? formatDate(endDate) : 'Not set'}
+                        </span>
+                      </span>
+                      <span className="specific-room-request-meta">
+                        <span className={`specific-room-status ${statusClass}`}>{status}</span>
+                        <span className="specific-room-participants">
+                          {Number.isFinite(participantCount) && participantCount > 0
+                            ? `${participantCount} expected participants`
+                            : 'Participants not specified'}
+                        </span>
+                      </span>
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="specific-rooms-empty">No specific rooms have been requested.</p>
+            )}
+          </section>
+        </div>
+      )}
       {selectedReservation && (
         <div
           className="dashboard-detail-overlay"

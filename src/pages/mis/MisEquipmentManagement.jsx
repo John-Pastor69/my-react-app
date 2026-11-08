@@ -37,11 +37,12 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   const [utilitiesData, setUtilitiesData] = useState([]);
   const [utilitySearchQuery, setUtilitySearchQuery] = useState('');
   
-  const [editingUtility, setEditingUtility] = useState(null);
   const [isAddingUtility, setIsAddingUtility] = useState(false);
   const [newUtility, setNewUtility] = useState({ name: '', sku: '', status: 'Available' });
   const [selectedUtilityIds, setSelectedUtilityIds] = useState([]);
   const [isConfirmingUtilityDelete, setIsConfirmingUtilityDelete] = useState(false);
+  const [updatingUtilityIds, setUpdatingUtilityIds] = useState(() => new Set());
+  const [utilityStatusError, setUtilityStatusError] = useState('');
 
   // --- AUTH LISTENER ---
   useEffect(() => {
@@ -108,7 +109,9 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
 
   // --- MAP UTILITIES (NEW) ---
   const mappedUtilitiesData = utilitiesData.map(item => {
-    const status = item.status === 'Unavailable' ? 'Unavailable' : 'Available';
+    const status = String(item.status || '').trim().toLowerCase() === 'unavailable'
+      ? 'Unavailable'
+      : 'Available';
     return {
       ...item,
       status,
@@ -194,24 +197,28 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     } catch (error) { console.error('Failed to delete utility:', error); }
   };
 
-  const handleEditUtilityClick = (item) => setEditingUtility({
-    ...item,
-    status: item.status === 'Unavailable' ? 'Unavailable' : 'Available'
-  });
-
-  const handleSaveEditUtility = async (e) => {
-    e.preventDefault();
-    if (!editingUtility) return;
-    const status = editingUtility.status === 'Unavailable' ? 'Unavailable' : 'Available';
+  const handleToggleUtilityStatus = async (item) => {
+    if (updatingUtilityIds.has(item.id)) return;
+    const status = item.status === 'Unavailable' ? 'Available' : 'Unavailable';
     const statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
+    setUtilityStatusError('');
+    setUpdatingUtilityIds((current) => new Set(current).add(item.id));
     try {
-      await updateDoc(doc(db, 'utilities', editingUtility.id), {
+      await updateDoc(doc(db, 'utilities', item.id), {
         status,
-        statusClass: statusClass,
+        statusClass,
         lastUpdated: getCurrentDateTime()
       });
-      setEditingUtility(null); 
-    } catch (error) { console.error('Failed to update utility:', error); }
+    } catch (error) {
+      console.error('Failed to toggle utility availability:', error);
+      setUtilityStatusError(`Unable to update ${item.name || 'utility'} availability. Please try again.`);
+    } finally {
+      setUpdatingUtilityIds((current) => {
+        const next = new Set(current);
+        next.delete(item.id);
+        return next;
+      });
+    }
   };
 
   const handleSaveNewUtility = async (e) => {
@@ -389,6 +396,10 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
           </div>
         </div>
 
+        {utilityStatusError && (
+          <p className="utility-status-error" role="alert">{utilityStatusError}</p>
+        )}
+
         <div className="table-scroll-wrapper">
         <table className="equipment-table">
           <thead>
@@ -431,7 +442,20 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                   <td className="text-muted">{item.lastUpdated}</td>
                   <td>
                     <div className="action-buttons">
-                      <button className="action-btn" onClick={() => handleEditUtilityClick(item)}>✏️ Edit</button>
+                      <button
+                        type="button"
+                        className={`action-btn utility-status-toggle ${item.status === 'Available' ? 'is-available' : 'is-unavailable'}`}
+                        onClick={() => handleToggleUtilityStatus(item)}
+                        disabled={updatingUtilityIds.has(item.id)}
+                        aria-pressed={item.status === 'Available'}
+                        aria-label={`${item.status === 'Available' ? 'Set unavailable' : 'Set available'} for ${item.name}`}
+                      >
+                        {updatingUtilityIds.has(item.id)
+                          ? 'Updating...'
+                          : item.status === 'Available'
+                            ? 'Set unavailable'
+                            : 'Set available'}
+                      </button>
                     </div>
                   </td>
                 </tr>
@@ -526,30 +550,6 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               <button type="button" onClick={() => setIsConfirmingDelete(false)}>Cancel</button>
               <button type="button" className="btn-danger-solid" onClick={confirmDelete}>Delete</button>
             </div>
-          </div>
-        </div>
-      )}
-
-      {/* ========================================== */}
-      {/* UTILITY MODALS (NEW) */}
-      {/* ========================================== */}
-      {editingUtility && (
-        <div className="modal-overlay">
-          <div className="modal-content">
-            <h3>Edit {editingUtility.name}</h3>
-            <form onSubmit={handleSaveEditUtility}>
-              <div className="form-group">
-                <label>Status</label>
-                <select value={editingUtility.status} onChange={(e) => setEditingUtility({ ...editingUtility, status: e.target.value })}>
-                  <option value="Available">Available</option>
-                  <option value="Unavailable">Unavailable</option>
-                </select>
-              </div>
-              <div className="modal-actions">
-                <button type="button" onClick={() => setEditingUtility(null)}>Cancel</button>
-                <button type="submit" className="btn-save">Save Changes</button>
-              </div>
-            </form>
           </div>
         </div>
       )}

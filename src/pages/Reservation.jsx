@@ -2640,6 +2640,11 @@ const Reservation = ({ currentUserRole }) => {
                           <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
                             ● {item.status}
                           </span>
+                          {item.exclusiveScheduling && (
+                            <span className="facility-exclusive-note">
+                              Exclusive scheduling · Cannot overlap another reservation, even when capacity remains.
+                            </span>
+                          )}
                           {maxCapacity !== null && item.status?.toLowerCase() === 'available' && (
                             availability.scheduleAvailable
                               ? (
@@ -2997,7 +3002,7 @@ const Reservation = ({ currentUserRole }) => {
               inventoryUtilities.map((item) => {
                 const quantity = selectedUtilityUnits[item.id] || 0;
                 const isSelected = quantity > 0;
-                const isUnavailable = (item.status || '').toLowerCase() === 'unavailable';
+                const isUnavailable = String(item.status || '').trim().toLowerCase() === 'unavailable';
                 const isLocked = isUnavailable || !hasFacility;
                 const status = isUnavailable ? 'Unavailable' : 'Available';
 

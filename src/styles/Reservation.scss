@@ -1198,6 +1198,14 @@ $orange-main: #F59E0B;
       &.unavailable { color: $red-main; }
     }
 
+    .facility-exclusive-note {
+      flex-basis: 100%;
+      color: $orange-main;
+      font-size: var(--font-body);
+      font-weight: 600;
+      line-height: 1.4;
+    }
+
     .facility-capacity-left {
       color: $green-main;
       font-size: var(--font-body);
