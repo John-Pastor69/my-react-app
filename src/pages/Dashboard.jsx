@@ -465,6 +465,13 @@ const DashboardKpis = ({
   );
 };
 
+const RankingModeToggle = ({ label, value, onChange }) => (
+  <div className="ranking-mode-toggle" role="group" aria-label={`${label} ranking`}>
+    <button type="button" aria-pressed={value === 'most'} onClick={() => onChange('most')}>Most</button>
+    <button type="button" aria-pressed={value === 'least'} onClick={() => onChange('least')}>Least</button>
+  </div>
+);
+
 // Restricted landing page for accounts awaiting review.
 const PendingAccountDashboard = () => (
   <div className="mis-dashboard-content pending-account-dashboard">
@@ -499,6 +506,12 @@ const DashboardContent = ({ currentUserRole }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [upcomingDays, setUpcomingDays] = useState('7');
   const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
+  const [resourceAlertCategory, setResourceAlertCategory] = useState('all');
+  const [rankingModes, setRankingModes] = useState({
+    equipment: 'most',
+    utilities: 'most',
+    facilities: 'most'
+  });
   const [selectedReservation, setSelectedReservation] = useState(null);
   const [reservationSearchFilters, setReservationSearchFilters] = useState({
     query: dashboardSearchQuery,
@@ -775,10 +788,6 @@ const DashboardContent = ({ currentUserRole }) => {
     () => new Map(equipmentData.map((equipment) => [equipment.id, equipment])),
     [equipmentData]
   );
-  const utilitiesById = useMemo(
-    () => new Map(utilitiesData.map((utility) => [utility.id, utility])),
-    [utilitiesData]
-  );
   const facilitiesById = useMemo(
     () => new Map(facilitiesData.map((facility) => [facility.id, facility])),
     [facilitiesData]
@@ -990,7 +999,7 @@ const DashboardContent = ({ currentUserRole }) => {
   }, [filteredReservations, facilitiesById, equipmentById]);
 
   // Rank approved equipment, utility, and facility usage.
-  const usageByEquipment = useMemo(() => {
+  const { most: usageByEquipment, least: leastUsedEquipment } = useMemo(() => {
     const totals = new Map();
     filteredReservations
       .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
@@ -1001,17 +1010,19 @@ const DashboardContent = ({ currentUserRole }) => {
         });
       });
 
-    return [...totals.entries()]
-      .map(([id, quantity]) => ({
-        id,
-        quantity,
-        name: equipmentById.get(id)?.name || 'Equipment'
-      }))
-      .sort((first, second) => second.quantity - first.quantity)
-      .slice(0, 5);
-  }, [filteredReservations, equipmentById]);
+    const rankedUsage = equipmentData.map((equipment) => ({
+      id: equipment.id,
+      quantity: totals.get(equipment.id) || 0,
+      name: equipment.name || 'Equipment'
+    }));
 
-  const utilityUsage = useMemo(() => {
+    return {
+      most: [...rankedUsage].sort((first, second) => second.quantity - first.quantity),
+      least: [...rankedUsage].sort((first, second) => first.quantity - second.quantity)
+    };
+  }, [filteredReservations, equipmentData]);
+
+  const { most: utilityUsage, least: leastUsedUtilities } = useMemo(() => {
     const totals = new Map();
     filteredReservations
       .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
@@ -1024,17 +1035,19 @@ const DashboardContent = ({ currentUserRole }) => {
           });
       });
 
-    return [...totals.entries()]
-      .map(([id, quantity]) => ({
-        id,
-        quantity,
-        name: utilitiesById.get(id)?.name || 'Utility'
-      }))
-      .sort((first, second) => second.quantity - first.quantity)
-      .slice(0, 5);
-  }, [filteredReservations, utilitiesById]);
+    const rankedUsage = utilitiesData.map((utility) => ({
+      id: utility.id,
+      quantity: totals.get(utility.id) || 0,
+      name: utility.name || 'Utility'
+    }));
 
-  const facilityUsage = useMemo(() => {
+    return {
+      most: [...rankedUsage].sort((first, second) => second.quantity - first.quantity),
+      least: [...rankedUsage].sort((first, second) => first.quantity - second.quantity)
+    };
+  }, [filteredReservations, utilitiesData]);
+
+  const { most: facilityUsage, least: leastUsedFacilities } = useMemo(() => {
     const totals = new Map();
     filteredReservations
       .filter((reservation) => (reservation.status || '').toLowerCase() === 'approved')
@@ -1044,15 +1057,17 @@ const DashboardContent = ({ currentUserRole }) => {
         });
       });
 
-    return [...totals.entries()]
-      .map(([id, count]) => ({
-        id,
-        count,
-        name: facilitiesById.get(id)?.name || 'Facility'
-      }))
-      .sort((first, second) => second.count - first.count)
-      .slice(0, 5);
-  }, [filteredReservations, facilitiesById]);
+    const rankedUsage = facilitiesData.map((facility) => ({
+      id: facility.id,
+      count: totals.get(facility.id) || 0,
+      name: facility.name || 'Facility'
+    }));
+
+    return {
+      most: [...rankedUsage].sort((first, second) => second.count - first.count),
+      least: [...rankedUsage].sort((first, second) => first.count - second.count)
+    };
+  }, [filteredReservations, facilitiesData]);
 
   // Group filtered reservations into chart buckets and find resource alerts.
   const trendData = useMemo(() => {
@@ -1101,9 +1116,9 @@ const DashboardContent = ({ currentUserRole }) => {
           && unavailableDate.dateValue <= monthAhead
         ))
         .sort((first, second) => first.dateValue - second.dateValue)
-        .slice(0, 3)
-        .forEach((unavailableDate) => alerts.push({
+          .forEach((unavailableDate) => alerts.push({
           key: `unavailable-date-${unavailableDate.id}`,
+          category: 'unavailable-date',
           title: formatDate(unavailableDate.dateValue),
           detail: `Unavailable · ${unavailableDate.remark?.trim() || 'No reason provided'}`,
           link: '/calendar'
@@ -1117,6 +1132,7 @@ const DashboardContent = ({ currentUserRole }) => {
       ))
       .map((equipment) => ({
         key: `equipment-${equipment.id}`,
+        category: 'low-stock',
         title: equipment.name || 'Unnamed equipment',
         detail: `${equipment.available} of ${equipment.total} units available`,
         link: '/equipment'
@@ -1126,6 +1142,7 @@ const DashboardContent = ({ currentUserRole }) => {
       .filter((facility) => ['maintenance', 'unavailable'].includes((facility.status || '').toLowerCase()))
       .forEach((facility) => alerts.push({
         key: `facility-${facility.id}`,
+        category: 'facility-status',
         title: facility.name || 'Unnamed facility',
         detail: `Facility status: ${facility.status}`,
         link: '/facility'
@@ -1164,7 +1181,7 @@ const DashboardContent = ({ currentUserRole }) => {
       const conflicts = [];
       for (const group of reservationGroups.values()) {
         group.sort((first, second) => first.start - second.start);
-        for (let firstIndex = 0; firstIndex < group.length && conflicts.length < 6; firstIndex += 1) {
+        for (let firstIndex = 0; firstIndex < group.length; firstIndex += 1) {
           const first = group[firstIndex];
           for (let secondIndex = firstIndex + 1; secondIndex < group.length; secondIndex += 1) {
             const second = group[secondIndex];
@@ -1172,24 +1189,34 @@ const DashboardContent = ({ currentUserRole }) => {
             if (first.reservation.id === second.reservation.id) continue;
             conflicts.push({
               key: `conflict-${first.reservation.id}-${second.reservation.id}-${first.facilityId}`,
+              category: 'schedule-conflict',
               title: facilitiesById.get(first.facilityId)?.name || 'Facility',
               detail: `${first.reservation.eventName || 'Reservation'} overlaps ${second.reservation.eventName || 'another reservation'} on ${formatDate(first.date)}`,
               link: '/calendar'
             });
-            if (conflicts.length >= 6) break;
           }
         }
       }
       alerts.push(...conflicts);
     }
 
-    return alerts.slice(0, 8);
+    return alerts;
   }, [equipmentInventory, facilitiesData, reservationsData, unavailableDatesData, facilitiesById, todayKey]);
+  const resourceAlertCounts = useMemo(() => resourceAlerts.reduce((counts, alert) => {
+    counts[alert.category] = (counts[alert.category] || 0) + 1;
+    return counts;
+  }, {}), [resourceAlerts]);
+  const visibleResourceAlerts = resourceAlertCategory === 'all'
+    ? resourceAlerts
+    : resourceAlerts.filter((alert) => alert.category === resourceAlertCategory);
   // Calculate chart scales and quick date-range presets for the rendered panels.
   const chartMaximum = Math.max(1, ...trendData.map((bucket) => bucket.count));
-  const equipmentMaximum = Math.max(1, ...usageByEquipment.map((equipment) => equipment.quantity));
-  const utilityMaximum = Math.max(1, ...utilityUsage.map((utility) => utility.quantity));
-  const facilityMaximum = Math.max(1, ...facilityUsage.map((facility) => facility.count));
+  const equipmentRanking = rankingModes.equipment === 'most' ? usageByEquipment : leastUsedEquipment;
+  const utilitiesRanking = rankingModes.utilities === 'most' ? utilityUsage : leastUsedUtilities;
+  const facilitiesRanking = rankingModes.facilities === 'most' ? facilityUsage : leastUsedFacilities;
+  const equipmentMaximum = Math.max(1, ...equipmentRanking.map((equipment) => equipment.quantity));
+  const utilityMaximum = Math.max(1, ...utilitiesRanking.map((utility) => utility.quantity));
+  const facilityMaximum = Math.max(1, ...facilitiesRanking.map((facility) => facility.count));
   const formatTime = (time) => time ? formatTimeForDisplay(time) : 'Time not set';
 
   const setDatePreset = (days) => {
@@ -1344,22 +1371,47 @@ const DashboardContent = ({ currentUserRole }) => {
                 <h2>Resource alerts</h2>
                 <p>Low stock, facility status, and upcoming unavailable dates.</p>
               </div>
+              <label className="resource-alert-filter">
+                <span>Category</span>
+                <select
+                  value={resourceAlertCategory}
+                  onChange={(event) => setResourceAlertCategory(event.target.value)}
+                >
+                  <option value="all">All categories ({resourceAlerts.length})</option>
+                  <option value="low-stock">Low stock ({resourceAlertCounts['low-stock'] || 0})</option>
+                  <option value="facility-status">Facility status ({resourceAlertCounts['facility-status'] || 0})</option>
+                  <option value="unavailable-date">Unavailable dates ({resourceAlertCounts['unavailable-date'] || 0})</option>
+                  <option value="schedule-conflict">Schedule conflicts ({resourceAlertCounts['schedule-conflict'] || 0})</option>
+                </select>
+              </label>
             </div>
-            {resourceAlerts.length ? (
-              <div className="resource-alert-list">
-                {resourceAlerts.map((alert) => (
+            {visibleResourceAlerts.length ? (
+              <div className="resource-alert-list" aria-live="polite">
+                {visibleResourceAlerts.map((alert) => (
                   <div className="resource-alert-row" key={alert.key}>
                     <span className="resource-alert-icon">!</span>
                     <div>
                       <strong>{alert.title}</strong>
                       <span title={alert.detail}>{alert.detail}</span>
                     </div>
-                    <Link to={alert.link}>View</Link>
+                    <div className="resource-alert-actions">
+                      <span className="resource-alert-category">
+                        {alert.category === 'low-stock' && 'Low stock'}
+                        {alert.category === 'facility-status' && 'Facility status'}
+                        {alert.category === 'unavailable-date' && 'Unavailable date'}
+                        {alert.category === 'schedule-conflict' && 'Schedule conflict'}
+                      </span>
+                      <Link to={alert.link}>View</Link>
+                    </div>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="panel-empty">No low-stock items, facility issues, or schedule conflicts were detected.</p>
+              <p className="panel-empty">
+                {resourceAlerts.length
+                  ? 'No alerts in this category.'
+                  : 'No low-stock items, facility issues, unavailable dates, or schedule conflicts were detected.'}
+              </p>
             )}
           </article>
         )}
@@ -1663,19 +1715,24 @@ const DashboardContent = ({ currentUserRole }) => {
             )}
           </section>
 
-          {/* Rank the most-requested resources for the selected period. */}
+          {/* Rank requested resources for the selected period. */}
           {hasAnalyticsDashboard && (
           <section className="dashboard-insights">
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Most Requested Equipment</h2>
-                  <p>Approved equipment units in the selected period.</p>
+                  <h2>{rankingModes.equipment === 'most' ? 'Most' : 'Least'} Requested Equipment</h2>
+                  <p>Approved equipment units in the selected period{rankingModes.equipment === 'least' ? ', including items with no requests' : ''}.</p>
                 </div>
+                <RankingModeToggle
+                  label="Equipment"
+                  value={rankingModes.equipment}
+                  onChange={(value) => setRankingModes((current) => ({ ...current, equipment: value }))}
+                />
               </div>
-              {usageByEquipment.length ? (
-                <div className="ranking-list">
-                  {usageByEquipment.map((equipment, index) => (
+              {equipmentRanking.length ? (
+                <div className="ranking-list" tabIndex={0} aria-label="Equipment request rankings">
+                  {equipmentRanking.map((equipment, index) => (
                     <div className="ranking-row" key={equipment.id}>
                       <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
                       <span className="ranking-name" title={equipment.name}>{equipment.name}</span>
@@ -1694,13 +1751,18 @@ const DashboardContent = ({ currentUserRole }) => {
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Most Requested Utilities</h2>
-                  <p>Approved utility units in the selected period.</p>
+                  <h2>{rankingModes.utilities === 'most' ? 'Most' : 'Least'} Requested Utilities</h2>
+                  <p>Approved utility units in the selected period{rankingModes.utilities === 'least' ? ', including items with no requests' : ''}.</p>
                 </div>
+                <RankingModeToggle
+                  label="Utilities"
+                  value={rankingModes.utilities}
+                  onChange={(value) => setRankingModes((current) => ({ ...current, utilities: value }))}
+                />
               </div>
-              {utilityUsage.length ? (
-                <div className="ranking-list">
-                  {utilityUsage.map((utility, index) => (
+              {utilitiesRanking.length ? (
+                <div className="ranking-list" tabIndex={0} aria-label="Utility request rankings">
+                  {utilitiesRanking.map((utility, index) => (
                     <div className="ranking-row" key={utility.id}>
                       <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
                       <span className="ranking-name" title={utility.name}>{utility.name}</span>
@@ -1719,13 +1781,18 @@ const DashboardContent = ({ currentUserRole }) => {
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Most Requested Facilities</h2>
-                  <p>Approved facility reservations in the selected period.</p>
+                  <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Facilities</h2>
+                  <p>Approved facility reservations in the selected period{rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.</p>
                 </div>
+                <RankingModeToggle
+                  label="Facilities"
+                  value={rankingModes.facilities}
+                  onChange={(value) => setRankingModes((current) => ({ ...current, facilities: value }))}
+                />
               </div>
-              {facilityUsage.length ? (
-                <div className="ranking-list">
-                  {facilityUsage.map((facility, index) => (
+              {facilitiesRanking.length ? (
+                <div className="ranking-list" tabIndex={0} aria-label="Facility request rankings">
+                  {facilitiesRanking.map((facility, index) => (
                     <div className="ranking-row" key={facility.id}>
                       <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
                       <span className="ranking-name" title={facility.name}>{facility.name}</span>

@@ -1037,7 +1037,8 @@ main,
   }
 
   .panel-action-link,
-  .resource-alert-row > a {
+  .resource-alert-row > a,
+  .resource-alert-actions > a {
     flex: 0 0 auto;
     color: $blue;
     font-size: var(--font-body);
@@ -1062,6 +1063,33 @@ main,
     flex-direction: column;
     height: 8rem;
     overflow-y: auto;
+  }
+
+  .resource-alert-filter {
+    display: flex;
+    flex: 0 0 auto;
+    flex-direction: column;
+    gap: 0.25rem;
+    color: $muted;
+    font-size: var(--font-body);
+    font-weight: 600;
+
+    select {
+      max-width: 13rem;
+      height: 2.35rem;
+      padding: 0 0.55rem;
+      border: 1px solid $border;
+      border-radius: 0.5rem;
+      background: $surface;
+      color: $ink;
+      font: inherit;
+      font-weight: 500;
+
+      &:focus-visible {
+        outline: 2px solid $blue;
+        outline-offset: 2px;
+      }
+    }
   }
 
   .operation-row {
@@ -1191,7 +1219,7 @@ main,
       border-bottom: 0;
     }
 
-    > div {
+    > div:not(.resource-alert-actions) {
       display: flex;
       min-width: 0;
       flex-direction: column;
@@ -1227,6 +1255,26 @@ main,
     color: $amber;
     font-size: var(--font-body);
     font-weight: 700;
+  }
+
+  .resource-alert-actions {
+    display: flex;
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.6rem;
+    white-space: nowrap;
+  }
+
+  .resource-alert-category {
+    display: inline-flex;
+    align-items: center;
+    padding: 0.25rem 0.45rem;
+    border-radius: 999px;
+    background: #f0f4ff;
+    color: $muted;
+    font-size: var(--font-body);
+    font-weight: 600;
   }
 
   .user-search-field {
@@ -1493,10 +1541,46 @@ main,
     font-size: var(--font-body);
   }
 
+  .ranking-mode-toggle {
+    display: inline-flex;
+    flex: 0 0 auto;
+    gap: 0.15rem;
+    padding: 0.2rem;
+    border-radius: 0.5rem;
+    background: #f1f4fa;
+
+    button {
+      padding: 0.35rem 0.55rem;
+      border: 0;
+      border-radius: 0.35rem;
+      background: transparent;
+      color: $muted;
+      font: inherit;
+      font-size: var(--font-body);
+      font-weight: 600;
+      cursor: pointer;
+
+      &[aria-pressed='true'] {
+        background: $surface;
+        color: $blue;
+        box-shadow: 0 0.1rem 0.3rem rgba(24, 42, 79, 0.1);
+      }
+
+      &:focus-visible {
+        outline: 2px solid $blue;
+        outline-offset: 2px;
+      }
+    }
+  }
+
   .ranking-list {
     display: flex;
+    max-height: 12rem;
     flex-direction: column;
+    overflow-y: auto;
     gap: 0.9rem;
+    padding-right: 0.35rem;
+    overscroll-behavior-y: contain;
   }
 
   .ranking-row {

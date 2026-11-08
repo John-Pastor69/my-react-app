@@ -187,8 +187,8 @@ $orange-main: #F59E0B;
 
     &.event-information-grid {
       grid-template-areas:
-        "event-name"
         "event-type"
+        "event-name"
         "taken-schedules"
         "start-date"
         "end-date"
@@ -319,8 +319,12 @@ $orange-main: #F59E0B;
 
     .schedule-override-list {
       display: flex;
+      max-height: 20rem;
       flex-direction: column;
+      overflow-y: auto;
       gap: 0.625rem;
+      padding-right: 0.35rem;
+      overscroll-behavior-y: contain;
     }
 
     .schedule-override-row {
@@ -2240,7 +2244,7 @@ $orange-main: #F59E0B;
       &.event-information-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
         grid-template-areas:
-          "event-name event-type"
+          "event-type event-name"
           "start-date taken-schedules"
           "end-date event-start-time"
           "event-aircon-toggle event-end-time"

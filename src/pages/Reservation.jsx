@@ -236,6 +236,12 @@ const formatTimeForPicker = (timeStr) => {
   return `${hours}:${minutes}`;
 };
 
+const offsetReservationTime = (time, offset) => {
+  const totalMinutes = parseTimeToMinutes(time);
+  if (totalMinutes === null) return '';
+  return formatTimeForPicker(`${String(Math.floor((totalMinutes + offset) / 60)).padStart(2, '0')}:${String((totalMinutes + offset) % 60).padStart(2, '0')}`);
+};
+
 const ReservationTimePicker = ({
   value,
   onChange,
@@ -243,7 +249,9 @@ const ReservationTimePicker = ({
   invalid = false,
   disabled = false,
   defaultTime = '07:00',
-  useViewportPopover = false
+  useViewportPopover = false,
+  minTime,
+  maxTime
 }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [popoverPosition, setPopoverPosition] = useState({ top: 0, left: 0, width: 0 });
@@ -257,6 +265,14 @@ const ReservationTimePicker = ({
   const selectedMinute = selectedMinutes % 60;
   const selectedPeriod = selectedHour24 >= 12 ? 'PM' : 'AM';
   const displayedTime = totalMinutes === null ? 'Select time' : formatTimeForStorage(value);
+  const minimumMinutes = parseTimeToMinutes(minTime);
+  const maximumMinutes = parseTimeToMinutes(maxTime);
+  const isAllowedTime = (time) => {
+    const minutes = parseTimeToMinutes(time);
+    return isWithinReservationHours(time)
+      && (minimumMinutes === null || minutes >= minimumMinutes)
+      && (maximumMinutes === null || minutes <= maximumMinutes);
+  };
 
   const updatePopoverPosition = () => {
     const trigger = triggerRef.current;
@@ -301,7 +317,7 @@ const ReservationTimePicker = ({
 
   const updateTime = (hour, minute, period) => {
     const nextTime = getReservationTimeValue(hour, minute, period);
-    if (isWithinReservationHours(nextTime)) onChange(nextTime);
+    if (isAllowedTime(nextTime)) onChange(nextTime);
   };
 
   return (
@@ -356,7 +372,7 @@ const ReservationTimePicker = ({
                   <option
                     key={hour}
                     value={hour}
-                    disabled={!isWithinReservationHours(getReservationTimeValue(hour, selectedMinute, selectedPeriod))}
+                    disabled={!isAllowedTime(getReservationTimeValue(hour, selectedMinute, selectedPeriod))}
                   >
                     {String(hour).padStart(2, '0')}
                   </option>
@@ -373,7 +389,7 @@ const ReservationTimePicker = ({
                 {Array.from({ length: 60 }, (_, minute) => minute).map((minute) => {
                   const nextTime = getReservationTimeValue(selectedHour, minute, selectedPeriod);
                   return (
-                    <option key={minute} value={minute} disabled={!isWithinReservationHours(nextTime)}>
+                    <option key={minute} value={minute} disabled={!isAllowedTime(nextTime)}>
                       {String(minute).padStart(2, '0')}
                     </option>
                   );
@@ -390,7 +406,7 @@ const ReservationTimePicker = ({
                 {['AM', 'PM'].map((period) => {
                   const nextTime = getReservationTimeValue(selectedHour, selectedMinute, period);
                   return (
-                    <option key={period} value={period} disabled={!isWithinReservationHours(nextTime)}>
+                    <option key={period} value={period} disabled={!isAllowedTime(nextTime)}>
                       {period}
                     </option>
                   );
@@ -401,6 +417,7 @@ const ReservationTimePicker = ({
           <button
             type="button"
             className="reservation-time-quick-select"
+            disabled={!isAllowedTime(defaultTime)}
             onClick={() => {
               const hour24 = Math.floor(defaultMinutes / 60);
               updateTime(
@@ -408,7 +425,7 @@ const ReservationTimePicker = ({
                 defaultMinutes % 60,
                 hour24 >= 12 ? 'PM' : 'AM'
               );
-              setIsOpen(false);
+              if (isAllowedTime(defaultTime)) setIsOpen(false);
             }}
           >
             Use {formatTimeForStorage(defaultTime)}
@@ -2625,27 +2642,29 @@ const Reservation = ({ currentUserRole }) => {
                             />
                             <span>Aircon for this facility</span>
                           </label>
-                          <button
-                            type="button"
-                            className="facility-schedule-toggle"
-                            onClick={() => setExpandedFacilitySchedules((current) => ({
-                              ...current,
-                              [item.id]: !isFacilityScheduleExpanded
-                            }))}
-                            aria-expanded={isFacilityScheduleExpanded}
-                            aria-controls={facilityScheduleContentId}
-                          >
-                            <strong>Schedule for {item.name}</strong>
-                            <span className="schedule-override-action">
-                              {isFacilityScheduleExpanded ? 'Hide' : 'Show'}
-                              <i
-                                className={`schedule-override-chevron ${isFacilityScheduleExpanded ? 'is-expanded' : ''}`}
-                                aria-hidden="true"
-                              ></i>
-                            </span>
-                          </button>
-                          {isFacilityScheduleExpanded && (
-                            <div id={facilityScheduleContentId} className="facility-schedule-content">
+                          {dailySchedule.length !== 1 && (
+                            <>
+                              <button
+                                type="button"
+                                className="facility-schedule-toggle"
+                                onClick={() => setExpandedFacilitySchedules((current) => ({
+                                  ...current,
+                                  [item.id]: !isFacilityScheduleExpanded
+                                }))}
+                                aria-expanded={isFacilityScheduleExpanded}
+                                aria-controls={facilityScheduleContentId}
+                              >
+                                <strong>Schedule for {item.name}</strong>
+                                <span className="schedule-override-action">
+                                  {isFacilityScheduleExpanded ? 'Hide' : 'Show'}
+                                  <i
+                                    className={`schedule-override-chevron ${isFacilityScheduleExpanded ? 'is-expanded' : ''}`}
+                                    aria-hidden="true"
+                                  ></i>
+                                </span>
+                              </button>
+                              {isFacilityScheduleExpanded && (
+                                <div id={facilityScheduleContentId} className="facility-schedule-content">
                               {facilitySchedules[item.id]?.length ? (
                                 <>
                                   <span className="helper-text">
@@ -2664,6 +2683,7 @@ const Reservation = ({ currentUserRole }) => {
                                             <ReservationTimePicker
                                               value={entry.startTime}
                                               label={`Start time for ${item.name} on ${formatScheduleDate(entry.date)}`}
+                                              maxTime={offsetReservationTime(entry.endTime || '22:00', -1)}
                                               invalid={startInvalid}
                                               useViewportPopover
                                               onChange={(value) => {
@@ -2687,6 +2707,7 @@ const Reservation = ({ currentUserRole }) => {
                                               value={entry.endTime}
                                               label={`End time for ${item.name} on ${formatScheduleDate(entry.date)}`}
                                               defaultTime="22:00"
+                                              minTime={offsetReservationTime(entry.startTime || '07:00', 1)}
                                               invalid={endInvalid}
                                               useViewportPopover
                                               onChange={(value) => {
@@ -2737,7 +2758,9 @@ const Reservation = ({ currentUserRole }) => {
                               ) : (
                                 <span className="field-error">Select valid dates and times for this facility.</span>
                               )}
-                            </div>
+                                </div>
+                              )}
+                            </>
                           )}
                         </div>
                         <div
@@ -3171,6 +3194,7 @@ const Reservation = ({ currentUserRole }) => {
               <ReservationTimePicker
                 value={startTime}
                 label="Default start time"
+                maxTime={offsetReservationTime(endTime || '22:00', -1)}
                 invalid={Boolean(missingFields.startTime || (startTime && !isStartTimeValid))}
                 onChange={(value) => {
                   setStartTime(value);
@@ -3190,6 +3214,7 @@ const Reservation = ({ currentUserRole }) => {
                 value={endTime}
                 label="Default end time"
                 defaultTime="22:00"
+                minTime={offsetReservationTime(startTime || '07:00', 1)}
                 invalid={Boolean(missingFields.endTime || (endTime && !isEndTimeValid))}
                 onChange={(value) => {
                   setEndTime(value);
@@ -3267,6 +3292,7 @@ const Reservation = ({ currentUserRole }) => {
                           <ReservationTimePicker
                             value={entry.startTime}
                             label={`Start time for ${formatScheduleDate(entry.date)}`}
+                            maxTime={offsetReservationTime(entry.endTime || '22:00', -1)}
                             useViewportPopover
                             invalid={!isWithinReservationHours(entry.startTime)
                               || !isValidReservationTimeRange(entry.startTime, entry.endTime)}
@@ -3288,6 +3314,7 @@ const Reservation = ({ currentUserRole }) => {
                             value={entry.endTime}
                             label={`End time for ${formatScheduleDate(entry.date)}`}
                             defaultTime="22:00"
+                            minTime={offsetReservationTime(entry.startTime || '07:00', 1)}
                             useViewportPopover
                             invalid={!isWithinReservationHours(entry.endTime)
                               || !isValidReservationTimeRange(entry.startTime, entry.endTime)}
