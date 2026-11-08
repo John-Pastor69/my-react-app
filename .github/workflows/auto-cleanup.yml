@@ -19,7 +19,9 @@ jobs:
 
       - name: Install Firebase Admin and Firestore SDK
         # Uses --no-save so it doesn't modify your project's package.json
-        run: npm install firebase-admin @google-cloud/firestore --no-save
+        run: |
+          npm install --no-save --package-lock=false firebase-admin@14.5.0 @google-cloud/firestore@9.4.0
+          node -e "require.resolve('firebase-admin/firestore'); require.resolve('@google-cloud/firestore'); console.log('Firebase Admin Firestore dependencies are available')"
 
       - name: Run Cleanup Script
         env:
