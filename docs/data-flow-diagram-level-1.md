@@ -115,5 +115,6 @@ flowchart LR
   them as a process that reads eligible reservations and moves expired records
   to the archive.
 - Firestore relationships are application-level references, not enforced
-  relational foreign keys. EmailJS flows are dotted because sending is disabled
-  by the current configuration.
+  relational foreign keys. EmailJS delivers approval requests to the active
+  approval step and sends reservation status emails; those external email
+  deliveries are not shown in this data-store-focused DFD.

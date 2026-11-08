@@ -18,16 +18,18 @@ flowchart LR
     Database[("Cloud Firestore")]
     Functions{{"Cloud Functions"}}
     Cloudinary[("Cloudinary Image Hosting")]
-    EmailJS[("EmailJS<br/>disabled in current configuration")]
+    EmailJS[("EmailJS")]
 
     Requestor -->|"Sign-up, sign-in, profile data,<br/>reservation requests, edits, cancellations"| System
     System -->|"Authentication and reservation status,<br/>schedule, notifications and feedback"| Requestor
+    EmailJS -->|"Reservation outcome email"| Requestor
 
     Endorser -->|"Endorsement decisions and remarks"| System
-    System -->|"Reservation endorsement requests<br/>(email sending currently disabled)"| Endorser
+    EmailJS -->|"Approval request email when endorsement is due"| Endorser
 
     Approver -->|"Approval, rejection or modification decisions;<br/>facility, equipment and user administration"| System
     System -->|"Pending requests, reservation details,<br/>approval workflow and management data"| Approver
+    EmailJS -->|"Approval request email for the active role"| Approver
 
     SuperAdmin -->|"Workflow overrides, user and system<br/>administration, reporting"| System
     System -->|"Reservations, approvals, inventory,<br/>users and system status"| SuperAdmin
@@ -37,7 +39,7 @@ flowchart LR
     Database -->|"Reservation or facility document changes"| Functions
     Functions -->|"Recalculated remaining facility capacity"| Database
     System <-->|"Profile image upload and hosted image URL"| Cloudinary
-    System -.->|"Would send reservation status emails<br/>if enabled"| EmailJS
+    System -->|"Active-step approval requests<br/>and reservation status emails"| EmailJS
 ```
 
 ## Flow notes
@@ -57,6 +59,6 @@ flowchart LR
   facility remaining capacity.
 - **Cloudinary** hosts profile images; the application stores the resulting
   image URLs in user/profile records.
-- **EmailJS** calls are currently guarded by `SEND_EMAILS = false`; emails are
-  not sent with the current configuration. The dashed flow indicates a
-  configured-but-disabled integration.
+- **EmailJS** sends approval requests only to the currently active approval
+  step, then notifies the next step as the reservation advances. It also sends
+  reservation outcome emails to requestors.

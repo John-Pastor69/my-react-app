@@ -156,5 +156,5 @@ flowchart LR
 - Reservation schedules, approvals, and history are embedded in reservation
   records. Archiving is represented as a data copy to `archive` and a removal
   from `reservations`.
-- EmailJS is omitted because notification delivery is disabled and is not
-  required to describe the system's data inputs and stores.
+- EmailJS delivery is omitted to keep the diagram focused on data inputs and
+  stores. Approval emails go only to the currently active step in the workflow.

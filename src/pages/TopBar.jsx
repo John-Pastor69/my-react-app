@@ -5,7 +5,7 @@ import { collection, doc, onSnapshot } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import { auth, db } from '../Firebase'; 
 import PendingRequest from './PendingRequest';
-import { APPROVAL_ROLE_HIERARCHY, isApprovalStepReady, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { getNextApprovalStep, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { archiveExpiredApprovedReservations, isReservationEndReached } from '../services/reservationExpiration';
 import '../styles/TopBar.scss'; 
 
@@ -378,9 +378,6 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       const requestor = findUser(res.userId, res.userEmail) || {};
       const requestorName = getProfileName(requestor) || resolveRecordedName(res.fullName) || 'the requestor';
       const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
-      const isStaffRequestor = reqRole !== 'requestor' && reqRole !== 'user';
-      const isRoomCheckerRequestor = normalizeApprovalRoleKey(reqRole) === 'room checker';
-      
       const isRequestor = res.userId === uid || res.userEmail === email;
       if (isRequestor) {
         const status = (res.status || '').toLowerCase().trim();
@@ -449,8 +446,6 @@ const TopBar = ({ toggleSidebar, userRole }) => {
 
       }
 
-      const myIndex = APPROVAL_ROLE_HIERARCHY.indexOf(myRoleKey);
-      
       const reservationStatus = (res.status || '').toLowerCase().trim();
       const resubmissionLogs = Array.isArray(res.historyLogs)
         ? res.historyLogs.filter(log => (
@@ -475,8 +470,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       });
 
       if (
-        myIndex > 0
-        && !['rejected', 'approved', 'to modify'].includes(reservationStatus)
+        !['rejected', 'approved', 'to modify'].includes(reservationStatus)
         && !isReservationEndReached(res)
       ) {
         
@@ -484,17 +478,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           return; 
         }
 
-        const myRecord = res.approvals?.[myRoleKey];
-        const isMyTurn = (!myRecord || myRecord.status === 'pending')
-          && !(myRoleKey === 'endorser' && isStaffRequestor)
-          && isApprovalStepReady(res.approvals, myRoleKey, {
-            hasEndorser: Boolean(res.endorserName),
-            isStaffRequestor,
-            isRoomCheckerRequestor,
-            hasSpecificRoom: Boolean(res.specificRoom?.trim())
-          });
-
-        if (isMyTurn) {
+        const nextStep = getNextApprovalStep(res, reqRole);
+        if (nextStep?.key === myRoleKey) {
           const approvalRequirement = myRoleKey === 'endorser'
             ? 'requires your endorsement'
             : 'requires your approval';

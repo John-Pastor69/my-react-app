@@ -208,6 +208,9 @@ Approval roles include:
 - Reservations are grouped by status and review queue.
 - Approvers can search for a request by name, role, or details.
 - Each request includes the approval tracker, which shows the required approval steps.
+- Only the role whose step is currently active receives an in-app approval
+  notification and an EmailJS email. Later roles are notified as the request
+  advances through the workflow.
 - Approved requests move to the next stage when the assigned role is ready.
 - Certain admin roles can override or adjust workflow behavior.
 

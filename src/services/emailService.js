@@ -26,9 +26,6 @@ export const sendReservationEmail = async (userEmail, userName, resData, notific
 };
 */
 
-// Change this to true when you actually want to send emails
-const SEND_EMAILS = true;
-
 export const sendReservationEmail = async (
     userEmail,
     userName,
@@ -43,13 +40,6 @@ export const sendReservationEmail = async (
             event_date: resData.eventDate || 'TBD',
             message_body: notificationMessage
         };
-
-        // Temporarily disabled
-        if (!SEND_EMAILS) {
-            console.log('Email sending is disabled for testing.');
-            console.log('Would have sent email to:', userEmail);
-            return;
-        }
 
         await emailjs.send(
             import.meta.env.VITE_EMAILJS_SERVICE_ID,

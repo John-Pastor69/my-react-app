@@ -16,7 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import MonthYearPicker from '../components/MonthYearPicker';
-import { sendReservationEmail } from '../services/emailService'; 
+import { sendApprovalRequiredEmails } from '../services/approvalNotifications';
 import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
 import {
@@ -2113,13 +2113,8 @@ const Reservation = ({ currentUserRole }) => {
         });
       }
 
-      if (formData.endorserEmail && !isAdminEditMode) {
-        await sendReservationEmail(
-          formData.endorserEmail,
-          formData.endorserName,
-          { eventName: formData.eventName, eventDate: eventDate },
-          `A new reservation request for "${formData.eventName}" has been submitted by ${formData.fullName} and requires your endorsement.`
-        );
+      if (!isAdminEditMode) {
+        await sendApprovalRequiredEmails({ ...editingReservation, ...reservationUpdate });
       }
 
       try {

@@ -1,16 +1,14 @@
-const admin = require('firebase-admin');
+const { initializeApp, cert } = require('firebase-admin/app');
+const { getFirestore } = require('firebase-admin/firestore');
 
-// Parse the secret key from GitHub Actions
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 
-// Initialize Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert(serviceAccount)
+initializeApp({
+  credential: cert(serviceAccount)
 });
 
-const db = admin.firestore();
+const db = getFirestore();
 
-// The function that fetches and deletes old archive documents
 async function runArchiveCleanup() {
   console.log("Starting 30-day archive database cleanup...");
   try {
@@ -18,20 +16,15 @@ async function runArchiveCleanup() {
     const batch = db.batch();
     let deleteCount = 0;
 
-    // Calculate the exact date and time 30 days ago
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     snapshot.forEach(doc => {
       const res = doc.data();
-      
-      // Your reservationExpiration.js saves the timestamp as either archivedAt or expiredAt
       const archiveTimestampStr = res.archivedAt || res.expiredAt;
       
       if (archiveTimestampStr) {
         const archiveDate = new Date(archiveTimestampStr);
-        
-        // If the document was archived more than 30 days ago, mark it for deletion
         if (archiveDate < thirtyDaysAgo) {
           batch.delete(doc.ref);
           deleteCount++;

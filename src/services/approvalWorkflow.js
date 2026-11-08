@@ -62,6 +62,29 @@ export const isApprovalStepReady = (
   return true;
 };
 
+export const getNextApprovalStep = (reservation, requestorRole = reservation?.userRole) => {
+  const approvals = reservation?.approvals;
+  const normalizedRequestorRole = normalizeApprovalRoleKey(requestorRole || 'requestor');
+  const isStaffRequestor = !['requestor', 'user'].includes(normalizedRequestorRole);
+  const isRoomCheckerRequestor = normalizedRequestorRole === 'room checker';
+  const hasEndorser = Boolean(reservation?.endorserName);
+  const hasSpecificRoom = Boolean(reservation?.specificRoom?.trim());
+
+  return APPROVAL_STEPS.slice(1).find(({ key }) => {
+    if (key === 'endorser' && (isStaffRequestor || !hasEndorser)) return false;
+
+    const status = approvals?.[key]?.status?.toLowerCase();
+    if (status && status !== 'pending') return false;
+
+    return isApprovalStepReady(approvals, key, {
+      hasEndorser,
+      isStaffRequestor,
+      isRoomCheckerRequestor,
+      hasSpecificRoom
+    });
+  }) || null;
+};
+
 export const getApprovalTrackerSteps = ({
   approvals,
   dateSubmitted,

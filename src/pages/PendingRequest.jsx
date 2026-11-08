@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../Firebase';
 import AirconScheduleDisplay from '../components/AirconScheduleDisplay';
 import { sendReservationEmail } from '../services/emailService'; 
+import { sendApprovalRequiredEmails } from '../services/approvalNotifications';
 import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
@@ -553,6 +554,14 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
           status: 'Rejected',
           rejectionRemark: remark.trim()
         });
+      }
+
+      if (isApprove && approvalRoleKey !== 'school admin') {
+        await sendApprovalRequiredEmails({
+          ...currentData,
+          approvals: archivedApprovals,
+          status: 'Pending'
+        }, requestorRole);
       }
 
       // --- SEND EMAIL NOTIFICATION ---
