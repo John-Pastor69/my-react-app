@@ -4,6 +4,7 @@ import { signOut, onAuthStateChanged } from 'firebase/auth';
 import { doc, updateDoc, getDoc, setDoc, onSnapshot } from 'firebase/firestore'; 
 import { auth, db } from './Firebase';
 import { acquireTabAccess, clearAccountStorage, clearBrowserCaches, getBrowserSessionId, LOGOUT_EVENT_KEY, NEW_LOGIN_KEY } from './services/browserSession';
+import { normalizeUserRole } from './services/userRole';
 
 import SideBar from './pages/SideBar';
 import TopBar from './pages/TopBar'; 
@@ -219,7 +220,7 @@ export default function App() {
             const userData = userDocSnap.data();
             // If they are a super admin, we keep the 'super admin' role set above. Otherwise, read from doc.
             if (!isSuperAdmin) {
-              resolvedRole = userData.role || (userData.accountType === 'Faculty' ? 'pending' : 'requestor');
+              resolvedRole = normalizeUserRole(userData.role || (userData.accountType === 'Faculty' ? 'pending' : 'requestor'));
             }
             
             const is2FAPolicyActive = userData.twoFactorEnabled === true;
@@ -284,6 +285,7 @@ export default function App() {
             localStorage.removeItem(`req2FA_${user.uid}`);
           }
 
+          resolvedRole = normalizeUserRole(resolvedRole);
           localStorage.setItem(`userRole_${user.uid}`, resolvedRole);
           setUserRole(resolvedRole);
 

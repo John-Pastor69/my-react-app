@@ -2186,8 +2186,8 @@ const Reservation = ({ currentUserRole }) => {
     } catch (error) {
       console.error("Error submitting reservation: ", error);
       setCustomAlert({
-        title: 'Error',
-        message: 'Failed to submit reservation.',
+        title: error.code === 'functions/failed-precondition' ? 'Schedule Conflict' : 'Error',
+        message: error.message || 'Failed to submit reservation.',
         isSuccess: false
       });
     } finally {

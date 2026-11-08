@@ -23,6 +23,7 @@ const ELEVATED_ROLES = [
   'building admin', 
   'osa', 
   'mis', 
+  'mis admin',
   'room checker',
   'academic head', 
   'school admin',
