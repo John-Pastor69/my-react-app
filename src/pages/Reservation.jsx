@@ -2637,6 +2637,9 @@ const Reservation = ({ currentUserRole }) => {
                 const limits = getFacilityCapacityLimits(item);
                 const maxCapacity = limits.max;
                 const availability = facilityCapacityAvailabilities[item.id];
+                const isCapacityUnavailable = availability.scheduleAvailable
+                  && availability.availableCapacity === 0;
+                const status = isCapacityUnavailable ? 'Unavailable' : item.status;
                 const isMaintenance = item.status?.trim().toLowerCase() === 'maintenance';
                 const isLocked = isMaintenance || item.status?.trim().toLowerCase() === 'unavailable';
                 const participantFieldKey = getFacilityParticipantFieldKey(item.id);
@@ -2664,8 +2667,8 @@ const Reservation = ({ currentUserRole }) => {
                           {[item.location, getFacilityCapacityLabel(item)].filter(Boolean).join(' | ')}
                         </span>
                         <span className="facility-availability">
-                          <span className={`facility-status ${item.status?.toLowerCase() || ''}`}>
-                            ● {item.status}
+                          <span className={`facility-status ${status?.toLowerCase() || ''}`}>
+                            ● {status}
                           </span>
                           {item.exclusiveScheduling && (
                             <span className="facility-exclusive-note">
