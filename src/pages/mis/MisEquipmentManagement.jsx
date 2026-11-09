@@ -91,9 +91,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     });
 
     const total = Number(item.totalCount) || 0;
-    let availableCount = Math.max(0, total - reservedCount);
-
-    if (item.status === 'Unavailable') availableCount = 0;
+    const availableCount = Math.max(0, total - reservedCount);
 
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : (item.status || 'Available');
     const effectiveStatusClass = effectiveStatus === 'Unavailable' ? 'status-unavailable' : 'status-available';
@@ -150,7 +148,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     try {
       await updateDoc(doc(db, 'equipments', editingItem.id), {
         totalCount: newTotal,
-        availableCount: status === 'Unavailable' ? 0 : newAvailable,
+        availableCount: newAvailable,
         status: status,
         statusClass: statusClass,
         lastUpdated: getCurrentDateTime()
@@ -493,7 +491,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               </div>
               <div className="form-group">
                 <label>Add / Deduct Total Inventory</label>
-                <input type="number" value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const adj = e.target.value; const adjTotal = parseInt(adj, 10) || 0; const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal); const newAvailable = Math.max(0, newTotal - editingItem.computedReserved); setEditingItem({ ...editingItem, adjustment: adj, status: newAvailable === 0 ? 'Unavailable' : 'Available' }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+                <input type="number" min={-editingItem.computedAvailable} value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const minimumAdjustment = -editingItem.computedAvailable; const adjustment = e.target.value === '' ? '' : Math.max(minimumAdjustment, parseInt(e.target.value, 10) || 0); const adjTotal = parseInt(adjustment, 10) || 0; const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal); const newAvailable = Math.max(0, newTotal - editingItem.computedReserved); setEditingItem({ ...editingItem, adjustment, status: newAvailable === 0 ? 'Unavailable' : 'Available' }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div className="form-group">
                 <label>Current Reserved (Automated)</label>

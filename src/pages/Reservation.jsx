@@ -539,6 +539,11 @@ const formatScheduleDate = (date) => {
   });
 };
 
+const formatScheduleInputDate = (date) => {
+  const [year, month, day] = date.split('-');
+  return `${month}/${day}/${year}`;
+};
+
 const Reservation = ({ currentUserRole }) => {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
@@ -585,6 +590,7 @@ const Reservation = ({ currentUserRole }) => {
   const [conflictEvent, setConflictEvent] = useState(null);
   const [selectedScheduleId, setSelectedScheduleId] = useState('');
   const [customAlert, setCustomAlert] = useState(null); 
+  const [pendingScheduleRemoval, setPendingScheduleRemoval] = useState(null);
 
   // --- UI & VALIDATION STATES ---
   const [inventoryEquipments, setInventoryEquipments] = useState([]);
@@ -1089,7 +1095,7 @@ const Reservation = ({ currentUserRole }) => {
     });
 
     const total = Number(item.totalCount) || 0;
-    const availableCount = item.status === 'Unavailable' ? 0 : Math.max(0, total - reservedCount);
+    const availableCount = Math.max(0, total - reservedCount);
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : item.status;
     return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
   });
@@ -1130,6 +1136,27 @@ const Reservation = ({ currentUserRole }) => {
       endTime: dailyScheduleOverrides[date]?.endTime || endTime,
       aircon: aircon && (dailyAirconOverrides[date] ?? true)
     }));
+  const confirmRemoveScheduleDate = (date) => {
+    const dateIndex = dailySchedule.findIndex((entry) => entry.date === date);
+    const isFirstDate = dateIndex === 0;
+    const isLastDate = dateIndex === dailySchedule.length - 1;
+
+    if (isFirstDate && dailySchedule[1]) {
+      setEventDate(formatScheduleInputDate(dailySchedule[1].date));
+      setDateError('');
+    }
+    if (isLastDate && dailySchedule[dateIndex - 1]) {
+      setEndDateInput(formatScheduleInputDate(dailySchedule[dateIndex - 1].date));
+      setDaysDateError('');
+    }
+
+    setRemovedScheduleDates((dates) => (
+      isFirstDate || isLastDate
+        ? dates.filter((removedDate) => removedDate !== date)
+        : [...new Set([...dates, date])]
+    ));
+    setPendingScheduleRemoval(null);
+  };
   const facilitySchedules = Object.fromEntries(
     formData.facilities.map((facilityId) => [
       facilityId,
@@ -3435,9 +3462,7 @@ const Reservation = ({ currentUserRole }) => {
                         <button
                           type="button"
                           className="schedule-day-remove"
-                          onClick={() => {
-                            setRemovedScheduleDates((dates) => [...new Set([...dates, entry.date])]);
-                          }}
+                          onClick={() => setPendingScheduleRemoval(entry.date)}
                           aria-label={`Remove ${formatScheduleDate(entry.date)} from schedule`}
                         >
                           Remove
@@ -3575,6 +3600,33 @@ const Reservation = ({ currentUserRole }) => {
       </div>
 
       {/* Custom React Modal for General Alerts */}
+      {pendingScheduleRemoval && (
+        <div className="modal-overlay">
+          <div className="modal-card reservation-alert-modal" role="dialog" aria-modal="true" aria-labelledby="remove-date-title">
+            <h3 id="remove-date-title" className="modal-title error">Remove scheduled date?</h3>
+            <p className="modal-message">
+              Remove {formatScheduleDate(pendingScheduleRemoval)} from this reservation?
+            </p>
+            <div className="modal-actions schedule-removal-actions">
+              <button
+                type="button"
+                onClick={() => setPendingScheduleRemoval(null)}
+                className="modal-button modal-button-secondary"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => confirmRemoveScheduleDate(pendingScheduleRemoval)}
+                className="modal-button modal-button-danger"
+              >
+                Remove date
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {customAlert && (
         <div className={`modal-overlay ${customAlert.isSuccess ? 'reservation-success-overlay' : ''}`}>
           <div className={`modal-card ${customAlert.isSuccess ? '' : 'reservation-alert-modal'}`}>
