@@ -864,6 +864,45 @@ const Calendar = ({ currentUserRole }) => {
             <div className="details-modal-content">
               <div className="details-flex-container">
                 <div className="details-left-column">
+                  {(!isRequestorRole || isOwnReservation(historySelectedRequest.fullData))
+                    && historySelectedRequest.fullData.rejectionRemark && (
+                    <div className="details-card">
+                      <h3 className="details-card-header">Rejection Remark</h3>
+                      <div className="details-grid">
+                        <div className="details-full-width">
+                          <div className="details-value">{historySelectedRequest.fullData.rejectionRemark}</div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(!isRequestorRole || isOwnReservation(historySelectedRequest.fullData)) && (
+                    <div className="details-card">
+                      <h3 className="details-card-header">👤 Requestor Information</h3>
+                      <div className="details-grid">
+                        <div><div className="details-label">Full Name</div><div className="details-value">{historySelectedRequest.requestor || 'N/A'}</div></div>
+                        <div><div className="details-label">Requestor Type</div><div className="details-value">{Array.isArray(historySelectedRequest.fullData.requestorTypes) && historySelectedRequest.fullData.requestorTypes.length > 0 ? historySelectedRequest.fullData.requestorTypes.join(', ') : 'N/A'}</div></div>
+                        <div><div className="details-label">Contact Number</div><div className="details-value">{historySelectedRequest.fullData.contactNumber || 'N/A'}</div></div>
+                        <div><div className="details-label">Email Address</div><div className="details-value">{historySelectedRequest.fullData.userEmail || historySelectedRequest.fullData.emailAddress || 'N/A'}</div></div>
+                        <div><div className="details-label">Date Submitted</div><div className="details-value">{historySelectedRequest.fullData.createdAt || 'N/A'}</div></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {(!isRequestorRole || isOwnReservation(historySelectedRequest.fullData))
+                    && (historySelectedRequest.fullData.userRole === 'student' || historySelectedRequest.endorser !== 'N/A') && (
+                    <div className="details-card">
+                      <h3 className="details-card-header">
+                        👨‍💼 Endorser Information <span className="student-badge">Student Role Only</span>
+                      </h3>
+                      <div className="details-grid">
+                        <div><div className="details-label">Endorser's Full Name</div><div className="details-value">{historySelectedRequest.endorser || 'N/A'}</div></div>
+                        <div><div className="details-label">Designation</div><div className="details-value">{historySelectedRequest.fullData.endorserInfo?.department || historySelectedRequest.fullData.endorserInfo?.designation || historySelectedRequest.fullData.endorserDesignation || 'N/A'}</div></div>
+                        <div className="details-full-width"><div className="details-label">Contact Email</div><div className="details-value">{historySelectedRequest.fullData.endorserEmail || 'N/A'}</div></div>
+                      </div>
+                    </div>
+                  )}
+
                   <div className="details-card">
                     <h3 className="details-card-header">📋 Event Information</h3>
                     <div className="details-grid">
@@ -892,18 +931,6 @@ const Calendar = ({ currentUserRole }) => {
                       <div className="details-grid">
                         <div className="details-full-width">
                           <div className="details-value">{historySelectedRequest.fullData.cancellationRemark}</div>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {(!isRequestorRole || isOwnReservation(historySelectedRequest.fullData))
-                    && historySelectedRequest.fullData.rejectionRemark && (
-                    <div className="details-card">
-                      <h3 className="details-card-header">Rejection Remark</h3>
-                      <div className="details-grid">
-                        <div className="details-full-width">
-                          <div className="details-value">{historySelectedRequest.fullData.rejectionRemark}</div>
                         </div>
                       </div>
                     </div>
@@ -939,33 +966,6 @@ const Calendar = ({ currentUserRole }) => {
                       <div className="details-full-width"><div className="details-label">Equipment Requested</div><div className="details-value">{historySelectedRequest.equipment || 'N/A'}</div></div>
                     </div>
                   </div>
-
-                  {(!isRequestorRole || isOwnReservation(historySelectedRequest.fullData)) && (
-                    <div className="details-card">
-                      <h3 className="details-card-header">👤 Requestor Information</h3>
-                      <div className="details-grid">
-                        <div><div className="details-label">Full Name</div><div className="details-value">{historySelectedRequest.requestor || 'N/A'}</div></div>
-                        <div><div className="details-label">Requestor Type</div><div className="details-value">{Array.isArray(historySelectedRequest.fullData.requestorTypes) && historySelectedRequest.fullData.requestorTypes.length > 0 ? historySelectedRequest.fullData.requestorTypes.join(', ') : 'N/A'}</div></div>
-                        <div><div className="details-label">Contact Number</div><div className="details-value">{historySelectedRequest.fullData.contactNumber || 'N/A'}</div></div>
-                        <div><div className="details-label">Email Address</div><div className="details-value">{historySelectedRequest.fullData.userEmail || historySelectedRequest.fullData.emailAddress || 'N/A'}</div></div>
-                        <div><div className="details-label">Date Submitted</div><div className="details-value">{historySelectedRequest.fullData.createdAt || 'N/A'}</div></div>
-                      </div>
-                    </div>
-                  )}
-
-                  {(!isRequestorRole || isOwnReservation(historySelectedRequest.fullData))
-                    && (historySelectedRequest.fullData.userRole === 'student' || historySelectedRequest.endorser !== 'N/A') && (
-                    <div className="details-card">
-                      <h3 className="details-card-header">
-                        👨‍💼 Endorser Information <span className="student-badge">Student Role Only</span>
-                      </h3>
-                      <div className="details-grid">
-                        <div><div className="details-label">Endorser's Full Name</div><div className="details-value">{historySelectedRequest.endorser || 'N/A'}</div></div>
-                        <div><div className="details-label">Designation</div><div className="details-value">{historySelectedRequest.fullData.endorserInfo?.department || historySelectedRequest.fullData.endorserInfo?.designation || historySelectedRequest.fullData.endorserDesignation || 'N/A'}</div></div>
-                        <div className="details-full-width"><div className="details-label">Contact Email</div><div className="details-value">{historySelectedRequest.fullData.endorserEmail || 'N/A'}</div></div>
-                      </div>
-                    </div>
-                  )}
 
                   <div className="details-card archive-tracker-card">
                     <h3 className="details-card-header">📊 Approval Tracker</h3>

@@ -11,8 +11,8 @@ $green-main: #059669;
 $green-light: #D1FAE5;
 $red-main: #DC2626;
 $red-light: #FEE2E2;
-$charcoal: #364152;
-$expired-color: #526174;
+$expired-color: #64748B;
+$expired-light: #E2E8F0;
 
 .calendar-page-container { 
   display: flex;
@@ -239,7 +239,7 @@ $expired-color: #526174;
         &.status-rejected { background: $red-light; color: $red-main; }
         &.status-cancelled { background: #F1F5F9; color: #64748B; }
         &.status-pending { background: $yellow-light; color: $yellow-main; }
-        &.status-expired { background: $expired-color; color: #FFFFFF; }
+        &.status-expired { background: $expired-light; color: $expired-color; }
       }
 
       .item-actions {
@@ -343,9 +343,11 @@ $expired-color: #526174;
       &.pill-gray { border-left-color: #94A3B8; color: #64748B; }
       &.pill-charcoal {
         border-left-color: $expired-color;
-        background: $expired-color;
-        color: #FFFFFF;
-        &:hover, &:active { background: $expired-color !important; }
+        background: $expired-light;
+        color: $text-dark;
+        .event-pill-time { color: $expired-color; }
+        .event-pill-title { color: $expired-color; }
+        &:hover, &:active { background: $expired-light !important; }
       }
     }
   }
@@ -501,7 +503,7 @@ $expired-color: #526174;
           &.bg-yellow { background: $yellow-light; color: $yellow-main; }
           &.bg-red { background: $red-light; color: $red-main; }
           &.bg-gray { background: #E2E8F0; color: #64748B; }
-          &.bg-charcoal { background: $charcoal; color: #FFFFFF; }
+          &.bg-charcoal { background: $expired-light; color: $expired-color; }
         }
       }
       .card-details {
@@ -691,10 +693,12 @@ $expired-color: #526174;
           &:hover, &:active { background: #F1F5F9 !important; }
         }
         &.pill-charcoal {
-          background: $expired-color;
+          background: $expired-light;
           border-left-color: $expired-color;
-          color: #FFFFFF;
-          &:hover, &:active { background: $expired-color !important; }
+          color: $text-dark;
+          .event-pill-time { color: $expired-color; }
+          .event-pill-title { color: $expired-color; }
+          &:hover, &:active { background: $expired-light !important; }
         }
       }
     }
