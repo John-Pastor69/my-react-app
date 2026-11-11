@@ -341,7 +341,7 @@ const DashboardTimePicker = ({ value, onChange, label }) => {
 };
 
 // Date, time, status, and quick-range filters for analytics dashboards.
-const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard }) => (
+const DashboardFilters = ({ filters, setFilters, setDatePreset }) => (
   <section className="dashboard-filters" aria-label="Dashboard filters">
     <div className="filter-heading">
       <div>
@@ -414,12 +414,6 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, isAdminDashboard
           <option value="all">All statuses</option>
           <option value="approved">Approved</option>
           <option value="pending">Pending</option>
-          {isAdminDashboard && (
-            <>
-              <option value="rejected">Rejected</option>
-              <option value="cancelled">Cancelled</option>
-            </>
-          )}
         </select>
       </label>
     </div>
@@ -774,8 +768,17 @@ const DashboardContent = ({ currentUserRole }) => {
     weekAhead.setHours(23, 59, 59, 999);
   }
 
+  const dashboardReservations = useMemo(() => {
+    const activeReservationIds = new Set(reservationsData.map(({ id }) => id));
+    const approvedArchivedReservations = historyData.filter((reservation) => (
+      !activeReservationIds.has(reservation.id)
+      && (reservation.status || '').toLowerCase().trim() === 'approved'
+    ));
+    return [...reservationsData, ...approvedArchivedReservations];
+  }, [reservationsData, historyData]);
+
   const upcomingReservations = today && weekAhead
-    ? reservationsData
+    ? dashboardReservations
       .map((reservation) => ({
         ...reservation,
         eventDateValue: parseDate(reservation.eventDate || reservation.date)
@@ -799,13 +802,13 @@ const DashboardContent = ({ currentUserRole }) => {
       .slice(0, 6)
     : [];
 
-  // Apply the main date, status, and start-time filters to active reservations.
+  // Apply the main date, status, and start-time filters to active and approved archived reservations.
   const startMinutes = parseTime(filters.startTime);
   const endMinutes = parseTime(filters.endTime);
   const startDate = filters.startDate ? parseDate(filters.startDate) : null;
   const endDate = filters.endDate ? parseDate(filters.endDate) : null;
 
-  const filteredReservations = useMemo(() => reservationsData.filter((reservation) => {
+  const filteredReservations = useMemo(() => dashboardReservations.filter((reservation) => {
     const reservationDate = parseDate(reservation.eventDate || reservation.date);
     if (!reservationDate) return false;
     if (startDate && reservationDate < startDate) return false;
@@ -814,6 +817,7 @@ const DashboardContent = ({ currentUserRole }) => {
     }
 
     const status = (reservation.status || 'Pending').toLowerCase();
+    if (!['approved', 'pending'].includes(status)) return false;
     if (filters.status !== 'all' && status !== filters.status) return false;
 
     if (startMinutes !== null || endMinutes !== null) {
@@ -828,7 +832,7 @@ const DashboardContent = ({ currentUserRole }) => {
     }
 
     return true;
-  }), [reservationsData, filters.status, startDate, endDate, startMinutes, endMinutes]);
+  }), [dashboardReservations, filters.status, startDate, endDate, startMinutes, endMinutes]);
   const countedReservations = useMemo(() => filteredReservations.filter((reservation) => (
     ['approved', 'pending'].includes((reservation.status || 'pending').toLowerCase().trim())
   )), [filteredReservations]);
@@ -1397,7 +1401,6 @@ const DashboardContent = ({ currentUserRole }) => {
             filters={filters}
             setFilters={setFilters}
             setDatePreset={setDatePreset}
-            isAdminDashboard={isAdminDashboard}
           />
         )}
         {hasAnalyticsDashboard && (

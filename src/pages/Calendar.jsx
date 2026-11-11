@@ -10,6 +10,7 @@ import { isReservationEndReached } from '../services/reservationExpiration';
 import { getUnavailableDateId } from '../services/unavailableDates';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import { formatTimeForDisplay, formatTimeRange } from '../services/timeFormatting';
+import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -87,6 +88,7 @@ const Calendar = ({ currentUserRole }) => {
   const [facilitiesMap, setFacilitiesMap] = useState({});
   const [equipmentMap, setEquipmentMap] = useState({});
   const [utilitiesMap, setUtilitiesMap] = useState({});
+  const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
   const [selectedRequest, setSelectedRequest] = useState(null);
   const [userRole, setUserRole] = useState('');
   
@@ -107,6 +109,12 @@ const Calendar = ({ currentUserRole }) => {
   const [isSavingUnavailableDate, setIsSavingUnavailableDate] = useState(false);
 
   const [currentUser, setCurrentUser] = useState(null);
+
+  useEffect(() => onSnapshot(
+    doc(db, 'app_settings', 'signupOptions'),
+    (snapshot) => setSignupConfiguration(getSignupConfiguration(snapshot.data() || {})),
+    (error) => console.error('Failed to load signup options for calendar:', error)
+  ), []);
 
   const handleDateClick = (dateStr) => {
     setSelectedDate(dateStr);
@@ -215,7 +223,10 @@ const Calendar = ({ currentUserRole }) => {
         .filter(([id, qty]) => Number(qty) > 0)
         .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
       if (typeof data.otherEquipment === 'string' && data.otherEquipment.trim()) {
-        equipArray.push(data.otherEquipment.trim());
+        const units = Number(data.otherEquipmentUnits);
+        equipArray.push(Number.isInteger(units) && units > 0
+          ? `${data.otherEquipment.trim()} - ${units} units`
+          : data.otherEquipment.trim());
       }
       const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
 
@@ -329,6 +340,15 @@ const Calendar = ({ currentUserRole }) => {
   const archiveDateSubmitted = submittedDate && !Number.isNaN(submittedDate.getTime())
     ? submittedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
     : 'Unknown';
+  const archivedRequestorDynamicAttributes = archivedReservation
+    ? getReservationDynamicAttributes(archivedReservation, 'requestor', signupConfiguration)
+    : [];
+  const archivedEndorserDynamicAttributes = archivedReservation
+    ? getReservationDynamicAttributes(archivedReservation, 'endorser', signupConfiguration)
+    : [];
+  const archivedRequestorAccountType = archivedReservation?.requestorInfo?.accountType
+    || archivedReservation?.requestorTypes?.[0]
+    || '';
   const archivedRequestorRole = (
     archivedReservation?.userRole
     || archivedReservation?.role
@@ -354,7 +374,10 @@ const Calendar = ({ currentUserRole }) => {
       .filter(([id, qty]) => Number(qty) > 0)
       .map(([id, qty]) => `${qty}x ${equipmentMap[id]?.name || id}`);
     if (typeof data.otherEquipment === 'string' && data.otherEquipment.trim()) {
-      equipArray.push(data.otherEquipment.trim());
+      const units = Number(data.otherEquipmentUnits);
+      equipArray.push(Number.isInteger(units) && units > 0
+        ? `${data.otherEquipment.trim()} - ${units} units`
+        : data.otherEquipment.trim());
     }
     const equipmentRequested = equipArray.length > 0 ? equipArray.join(', ') : 'N/A';
 
@@ -881,10 +904,16 @@ const Calendar = ({ currentUserRole }) => {
                       <h3 className="details-card-header">👤 Requestor Information</h3>
                       <div className="details-grid">
                         <div><div className="details-label">Full Name</div><div className="details-value">{historySelectedRequest.requestor || 'N/A'}</div></div>
-                        <div><div className="details-label">Requestor Type</div><div className="details-value">{Array.isArray(historySelectedRequest.fullData.requestorTypes) && historySelectedRequest.fullData.requestorTypes.length > 0 ? historySelectedRequest.fullData.requestorTypes.join(', ') : 'N/A'}</div></div>
+                        <div><div className="details-label">Requestor Type</div><div className="details-value">{archivedRequestorAccountType || 'N/A'}</div></div>
                         <div><div className="details-label">Contact Number</div><div className="details-value">{historySelectedRequest.fullData.contactNumber || 'N/A'}</div></div>
                         <div><div className="details-label">Email Address</div><div className="details-value">{historySelectedRequest.fullData.userEmail || historySelectedRequest.fullData.emailAddress || 'N/A'}</div></div>
-                        <div><div className="details-label">Date Submitted</div><div className="details-value">{historySelectedRequest.fullData.createdAt || 'N/A'}</div></div>
+                        <div><div className="details-label">Date Submitted</div><div className="details-value">{archiveDateSubmitted}</div></div>
+                        {archivedRequestorDynamicAttributes.map(({ key, label, value }) => (
+                          <div key={`requestor-${key}`}>
+                            <div className="details-label">{label}</div>
+                            <div className="details-value">{value}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -899,6 +928,12 @@ const Calendar = ({ currentUserRole }) => {
                         <div><div className="details-label">Endorser's Full Name</div><div className="details-value">{historySelectedRequest.endorser || 'N/A'}</div></div>
                         <div><div className="details-label">Designation</div><div className="details-value">{historySelectedRequest.fullData.endorserInfo?.department || historySelectedRequest.fullData.endorserInfo?.designation || historySelectedRequest.fullData.endorserDesignation || 'N/A'}</div></div>
                         <div className="details-full-width"><div className="details-label">Contact Email</div><div className="details-value">{historySelectedRequest.fullData.endorserEmail || 'N/A'}</div></div>
+                        {archivedEndorserDynamicAttributes.map(({ key, label, value }) => (
+                          <div key={`endorser-${key}`}>
+                            <div className="details-label">{label}</div>
+                            <div className="details-value">{value}</div>
+                          </div>
+                        ))}
                       </div>
                     </div>
                   )}
@@ -960,7 +995,9 @@ const Calendar = ({ currentUserRole }) => {
                           ? historySelectedRequest.fullData.selectedUtilities.map((id) => `${Number(historySelectedRequest.fullData.selectedUtilityUnits?.[id]) || 1}x ${utilitiesMap[id]?.name || id}`)
                           : []),
                         ...(typeof historySelectedRequest.fullData.otherUtility === 'string' && historySelectedRequest.fullData.otherUtility.trim()
-                          ? [historySelectedRequest.fullData.otherUtility.trim()]
+                          ? [Number(historySelectedRequest.fullData.otherUtilityUnits) > 0
+                            ? `${historySelectedRequest.fullData.otherUtility.trim()} - ${historySelectedRequest.fullData.otherUtilityUnits} units`
+                            : historySelectedRequest.fullData.otherUtility.trim()]
                           : [])
                       ].join(', ') || 'None'}</div></div>
                       <div className="details-full-width"><div className="details-label">Equipment Requested</div><div className="details-value">{historySelectedRequest.equipment || 'N/A'}</div></div>
