@@ -1854,7 +1854,7 @@ const DashboardContent = ({ currentUserRole }) => {
         <div className="dashboard-section-heading">
           <h2>Live operation</h2>
           <p>{isBuildingAdminDashboard
-            ? 'Current approvals, upcoming events, and this week’s venue bookings.'
+            ? 'Current approvals, upcoming events, and this week’s venue reservations.'
             : 'Current approvals and upcoming events.'}</p>
         </div>
         <section className="dashboard-operations" aria-label="Dashboard operations">
@@ -2333,7 +2333,7 @@ const DashboardContent = ({ currentUserRole }) => {
             <div>
               <h2>Venue utilization percentage</h2>
               <p>
-                Approved booking hours this week out of 105 operating hours
+                Approved reservation hours this week out of 105 operating hours
                 ({formatDate(liveWeekStartDate)} – {formatDate(liveWeekEndDate)}; 7:00 AM–10:00 PM daily)
               </p>
             </div>
