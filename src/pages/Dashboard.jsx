@@ -566,6 +566,8 @@ const DashboardContent = ({ currentUserRole }) => {
   const dashboardSearchQuery = searchParams.get('search') || '';
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
+  const liveOperationExportRef = useRef(null);
+  const analyticsExportRef = useRef(null);
   const [equipmentData, setEquipmentData] = useState([]);
   const [utilitiesData, setUtilitiesData] = useState([]);
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -599,6 +601,8 @@ const DashboardContent = ({ currentUserRole }) => {
     endTime: '',
     status: 'all'
   });
+  const [isExportingDashboardPdf, setIsExportingDashboardPdf] = useState(false);
+  const [dashboardPdfExportError, setDashboardPdfExportError] = useState('');
 
   // Remove the search query from the URL when the search dialog closes.
   const closeDashboardSearch = () => {
@@ -852,6 +856,11 @@ const DashboardContent = ({ currentUserRole }) => {
       : endDate
         ? `Through ${formatDate(endDate)}`
         : 'All available reservation history';
+  const heatmapStatusLabel = filters.status === 'all'
+    ? 'Approved and pending'
+    : filters.status === 'pending'
+      ? 'Pending'
+      : 'Approved';
   const liveVenueUtilization = useMemo(() => {
     if (!isBuildingAdminDashboard) return [];
 
@@ -909,10 +918,14 @@ const DashboardContent = ({ currentUserRole }) => {
       const cells = Array.from({ length: 7 }, () => (
         Array.from({ length: HEATMAP_HOURS.length }, () => 0)
       ));
+      const includedStatuses = filters.status === 'all'
+        ? ['approved', 'pending']
+        : [filters.status];
 
       reservationsById.forEach((reservation) => {
+        const status = (reservation.status || 'pending').toLowerCase().trim();
         if (
-          (reservation.status || '').toLowerCase().trim() !== 'approved'
+          !includedStatuses.includes(status)
           || !Array.isArray(reservation.facilities)
           || !reservation.facilities.includes(facility.id)
         ) return;
@@ -973,7 +986,8 @@ const DashboardContent = ({ currentUserRole }) => {
     reservationsData,
     historyData,
     heatmapStartValue,
-    heatmapEndValue
+    heatmapEndValue,
+    filters.status
   ]);
   const visibleVenueTrafficHeatmaps = selectedHeatmapFacilityId === 'all'
     ? venueTrafficHeatmaps
@@ -1558,6 +1572,148 @@ const DashboardContent = ({ currentUserRole }) => {
   const utilityMaximum = Math.max(1, ...utilitiesRanking.map((utility) => utility.quantity));
   const facilityMaximum = Math.max(1, ...facilitiesRanking.map((facility) => facility.count));
   const formatTime = (time) => time ? formatTimeForDisplay(time) : 'Time not set';
+  const exportDashboardPdf = async () => {
+    setIsExportingDashboardPdf(true);
+    setDashboardPdfExportError('');
+
+    try {
+      const { exportBuildingAdminDashboardPdf } = await import('../services/buildingAdminDashboardPdf');
+      const activeReservationIds = new Set(reservationsData.map((reservation) => reservation.id));
+      const allUpcomingReservations = today && weekAhead
+        ? dashboardReservations
+          .map((reservation) => ({
+            ...reservation,
+            eventDateValue: parseDate(reservation.eventDate || reservation.date)
+          }))
+          .filter((reservation) => (
+            (reservation.status || 'pending').toLowerCase().trim() === 'approved'
+            && reservation.eventDateValue
+            && reservation.eventDateValue >= today
+            && reservation.eventDateValue <= weekAhead
+          ))
+          .sort((first, second) => (
+            first.eventDateValue - second.eventDateValue
+            || (parseTime(first.startTime) ?? -1) - (parseTime(second.startTime) ?? -1)
+          ))
+        : [];
+      const reservationRows = filteredReservations.map((reservation) => {
+        const eventDate = parseDate(reservation.eventDate || reservation.date);
+        const endDate = parseDate(reservation.endDate)
+          || (eventDate
+            ? new Date(eventDate.getTime() + (Math.max(1, Number(reservation.days) || 1) - 1) * DAY_IN_MS)
+            : null);
+        const equipmentRequests = Object.entries(reservation.selectedEquip || {})
+          .filter(([, quantity]) => Number(quantity) > 0)
+          .map(([id, quantity]) => (
+            `${equipmentById.get(id)?.name || 'Equipment'} (${Number(quantity)})`
+          ));
+        const utilityRequests = (Array.isArray(reservation.selectedUtilities)
+          ? reservation.selectedUtilities
+          : [])
+          .map((id) => {
+            const quantity = Number(reservation.selectedUtilityUnits?.[id] ?? 1);
+            return `${utilitiesById.get(id)?.name || 'Utility'} (${quantity})`;
+          });
+        const otherRequests = [
+          reservation.otherEquipment,
+          reservation.otherUtility,
+          reservation.specificRoom && `Room: ${reservation.specificRoom}`
+        ].filter((request) => typeof request === 'string' && request.trim());
+
+        return {
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || reservation.title || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          dates: `${eventDate ? formatDate(eventDate) : 'Date unavailable'}${endDate && eventDate
+            && endDate.toDateString() !== eventDate.toDateString()
+            ? ` - ${formatDate(endDate)}`
+            : ''}`,
+          times: `${formatTime(reservation.startTime)} - ${formatTime(reservation.endTime)}`,
+          facilities: (reservation.facilities || [])
+            .map((id) => facilitiesById.get(id)?.name || id)
+            .join(', ') || 'No facility',
+          resources: [...equipmentRequests, ...utilityRequests, ...otherRequests].join(', ') || 'None listed',
+          status: reservation.status || 'Pending',
+          source: activeReservationIds.has(reservation.id) ? 'Active' : 'Archived'
+        };
+      });
+
+      await exportBuildingAdminDashboardPdf({
+        generatedAt: new Date().toLocaleString(),
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dates: startDate || endDate
+            ? `${startDate ? formatDate(startDate) : 'Any date'} - ${endDate ? formatDate(endDate) : 'Any date'}`
+            : 'All dates',
+          times: startMinutes !== null || endMinutes !== null
+            ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+            : 'All times',
+          status: filters.status === 'all'
+            ? 'Approved and pending'
+            : filters.status[0].toUpperCase() + filters.status.slice(1),
+          upcomingWindow: `${upcomingRangeDays} days`,
+          alertCategory: resourceAlertCategory === 'all' ? 'All categories' : resourceAlertCategory,
+          heatmapFacility: selectedHeatmapFacilityId === 'all'
+            ? 'All facilities'
+            : facilitiesById.get(selectedHeatmapFacilityId)?.name || 'Selected facility'
+        },
+        summary: metrics,
+        approvals: pendingApprovalReservations.map((reservation) => ({
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          date: formatDate(parseDate(reservation.eventDate || reservation.date)),
+          time: formatTime(reservation.startTime)
+        })),
+        upcomingReservations: allUpcomingReservations.map((reservation) => ({
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          date: formatDate(reservation.eventDateValue),
+          time: formatTime(reservation.startTime),
+          facilities: (reservation.facilities || [])
+            .map((id) => facilitiesById.get(id)?.name || id)
+            .join(', ') || 'No facility'
+        })),
+        alerts: visibleResourceAlerts.map(({ category, title, detail }) => ({
+          category: category.replace(/-/g, ' '),
+          title,
+          detail
+        })),
+        snapshot: {
+          facilities: facilitiesData.length,
+          available: facilitiesAvailable,
+          maintenance: facilitiesUnderMaintenance,
+          unavailable: facilitiesUnavailable
+        },
+        utilization: liveVenueUtilization.map((venue) => ({
+          name: venue.name,
+          bookedHours: venue.bookedHours,
+          utilizationPercent: venue.utilizationPercent,
+          weekStart: formatDate(liveWeekStartDate),
+          weekEnd: formatDate(liveWeekEndDate)
+        })),
+        trend: trendData,
+        facilityRanking: facilitiesRanking.map((facility) => ({
+          name: facility.name,
+          count: facility.count
+        })),
+        heatmapDateRangeLabel,
+        heatmapStatusLabel,
+        heatmaps: visibleVenueTrafficHeatmaps,
+        reservations: reservationRows
+      }, [
+        { element: liveOperationExportRef.current, title: 'Live operation' },
+        { element: analyticsExportRef.current, title: 'Filtered analytics' }
+      ]);
+    } catch (error) {
+      console.error('Failed to export the Building Admin dashboard PDF:', error);
+      setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+    } finally {
+      setIsExportingDashboardPdf(false);
+    }
+  };
   const recentEquipmentActivity = [
     ...equipmentData.map((equipment) => ({
       ...equipment,
@@ -1670,10 +1826,31 @@ const DashboardContent = ({ currentUserRole }) => {
         <div className="dashboard-title">
           <h1>{isAdminDashboard ? 'Admin dashboard' : 'Dashboard'}</h1>
         </div>
+        {isBuildingAdminDashboard && (
+          <div className="dashboard-export-actions">
+            <button
+              className="dashboard-export-button"
+              type="button"
+              onClick={exportDashboardPdf}
+              disabled={isExportingDashboardPdf}
+            >
+              {isExportingDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
+            </button>
+            {dashboardPdfExportError && (
+              <span className="dashboard-export-error" role="alert">
+                {dashboardPdfExportError}
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Operations include date filters, key metrics, approval queues, and upcoming events. */}
-      <section className="dashboard-live-section" aria-label="Live operation">
+      <section
+        className="dashboard-live-section"
+        aria-label="Live operation"
+        ref={liveOperationExportRef}
+      >
         <div className="dashboard-section-heading">
           <h2>Live operation</h2>
           <p>{isBuildingAdminDashboard
@@ -2199,7 +2376,11 @@ const DashboardContent = ({ currentUserRole }) => {
       )}
       </section>
 
-      <section className="dashboard-filtered-section" aria-label="Filtered analytics">
+      <section
+        className="dashboard-filtered-section"
+        aria-label="Filtered analytics"
+        ref={analyticsExportRef}
+      >
         <div className="dashboard-section-heading">
           <h2>Filtered analytics</h2>
           <p>{hasAnalyticsDashboard
@@ -2264,7 +2445,7 @@ const DashboardContent = ({ currentUserRole }) => {
                 <div>
                   <h2>Zone-based traffic</h2>
                   <p>
-                    Approved Reservations for {heatmapDateRangeLabel}.
+                    {heatmapStatusLabel} reservations for {heatmapDateRangeLabel}.
                     Darker cells indicate more booked time between 7:00 AM and 10:00 PM.
                   </p>
                 </div>
@@ -2295,7 +2476,7 @@ const DashboardContent = ({ currentUserRole }) => {
                       >
                         <table className="venue-heatmap-table">
                           <caption className="visually-hidden">
-                            {venue.name} approved booking hours by weekday from 7 AM to 10 PM for {heatmapDateRangeLabel}
+                            {venue.name} {heatmapStatusLabel.toLowerCase()} booking hours by weekday from 7 AM to 10 PM for {heatmapDateRangeLabel}
                           </caption>
                           <thead>
                             <tr>
