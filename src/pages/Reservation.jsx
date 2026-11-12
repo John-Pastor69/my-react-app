@@ -134,8 +134,23 @@ const canSkipReservationLeadTime = (role) => {
 const getReservationDateMinimum = (role, skipLeadTime = false) => {
   const minDate = new Date();
   minDate.setHours(0, 0, 0, 0);
-  if (!skipLeadTime && !canSkipReservationLeadTime(role)) minDate.setDate(minDate.getDate() + 3);
+  const normalizedRole = (role || '').toLowerCase().trim().replace(/_/g, ' ');
+  if (normalizedRole === 'building admin') {
+    minDate.setDate(minDate.getDate() + 4);
+  } else if (!skipLeadTime && !canSkipReservationLeadTime(role)) {
+    minDate.setDate(minDate.getDate() + 3);
+  }
   return minDate;
+};
+
+const getReservationDateErrorMessage = (role, editingReservation) => {
+  const normalizedRole = (role || '').toLowerCase().trim().replace(/_/g, ' ');
+  if (normalizedRole === 'building admin') {
+    return 'Reservations are unavailable for today and the next 3 days';
+  }
+  return canSkipReservationLeadTime(role) || editingReservation
+    ? 'Date cannot be in the past'
+    : 'Must be at least 3 days from today';
 };
 
 const getFacilityCapacityLimits = (facility) => ({
@@ -261,14 +276,15 @@ const ReservationTimePicker = ({
   const triggerRef = useRef(null);
   const totalMinutes = parseTimeToMinutes(value);
   const defaultMinutes = parseTimeToMinutes(defaultTime) ?? 7 * 60;
-  const selectedMinutes = totalMinutes ?? defaultMinutes;
-  const selectedHour24 = Math.floor(selectedMinutes / 60);
-  const selectedHour = selectedHour24 % 12 || 12;
-  const selectedMinute = selectedMinutes % 60;
-  const selectedPeriod = selectedHour24 >= 12 ? 'PM' : 'AM';
+  const [draftHour, setDraftHour] = useState('');
+  const [draftMinute, setDraftMinute] = useState('');
+  const [draftPeriod, setDraftPeriod] = useState('');
   const displayedTime = totalMinutes === null ? 'Select time' : formatTimeForStorage(value);
   const minimumMinutes = parseTimeToMinutes(minTime);
   const maximumMinutes = parseTimeToMinutes(maxTime);
+  const draftTime = draftHour && draftMinute && draftPeriod
+    ? getReservationTimeValue(Number(draftHour), Number(draftMinute), draftPeriod)
+    : '';
   const isAllowedTime = (time) => {
     const minutes = parseTimeToMinutes(time);
     return isWithinReservationHours(time)
@@ -340,6 +356,18 @@ const ReservationTimePicker = ({
         ref={triggerRef}
         onClick={() => {
           if (!isOpen && useViewportPopover) updatePopoverPosition();
+          if (!isOpen) {
+            if (totalMinutes === null) {
+              setDraftHour('');
+              setDraftMinute('');
+              setDraftPeriod('');
+            } else {
+              const hour24 = Math.floor(totalMinutes / 60);
+              setDraftHour(String(hour24 % 12 || 12));
+              setDraftMinute(String(totalMinutes % 60));
+              setDraftPeriod(hour24 >= 12 ? 'PM' : 'AM');
+            }
+          }
           setIsOpen((open) => !open);
         }}
       >
@@ -366,15 +394,24 @@ const ReservationTimePicker = ({
             <label>
               <span>Hour</span>
               <select
-                value={selectedHour}
+                value={draftHour}
                 aria-label={`${label} hour`}
-                onChange={(event) => updateTime(Number(event.target.value), selectedMinute, selectedPeriod)}
+                onChange={(event) => setDraftHour(event.target.value)}
               >
+                <option value="">--</option>
                 {Array.from({ length: 12 }, (_, index) => index + 1).map((hour) => (
                   <option
                     key={hour}
                     value={hour}
-                    disabled={!isAllowedTime(getReservationTimeValue(hour, selectedMinute, selectedPeriod))}
+                    disabled={Boolean(
+                      draftMinute
+                      && draftPeriod
+                      && !isAllowedTime(getReservationTimeValue(
+                        hour,
+                        Number(draftMinute),
+                        draftPeriod
+                      ))
+                    )}
                   >
                     {String(hour).padStart(2, '0')}
                   </option>
@@ -384,14 +421,21 @@ const ReservationTimePicker = ({
             <label>
               <span>Minute</span>
               <select
-                value={selectedMinute}
+                value={draftMinute}
                 aria-label={`${label} minute`}
-                onChange={(event) => updateTime(selectedHour, Number(event.target.value), selectedPeriod)}
+                onChange={(event) => setDraftMinute(event.target.value)}
               >
+                <option value="">--</option>
                 {Array.from({ length: 60 }, (_, minute) => minute).map((minute) => {
-                  const nextTime = getReservationTimeValue(selectedHour, minute, selectedPeriod);
+                  const nextTime = draftHour && draftPeriod
+                    ? getReservationTimeValue(Number(draftHour), minute, draftPeriod)
+                    : '';
                   return (
-                    <option key={minute} value={minute} disabled={!isAllowedTime(nextTime)}>
+                    <option
+                      key={minute}
+                      value={minute}
+                      disabled={Boolean(nextTime && !isAllowedTime(nextTime))}
+                    >
                       {String(minute).padStart(2, '0')}
                     </option>
                   );
@@ -401,14 +445,21 @@ const ReservationTimePicker = ({
             <label>
               <span>Period</span>
               <select
-                value={selectedPeriod}
+                value={draftPeriod}
                 aria-label={`${label} AM or PM`}
-                onChange={(event) => updateTime(selectedHour, selectedMinute, event.target.value)}
+                onChange={(event) => setDraftPeriod(event.target.value)}
               >
+                <option value="">--</option>
                 {['AM', 'PM'].map((period) => {
-                  const nextTime = getReservationTimeValue(selectedHour, selectedMinute, period);
+                  const nextTime = draftHour && draftMinute
+                    ? getReservationTimeValue(Number(draftHour), Number(draftMinute), period)
+                    : '';
                   return (
-                    <option key={period} value={period} disabled={!isAllowedTime(nextTime)}>
+                    <option
+                      key={period}
+                      value={period}
+                      disabled={Boolean(nextTime && !isAllowedTime(nextTime))}
+                    >
                       {period}
                     </option>
                   );
@@ -416,6 +467,18 @@ const ReservationTimePicker = ({
               </select>
             </label>
           </div>
+          <button
+            type="button"
+            className="reservation-time-quick-select"
+            disabled={!draftTime || !isAllowedTime(draftTime)}
+            onClick={() => {
+              if (!draftTime || !isAllowedTime(draftTime)) return;
+              onChange(draftTime);
+              setIsOpen(false);
+            }}
+          >
+            Use selected time{draftTime ? `: ${formatTimeForStorage(draftTime)}` : ''}
+          </button>
           <button
             type="button"
             className="reservation-time-quick-select"
@@ -1531,9 +1594,7 @@ const Reservation = ({ currentUserRole }) => {
         const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
         
         if (inputDate < minDate) {
-          setDateError(canSkipReservationLeadTime(userRole) || editingReservation
-            ? 'Date cannot be in the past'
-            : 'Must be at least 3 days from today');
+          setDateError(getReservationDateErrorMessage(userRole, editingReservation));
         } else {
           setDateError('');
           clearMissingField('eventDate');
@@ -1564,9 +1625,7 @@ const Reservation = ({ currentUserRole }) => {
         const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
         
         if (inputDate < minDate) {
-          setDaysDateError(canSkipReservationLeadTime(userRole) || editingReservation
-            ? 'Date cannot be in the past'
-            : 'Must be at least 3 days from today');
+          setDaysDateError(getReservationDateErrorMessage(userRole, editingReservation));
         } else {
           setDaysDateError('');
           clearMissingField('endDateInput');

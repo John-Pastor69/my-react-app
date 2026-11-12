@@ -417,8 +417,9 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
     reservationStatus: currentData.status
   });
 
+  const isBuildingAdmin = approver.roleKey === 'building admin';
   const canOverrideApprovalWorkflow = isSuperAdmin
-    || ['super admin', 'mis', 'building admin'].includes(approver.roleKey);
+    || ['super admin', 'mis'].includes(approver.roleKey);
   const nextSuperAdminStep = canOverrideApprovalWorkflow
     ? trackerSteps.find((step) => (
       step.key !== 'requestor'
@@ -431,7 +432,8 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
     ? `${nextSuperAdminStep.label} (${approver.role})`
     : approver.role;
   const myStep = trackerSteps.find((step) => step.key === approver.roleKey);
-  const canAct = (currentData.status || '').toLowerCase() === 'pending'
+  const canAct = !isBuildingAdmin
+    && (currentData.status || '').toLowerCase() === 'pending'
     && (canOverrideApprovalWorkflow
       ? Boolean(nextSuperAdminStep)
       : !currentData.approvals?.[approver.roleKey] && myStep?.state === 'your-turn');
@@ -473,6 +475,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
 
   // --- ACTION HANDLERS ---
   const requestActionConfirmation = (actionType) => {
+    if (!canAct || isProcessing) return;
     if (['rejected', 'to_modify'].includes(actionType) && !remarks.trim()) {
       setActionRemarkError('Enter a remark above before continuing.');
       return;
@@ -923,7 +926,9 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             
             {!canAct && !myApprovalStatus && !['rejected', 'approved', 'to modify'].includes(normalizedReservationStatus) && (
               <div className="hierarchy-disabled-hint">
-                {canOverrideApprovalWorkflow
+                {isBuildingAdmin
+                  ? 'Building admins cannot approve reservations.'
+                  : canOverrideApprovalWorkflow
                   ? 'The approval tracker is complete.'
                   : 'Buttons are disabled because it is not currently your turn in the approval hierarchy.'}
               </div>

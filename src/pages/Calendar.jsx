@@ -297,7 +297,7 @@ const Calendar = ({ currentUserRole }) => {
     return Boolean(reservationEmail && reservationEmail === (currentUser.email || '').trim().toLowerCase());
   };
   const canModifyReservations = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRoleKey);
-  const canManageUnavailableDates = canModifyReservations;
+  const canManageUnavailableDates = canModifyReservations && normalizedRoleKey !== 'building admin';
   const selectedUnavailableDateId = getUnavailableDateId(selectedDate);
   const selectedUnavailableDate = unavailableDates.find((date) => (
     getUnavailableDateId(date.date || date.id) === selectedUnavailableDateId
@@ -312,9 +312,10 @@ const Calendar = ({ currentUserRole }) => {
     && reservationsData.some((reservation) => reservation.id === selectedRequest.id)
     && !isReservationEndReached(selectedRequest)
   );
-  const canOpenArchiveList = ['mis', 'mis admin', 'building admin', 'super admin'].includes(
+  const canOpenArchiveList = ['mis', 'mis admin', 'super admin'].includes(
     normalizedRole.replace(/_/g, ' ')
   );
+  const isArchiveListVisible = canOpenArchiveList && showArchiveList;
 
   // --- ARCHIVE COMPUTATIONS ---
   const filteredHistory = archivedRecords.filter(item => {
@@ -525,10 +526,10 @@ const Calendar = ({ currentUserRole }) => {
     <div className="calendar-page-container">
       
       {/* --- LEFT: MAIN CALENDAR / ARCHIVE SUMMARY --- */}
-      <div className={`calendar-main ${showArchiveList ? 'archive-active' : ''}`}>
+      <div className={`calendar-main ${isArchiveListVisible ? 'archive-active' : ''}`}>
         <div className="calendar-header">
           <div className="month-nav">
-            {!showArchiveList && (
+            {!isArchiveListVisible && (
               <>
                 <button className="icon-btn" onClick={handlePrevMonth}>&#10094;</button>
                 <details className="month-picker">
@@ -598,7 +599,7 @@ const Calendar = ({ currentUserRole }) => {
             </div>
             
             {/* The new button underneath the legend */}
-            {canOpenArchiveList && isArchiveVisible && !showArchiveList && (
+            {canOpenArchiveList && isArchiveVisible && !isArchiveListVisible && (
               <button 
                 className="history-btn" 
                 onClick={() => setShowArchiveList(true)}
@@ -607,7 +608,7 @@ const Calendar = ({ currentUserRole }) => {
                 Open Archive List
               </button>
             )}
-            {canOpenArchiveList && showArchiveList && (
+            {canOpenArchiveList && isArchiveListVisible && (
               <button 
                 className="history-btn" 
                 onClick={() => setShowArchiveList(false)}
@@ -619,7 +620,7 @@ const Calendar = ({ currentUserRole }) => {
           </div>
         </div>
 
-        {showArchiveList ? (
+        {isArchiveListVisible ? (
           <div className="archive-summary-view">
             <div className="archive-controls">
               <div className="controls-left">
@@ -726,7 +727,7 @@ const Calendar = ({ currentUserRole }) => {
       </div>
 
       {/* --- RIGHT: SIDEBAR DETAILS (HIDDEN IN ARCHIVE LIST VIEW) --- */}
-      {!showArchiveList && (
+      {!isArchiveListVisible && (
         <div className="calendar-sidebar" ref={sidebarRef}>
           {(() => {
             const sidebarEvents = events.filter(e => e.date === selectedDate); 

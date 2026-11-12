@@ -30,9 +30,10 @@ const ELEVATED_ROLES = [
   'super admin'
 ];
 
-// Roles with specific management tabs (Both MIS and Building Admin see all management tabs)
+// Roles with facility and user management tabs
 const FACILITY_ADMIN_ROLES = ['building admin', 'mis', 'mis admin', 'super admin'];
 const SYSTEM_ADMIN_ROLES = ['mis', 'mis admin', 'building admin', 'super admin'];
+const EQUIPMENT_ADMIN_ROLES = ['mis', 'mis admin', 'super admin'];
 
 const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
   const normalizedRole = (userRole || '').toLowerCase().trim().replace(/_/g, ' ');
@@ -115,15 +116,19 @@ const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
         {/* --- SYSTEM MANAGEMENT (MIS & Building Admin) --- */}
         {SYSTEM_ADMIN_ROLES.includes(normalizedRole) && (
           <>
-            <NavLink to="/equipment" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
-              <Package className="nav-icon" size={20} />
-              <span className="nav-label">Equipments</span>
-            </NavLink>
+            {EQUIPMENT_ADMIN_ROLES.includes(normalizedRole) && (
+              <NavLink to="/equipment" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+                <Package className="nav-icon" size={20} />
+                <span className="nav-label">Equipments</span>
+              </NavLink>
+            )}
 
-            <NavLink to="/user" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
-              <Users className="nav-icon" size={20} />
-              <span className="nav-label">Users</span>
-            </NavLink>
+            {normalizedRole !== 'building admin' && (
+              <NavLink to="/user" className={({ isActive }) => isActive ? "nav-link active" : "nav-link"} onClick={() => setIsOpen(false)}>
+                <Users className="nav-icon" size={20} />
+                <span className="nav-label">Users</span>
+              </NavLink>
+            )}
           </>
         )}
 
