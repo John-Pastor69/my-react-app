@@ -21,6 +21,7 @@ import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
 import {
   findFacilityConflict,
+  findSpecificRoomConflict,
   getFacilityCapacityAvailability,
   getReservationDateRange,
   parseDateOrdinal,
@@ -1275,6 +1276,7 @@ const Reservation = ({ currentUserRole }) => {
     })),
     facilitySchedules,
     facilities: formData.facilities,
+    specificRoom: formData.specificRoom,
     expectedParticipants: String(expectedParticipantCount || ''),
     facilityParticipants: selectedFacilityParticipants,
     excludeReservationId: editReservationId
@@ -1330,7 +1332,8 @@ const Reservation = ({ currentUserRole }) => {
     && !daysDateError
     && !invalidDateRange
     && areFacilitySchedulesValid
-    ? findFacilityConflict(reservationsData, conflictRequest, inventoryFacilities)
+    ? findSpecificRoomConflict(reservationsData, conflictRequest)
+      || findFacilityConflict(reservationsData, conflictRequest, inventoryFacilities)
     : null;
   const selectedSchedule = reservationsData.find(
     (reservation) => reservation.id === selectedScheduleId
@@ -2020,6 +2023,7 @@ const Reservation = ({ currentUserRole }) => {
       setConflictEvent({
         eventName: liveConflict.eventName || 'Untitled Event',
         facilityName: liveConflict.conflictFacilityName,
+        roomName: liveConflict.conflictRoomName,
         conflictType: liveConflict.conflictType,
         occupiedCapacity: liveConflict.occupiedCapacity,
         requestedCapacity: liveConflict.requestedCapacity,
@@ -2075,22 +2079,21 @@ const Reservation = ({ currentUserRole }) => {
           id: document.id,
           ...document.data()
         }));
-        const conflictingReservation = findFacilityConflict(
-          reservations,
-          {
-            ...conflictRequest,
-            schedule: formData.facilities.length > 0
-              ? combineFacilitySchedules(latestFacilitySchedules)
-              : latestDailySchedule,
-            facilitySchedules: latestFacilitySchedules
-          },
-          inventoryFacilities
-        );
+        const latestConflictRequest = {
+          ...conflictRequest,
+          schedule: formData.facilities.length > 0
+            ? combineFacilitySchedules(latestFacilitySchedules)
+            : latestDailySchedule,
+          facilitySchedules: latestFacilitySchedules
+        };
+        const conflictingReservation = findSpecificRoomConflict(reservations, latestConflictRequest)
+          || findFacilityConflict(reservations, latestConflictRequest, inventoryFacilities);
 
         if (conflictingReservation) {
           setConflictEvent({
             eventName: conflictingReservation.eventName || 'Untitled Event',
             facilityName: conflictingReservation.conflictFacilityName,
+            roomName: conflictingReservation.conflictRoomName,
             conflictType: conflictingReservation.conflictType,
             occupiedCapacity: conflictingReservation.occupiedCapacity,
             requestedCapacity: conflictingReservation.requestedCapacity,
@@ -3565,9 +3568,22 @@ const Reservation = ({ currentUserRole }) => {
               <strong>
                 {liveConflict.conflictType === 'capacity'
                   ? 'Facility capacity exceeded — this reservation cannot be submitted.'
-                  : 'Schedule conflict — this reservation cannot be submitted.'}
+                  : liveConflict.conflictType === 'specific-room'
+                    ? 'Specific room is already reserved — this reservation cannot be submitted.'
+                    : 'Schedule conflict — this reservation cannot be submitted.'}
               </strong>
-              <span><strong>Conflicting facility:</strong> {liveConflict.conflictFacilityName}.</span>
+              {liveConflict.conflictType === 'specific-room' ? (
+                <>
+                  <span><strong>Conflicting specific room:</strong> {liveConflict.conflictRoomName}.</span>
+                  <span>
+                    {liveConflict.eventName || 'Another reservation'} has it booked on{' '}
+                    {formatScheduleDate(liveConflict.conflictDate)} at{' '}
+                    {formatTimeRange(liveConflict.conflictStartTime, liveConflict.conflictEndTime)}.
+                  </span>
+                </>
+              ) : (
+                <span><strong>Conflicting facility:</strong> {liveConflict.conflictFacilityName}.</span>
+              )}
               {liveConflict.conflictType === 'schedule' && (
                 <span>
                   {liveConflict.eventName || 'Another reservation'} is scheduled on{' '}
@@ -3765,6 +3781,11 @@ const Reservation = ({ currentUserRole }) => {
                     <strong>{conflictEvent.facilityName}</strong> does not have enough total capacity available
                     for this reservation.
                   </>
+                : conflictEvent?.conflictType === 'specific-room'
+                  ? <>
+                      Specific room <strong>{conflictEvent.roomName}</strong> is already reserved
+                      {' '}by <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time}).
+                    </>
                 : <>
                     The conflict is with <strong>{conflictEvent?.facilityName || 'the selected facility'}</strong>,
                     {' '}which is already reserved during the selected multi-day time window
@@ -3775,7 +3796,10 @@ const Reservation = ({ currentUserRole }) => {
               {conflictEvent?.conflictType === 'capacity' && (
                 <> {conflictEvent.occupiedCapacity} of {conflictEvent.maxCapacity} participants are already reserved across active reservations, and adding {conflictEvent.requestedCapacity} would exceed the maximum.</>
               )}
-              {' '}Please adjust your dates, <strong>Start/End Time</strong>, or select a different facility.
+              {' '}Please adjust your dates or <strong>Start/End Time</strong>
+              {conflictEvent?.conflictType === 'specific-room'
+                ? <> or enter a different specific room.</>
+                : <> or select a different facility.</>}
             </p>
             <div className="modal-actions">
               <button onClick={() => { setShowOverlapWarning(false); setConflictEvent(null); }} className="modal-button">

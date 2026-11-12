@@ -14,7 +14,13 @@ import {
   getEquipmentReservedHours,
   getOtherRequestDetails
 } from '../services/dashboardResourceUsage';
+import { matchesDashboardReservationDateRange } from '../services/dashboardReservationDateFilter';
+import { matchesDashboardReservationScope } from '../services/dashboardReservationScope';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
+import {
+  getSpecificRoomReservedHours,
+  getLiveSpecificRoomOccupancy
+} from '../services/roomCheckerDashboard';
 import { isReservationActive } from '../services/reservationStatus';
 import { formatTimeForDisplay } from '../services/timeFormatting';
 import "../styles/Dashboard.scss";
@@ -474,26 +480,16 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset }) => (
 // Summary metrics shown to staff and administrators.
 const DashboardKpis = ({
   metrics,
-  pendingApprovals,
   pendingUsers,
   pendingProfiles,
   canManagePendingProfiles,
   isAdminDashboard,
   isBuildingAdminDashboard,
-  isMisDashboard,
-  canReviewApprovals
+  isMisDashboard
 }) => {
-  const awaitingReviewCard = (
-    <>
-      <span className="kpi-label">Awaiting review</span>
-      <strong>{metrics.pending}</strong>
-      <span className="kpi-footnote">{pendingApprovals} assigned to your approval role</span>
-    </>
-  );
-
   return (
     <section
-      className={`dashboard-kpis admin-dashboard-kpis${canManagePendingProfiles ? ' has-pending-profiles' : ''}`}
+      className={`dashboard-kpis admin-dashboard-kpis${isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard ? ' has-super-admin-kpis' : ''}`}
       aria-label="Key analytics"
     >
       <article className="kpi-card kpi-primary">
@@ -504,15 +500,8 @@ const DashboardKpis = ({
       <article className="kpi-card">
         <span className="kpi-label">Approved reservation</span>
         <strong>{metrics.approved}</strong>
-        <span className="kpi-footnote">{metrics.reservedUnits} equipment units requested</span>
+        <span className="kpi-footnote">Reservations approved within selected filters</span>
       </article>
-      {canReviewApprovals ? (
-        <Link className="kpi-card kpi-card-link" to="/approval">
-          {awaitingReviewCard}
-        </Link>
-      ) : (
-        <article className="kpi-card">{awaitingReviewCard}</article>
-      )}
       {isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard && (
         <Link className="kpi-card kpi-card-link" to="/equipment">
           <span className="kpi-label">Available equipment</span>
@@ -597,6 +586,7 @@ const DashboardContent = ({ currentUserRole }) => {
     sort: 'latest'
   });
   const [filters, setFilters] = useState(getDefaultDashboardFilters);
+  const [liveOccupancyNow, setLiveOccupancyNow] = useState(() => new Date());
   const [isExportingDashboardPdf, setIsExportingDashboardPdf] = useState(false);
   const [dashboardPdfExportError, setDashboardPdfExportError] = useState('');
   const [isExportingMisDashboardPdf, setIsExportingMisDashboardPdf] = useState(false);
@@ -696,13 +686,20 @@ const DashboardContent = ({ currentUserRole }) => {
   const isAdminDashboard = ['building admin', 'mis', 'mis admin', 'super admin'].includes(dashboardRole);
   const isMisDashboard = ['mis', 'mis admin'].includes(dashboardRole);
   const isBuildingAdminDashboard = dashboardRole === 'building admin';
+  const isRoomCheckerDashboard = dashboardRole === 'room checker';
   const showResourceAlerts = isAdminDashboard && !isMisDashboard;
-  const canViewResourceSnapshot = isAdminDashboard || dashboardRole === 'room checker';
+  const canViewResourceSnapshot = isAdminDashboard;
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
     && !isAdminDashboard;
   const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
+
+  useEffect(() => {
+    if (!isRoomCheckerDashboard) return undefined;
+    const intervalId = window.setInterval(() => setLiveOccupancyNow(new Date()), 30_000);
+    return () => window.clearInterval(intervalId);
+  }, [isRoomCheckerDashboard]);
   const visibleUserCount = usersData.filter(
     (user) => {
       const role = (user.role || '').toLowerCase().trim().replace(/_/g, ' ');
@@ -994,12 +991,20 @@ const DashboardContent = ({ currentUserRole }) => {
     : venueTrafficHeatmaps.filter((venue) => String(venue.id) === selectedHeatmapFacilityId);
 
   const filteredReservations = useMemo(() => dashboardReservations.filter((reservation) => {
+    if (!matchesDashboardReservationScope(reservation, dashboardRole)) return false;
+
     const reservationDate = parseDate(reservation.eventDate || reservation.date);
-    if (!reservationDate) return false;
-    if (startDate && reservationDate < startDate) return false;
-    if (endDate && reservationDate > new Date(endDate.getFullYear(), endDate.getMonth(), endDate.getDate(), 23, 59, 59, 999)) {
-      return false;
-    }
+    const scheduledDates = getReservationScheduleForFacility(reservation)
+      .map((entry) => entry.date);
+    const dateValues = scheduledDates.length
+      ? scheduledDates
+      : reservationDate
+        ? [toDateInputValue(reservationDate)]
+        : [];
+    if (!matchesDashboardReservationDateRange(dateValues, {
+      startDate: filters.startDate,
+      endDate: filters.endDate
+    })) return false;
 
     const status = (reservation.status || 'Pending').toLowerCase();
     if (!['approved', 'pending'].includes(status)) return false;
@@ -1017,7 +1022,15 @@ const DashboardContent = ({ currentUserRole }) => {
     }
 
     return true;
-  }), [dashboardReservations, filters.status, startDate, endDate, startMinutes, endMinutes]);
+  }), [
+    dashboardReservations,
+    dashboardRole,
+    filters.startDate,
+    filters.endDate,
+    filters.status,
+    startMinutes,
+    endMinutes
+  ]);
   const countedReservations = useMemo(() => filteredReservations.filter((reservation) => (
     ['approved', 'pending'].includes((reservation.status || 'pending').toLowerCase().trim())
   )), [filteredReservations]);
@@ -1377,6 +1390,35 @@ const DashboardContent = ({ currentUserRole }) => {
     () => getEquipmentReservedHours(filteredReservations, equipmentData),
     [filteredReservations, equipmentData]
   );
+  const specificRoomReservedHours = useMemo(
+    () => getSpecificRoomReservedHours(dashboardReservations, {
+      startDate: filters.startDate,
+      endDate: filters.endDate,
+      startMinutes,
+      endMinutes,
+      status: filters.status
+    }),
+    [
+      dashboardReservations,
+      filters.startDate,
+      filters.endDate,
+      filters.status,
+      startMinutes,
+      endMinutes
+    ]
+  );
+  const liveSpecificRoomOccupancy = useMemo(
+    () => getLiveSpecificRoomOccupancy(
+      reservationsData,
+      {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        today: toDateInputValue(liveOccupancyNow),
+        nowMinutes: liveOccupancyNow.getHours() * 60 + liveOccupancyNow.getMinutes()
+      }
+    ),
+    [reservationsData, filters.startDate, filters.endDate, liveOccupancyNow]
+  );
   const departmentalResourceConsumption = useMemo(
     () => getDepartmentalResourceConsumption(filteredReservations),
     [filteredReservations]
@@ -1591,6 +1633,10 @@ const DashboardContent = ({ currentUserRole }) => {
     1,
     ...equipmentHoursRanking.map((equipment) => equipment.hours)
   );
+  const specificRoomHoursMaximum = Math.max(
+    1,
+    ...specificRoomReservedHours.map((room) => room.hours)
+  );
   const departmentalResourceChart = useMemo(() => {
     const totalUnits = departmentalResourceConsumption.reduce(
       (total, group) => total + group.units,
@@ -1629,9 +1675,15 @@ const DashboardContent = ({ currentUserRole }) => {
   const utilitiesRanking = rankingModes.utilities === 'most'
     ? utilityUsage.filter((utility) => utility.quantity > 0)
     : leastUsedUtilities.filter((utility) => utility.quantity > 0);
-  const facilitiesRanking = rankingModes.facilities === 'most'
-    ? facilityUsage.filter((facility) => facility.count > 0)
-    : leastUsedFacilities.filter((facility) => facility.count > 0);
+  const facilitiesRanking = (rankingModes.facilities === 'most'
+    ? facilityUsage
+    : leastUsedFacilities)
+    .filter((facility) => {
+      const isSpecificRoom = String(facility.id).startsWith('specific-room-');
+      if (isBuildingAdminDashboard && isSpecificRoom) return false;
+      if (isRoomCheckerDashboard) return isSpecificRoom;
+      return rankingModes.facilities === 'most' ? facility.count > 0 : true;
+    });
   const equipmentMaximum = Math.max(1, ...equipmentRanking.map((equipment) => equipment.quantity));
   const utilityMaximum = Math.max(1, ...utilitiesRanking.map((utility) => utility.quantity));
   const facilityMaximum = Math.max(1, ...facilitiesRanking.map((facility) => facility.count));
@@ -1938,6 +1990,135 @@ const DashboardContent = ({ currentUserRole }) => {
       setIsExportingDashboardPdf(false);
     }
   };
+  const exportRoomCheckerDashboardReport = async () => {
+    setIsExportingDashboardPdf(true);
+    setDashboardPdfExportError('');
+
+    try {
+      const { exportRoomCheckerDashboardPdf } = await import('../services/roomCheckerDashboardPdf');
+      const activeReservationIds = new Set(reservationsData.map((reservation) => reservation.id));
+      const reservationRows = filteredReservations.map((reservation) => {
+        const eventDate = parseDate(reservation.eventDate || reservation.date);
+        const endDate = parseDate(reservation.endDate)
+          || (eventDate
+            ? new Date(eventDate.getTime() + (Math.max(1, Number(reservation.days) || 1) - 1) * DAY_IN_MS)
+            : null);
+        const schedules = getReservationScheduleForFacility(reservation).map((entry) => {
+          const rawEntry = Array.isArray(reservation.schedule)
+            ? reservation.schedule.find((candidate) => (
+              candidate.date === entry.date
+              && candidate.startTime === entry.startTime
+              && candidate.endTime === entry.endTime
+            ))
+            : null;
+          const aircon = typeof rawEntry?.aircon === 'boolean'
+            ? rawEntry.aircon
+            : Boolean(reservation.aircon);
+          const airconStart = rawEntry?.airconOnTime
+            || reservation.airconOnTime
+            || entry.startTime;
+          const airconEnd = rawEntry?.airconOffTime
+            || reservation.airconOffTime
+            || entry.endTime;
+          return `${formatDate(parseDate(entry.date))} ${formatTime(entry.startTime)}–${formatTime(entry.endTime)}`
+            + ` · Air-con ${aircon ? `ON (${formatTime(airconStart)}–${formatTime(airconEnd)})` : 'OFF'}`;
+        });
+        const equipmentRequests = Object.entries(reservation.selectedEquip || [])
+          .filter(([, quantity]) => Number(quantity) > 0)
+          .map(([id, quantity]) => `${equipmentById.get(id)?.name || 'Equipment'} (${Number(quantity)})`);
+        const utilityRequests = (Array.isArray(reservation.selectedUtilities)
+          ? reservation.selectedUtilities
+          : [])
+          .map((id) => {
+            const quantity = Number(reservation.selectedUtilityUnits?.[id] ?? 1);
+            return `${utilitiesById.get(id)?.name || 'Utility'} (${quantity})`;
+          });
+        const otherRequests = [
+          reservation.otherEquipment && `Other equipment: ${reservation.otherEquipment}`,
+          reservation.otherUtility && `Other utility: ${reservation.otherUtility}`
+        ].filter(Boolean);
+
+        return {
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || reservation.title || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          specificRoom: reservation.specificRoom || 'Not specified',
+          participants: reservation.specificRoomParticipants || reservation.expectedParticipants || 'Not specified',
+          dates: `${eventDate ? formatDate(eventDate) : 'Date unavailable'}${endDate && eventDate
+            && endDate.toDateString() !== eventDate.toDateString()
+            ? ` - ${formatDate(endDate)}`
+            : ''}`,
+          schedule: schedules.join('\n') || `${formatTime(reservation.startTime)}–${formatTime(reservation.endTime)}`,
+          facilities: (reservation.facilities || [])
+            .map((id) => facilitiesById.get(id)?.name || id)
+            .join(', ') || 'No facility',
+          equipment: equipmentRequests.join(', ') || 'None listed',
+          utilities: utilityRequests.join(', ') || 'None listed',
+          otherRequests: otherRequests.join(', ') || 'None listed',
+          status: reservation.status || 'Pending',
+          source: activeReservationIds.has(reservation.id) ? 'Active' : 'Archived'
+        };
+      });
+
+      await exportRoomCheckerDashboardPdf({
+        generatedAt: new Date().toLocaleString(),
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dates: startDate || endDate
+            ? `${startDate ? formatDate(startDate) : 'Any date'} - ${endDate ? formatDate(endDate) : 'Any date'}`
+            : 'All dates',
+          times: startMinutes !== null || endMinutes !== null
+            ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+            : 'All times',
+          status: filters.status === 'all'
+            ? 'Approved and pending'
+            : filters.status[0].toUpperCase() + filters.status.slice(1),
+          upcomingWindow: `${upcomingRangeDays} days`
+        },
+        summary: metrics,
+        approvals: pendingApprovalReservations.slice(0, 5).map((reservation) => ({
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          date: formatDate(parseDate(reservation.eventDate || reservation.date)),
+          time: formatTime(reservation.startTime)
+        })),
+        upcomingReservations: upcomingReservations.map((reservation) => ({
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          date: formatDate(reservation.eventDateValue),
+          time: formatTime(reservation.startTime),
+          specificRoom: reservation.specificRoom || 'Not specified',
+          facilities: (reservation.facilities || [])
+            .map((id) => facilitiesById.get(id)?.name || id)
+            .join(', ') || 'No facility'
+        })),
+        liveOccupancy: liveSpecificRoomOccupancy.map((room) => ({
+          name: room.name,
+          date: formatDate(parseDate(room.date)),
+          event: room.eventName,
+          requestor: room.requestor,
+          time: `${formatTime(room.startTime)}–${formatTime(room.endTime)}`,
+          status: room.state,
+          aircon: room.aircon ? 'Scheduled ON' : 'Scheduled OFF'
+        })),
+        reservedHours: specificRoomReservedHours,
+        roomRanking: facilitiesRanking.map((room) => ({
+          name: room.name,
+          count: room.count
+        })),
+        trend: trendData,
+        reservations: reservationRows
+      });
+    } catch (error) {
+      console.error('Failed to export the Room Checker dashboard PDF:', error);
+      setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+    } finally {
+      setIsExportingDashboardPdf(false);
+    }
+  };
   const recentEquipmentActivity = [
     ...equipmentData.map((equipment) => ({
       ...equipment,
@@ -2056,6 +2237,23 @@ const DashboardContent = ({ currentUserRole }) => {
               className="dashboard-export-button"
               type="button"
               onClick={exportDashboardPdf}
+              disabled={isExportingDashboardPdf}
+            >
+              {isExportingDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
+            </button>
+            {dashboardPdfExportError && (
+              <span className="dashboard-export-error" role="alert">
+                {dashboardPdfExportError}
+              </span>
+            )}
+          </div>
+        )}
+        {isRoomCheckerDashboard && (
+          <div className="dashboard-export-actions">
+            <button
+              className="dashboard-export-button"
+              type="button"
+              onClick={exportRoomCheckerDashboardReport}
               disabled={isExportingDashboardPdf}
             >
               {isExportingDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
@@ -2614,6 +2812,15 @@ const DashboardContent = ({ currentUserRole }) => {
                   </Link>
                 </>
               )}
+              {isBuildingAdminDashboard && (
+                <Link className="resource-stat resource-stat-link" to="/facility">
+                  <div className="resource-stat-copy">
+                    <span>Facility catalog</span>
+                    <strong>{facilitiesData.length} <small>facilities</small></strong>
+                  </div>
+                  <span className="resource-stat-detail">{facilitiesAvailable} available now</span>
+                </Link>
+              )}
               {!isBuildingAdminDashboard && !isMisDashboard && (
                 <div className="resource-stat">
                   <div className="resource-stat-copy">
@@ -2717,14 +2924,12 @@ const DashboardContent = ({ currentUserRole }) => {
           />
           <DashboardKpis
             metrics={metrics}
-            pendingApprovals={pendingApprovals}
             pendingUsers={pendingUserCount}
             pendingProfiles={pendingProfileCount}
             canManagePendingProfiles={canManagePendingProfiles}
             isAdminDashboard={isAdminDashboard}
             isBuildingAdminDashboard={isBuildingAdminDashboard}
             isMisDashboard={isMisDashboard}
-            canReviewApprovals={canReviewApprovals}
           />
           {/* Summarize reservation trends. */}
           <section className="dashboard-charts">
@@ -2757,6 +2962,131 @@ const DashboardContent = ({ currentUserRole }) => {
                 <span><i className="status-key pending" /> Pending <strong>{metrics.pending}</strong></span>
               </div>
             </article>
+
+            {isRoomCheckerDashboard && (
+              <article className="dashboard-panel room-occupancy-panel" aria-live="polite">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Specific-room occupancy</h2>
+                    <p>
+                      Specific-room requests within the selected date range.
+                    </p>
+                  </div>
+                  <span className="panel-total">
+                    {filters.startDate ? formatDate(parseDate(filters.startDate)) : 'Any date'}
+                    {' – '}
+                    {filters.endDate ? formatDate(parseDate(filters.endDate)) : 'Any date'}
+                    {' · '}{liveSpecificRoomOccupancy.length} rooms
+                  </span>
+                </div>
+                {liveSpecificRoomOccupancy.length ? (
+                  <div
+                    className="room-occupancy-list"
+                    tabIndex={0}
+                    aria-label="Scroll through specific-room occupancy"
+                  >
+                    {liveSpecificRoomOccupancy.map((room) => (
+                      <button
+                        className="room-occupancy-row operation-row-button"
+                        key={room.id}
+                        type="button"
+                        aria-label={`View reservation details for ${room.name} on ${formatDate(parseDate(room.date))}: ${room.eventName}`}
+                        onClick={() => {
+                          const reservation = reservationsData.find(
+                            (item) => item.id === room.reservationId
+                          );
+                          if (reservation) {
+                            setSelectedReservation({ data: reservation, source: 'active' });
+                          }
+                        }}
+                      >
+                        <div className="room-occupancy-main">
+                          <strong>{room.name}</strong>
+                          <span>
+                            {formatDate(parseDate(room.date))} · {room.eventName}
+                            {' · '}{formatTime(room.startTime)}–{formatTime(room.endTime)}
+                          </span>
+                          <span>{room.requestor}</span>
+                        </div>
+                        <div className="room-occupancy-meta">
+                          <span className={`room-occupancy-state room-occupancy-state-${room.state.toLowerCase().replace(/\s+/g, '-')}`}>
+                            {room.state}
+                          </span>
+                          <span>
+                            Air-con {room.state === 'In use' ? 'expected' : 'scheduled'}{' '}
+                            {room.aircon ? 'ON' : 'OFF'}
+                          </span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No specific-room requests match the selected date range.</p>
+                )}
+              </article>
+            )}
+
+            {isRoomCheckerDashboard && (
+              <section className="room-checker-room-panels" aria-label="Specific room rankings">
+              <article className="dashboard-panel ranking-panel room-hours-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Specific-room reserved-hours</h2>
+                    <p>
+                      Approved scheduled hours for specific-room reservations, matching the dashboard filters.
+                    </p>
+                  </div>
+                </div>
+                {specificRoomReservedHours.length ? (
+                  <div className="ranking-list" tabIndex={0} aria-label="Specific rooms ranked by reserved hours">
+                    {specificRoomReservedHours.map((room, index) => (
+                      <div className="ranking-row" key={room.id}>
+                        <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="ranking-name" title={room.name}>{room.name}</span>
+                        <div className="ranking-track" aria-hidden="true">
+                          <span style={{ width: `${room.hours / specificRoomHoursMaximum * 100}%` }} />
+                        </div>
+                        <strong>{room.hours.toFixed(1)} h</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">
+                    No approved specific-room hours match the selected date and time filters.
+                  </p>
+                )}
+              </article>
+              <article className="dashboard-panel ranking-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Specific Rooms</h2>
+                    <p>Approved specific-room reservations in the selected period.</p>
+                  </div>
+                  <RankingModeToggle
+                    label="Specific rooms"
+                    value={rankingModes.facilities}
+                    onChange={(value) => setRankingModes((current) => ({ ...current, facilities: value }))}
+                  />
+                </div>
+                {facilitiesRanking.length ? (
+                  <div className="ranking-list" tabIndex={0} aria-label="Specific room request rankings">
+                    {facilitiesRanking.map((facility, index) => (
+                      <div className="ranking-row" key={facility.id}>
+                        <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="ranking-name" title={facility.name}>{facility.name}</span>
+                        <div className="ranking-track facility-track">
+                          <span style={{ width: `${facility.count / facilityMaximum * 100}%` }} />
+                        </div>
+                        <strong>{facility.count}</strong>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No approved specific-room requests match these filters.</p>
+                )}
+              </article>
+              </section>
+            )}
 
             {isMisDashboard && (
               <article className="dashboard-panel ranking-panel equipment-hours-panel">
@@ -2999,6 +3329,7 @@ const DashboardContent = ({ currentUserRole }) => {
           <section className="dashboard-insights">
             {!isBuildingAdminDashboard && (
             <>
+            {!isRoomCheckerDashboard && (
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
@@ -3033,7 +3364,9 @@ const DashboardContent = ({ currentUserRole }) => {
                 <p className="panel-empty">No approved equipment requests match these filters.</p>
               )}
             </article>
+            )}
 
+            {!isRoomCheckerDashboard && (
             <article className="dashboard-panel ranking-panel">
               <div className="panel-heading">
                 <div>
@@ -3068,15 +3401,18 @@ const DashboardContent = ({ currentUserRole }) => {
                 <p className="panel-empty">No approved utility requests match these filters.</p>
               )}
             </article>
+            )}
             </>
             )}
 
-            {!isMisDashboard && (
+            {!isMisDashboard && !isRoomCheckerDashboard && (
               <article className="dashboard-panel ranking-panel">
                 <div className="panel-heading">
                   <div>
                     <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Facilities</h2>
-                    <p>Approved facility and specific room reservations in the selected period{rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.</p>
+                    <p>{isBuildingAdminDashboard
+                      ? `Approved facility reservations in the selected period${rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.`
+                      : `Approved facility and specific room reservations in the selected period${rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.`}</p>
                   </div>
                   <RankingModeToggle
                     label="Facilities"
@@ -3085,7 +3421,11 @@ const DashboardContent = ({ currentUserRole }) => {
                   />
                 </div>
                 {facilitiesRanking.length ? (
-                  <div className="ranking-list" tabIndex={0} aria-label="Facility request rankings">
+                  <div
+                    className="ranking-list"
+                    tabIndex={0}
+                    aria-label="Facility request rankings"
+                  >
                     {facilitiesRanking.map((facility, index) => (
                       <div className="ranking-row" key={facility.id}>
                         <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
@@ -3184,7 +3524,7 @@ const DashboardContent = ({ currentUserRole }) => {
             </article>
             )}
 
-            {hasAnalyticsDashboard && !isBuildingAdminDashboard && (
+            {hasAnalyticsDashboard && !isBuildingAdminDashboard && !isRoomCheckerDashboard && (
               <article className="dashboard-panel equipment-history-panel">
                 <div className="panel-heading">
                   <div>

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   findFacilityConflict,
+  findSpecificRoomConflict,
   getActiveFacilityReservations,
   getFacilityCapacityAvailability,
   getOverlappingFacilityReservations,
@@ -56,6 +57,65 @@ test('daily schedule overrides only conflict on an overlapping date and time', (
   );
   assert.equal(conflict.conflictType, 'schedule');
   assert.equal(conflict.conflictDate, '2026-10-03');
+});
+
+test('specific rooms reject active overlapping reservations with normalized room names', () => {
+  const existing = reservation('existing', {
+    status: 'Pending',
+    specificRoom: 'Room 301',
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }]
+  });
+  const conflict = findSpecificRoomConflict([existing], {
+    specificRoom: 'room-301',
+    schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }]
+  });
+
+  assert.equal(conflict.conflictType, 'specific-room');
+  assert.equal(conflict.conflictRoomName, 'Room 301');
+  assert.equal(conflict.conflictDate, '2026-10-03');
+  assert.equal(conflict.conflictStartTime, '08:00');
+  assert.equal(conflict.conflictEndTime, '10:00');
+});
+
+test('specific room reservations allow different rooms, separate times, and excluded edits', () => {
+  const existing = reservation('existing', {
+    specificRoom: 'Room 301',
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }]
+  });
+  const requestForRoom301 = {
+    specificRoom: 'Room 301',
+    schedule: [{ date: '2026-10-03', startTime: '10:00', endTime: '12:00' }]
+  };
+
+  assert.equal(findSpecificRoomConflict([existing], {
+    ...requestForRoom301,
+    specificRoom: 'Room 302',
+    schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }]
+  }), null);
+  assert.equal(findSpecificRoomConflict([existing], requestForRoom301), null);
+  assert.equal(findSpecificRoomConflict([existing], {
+    ...requestForRoom301,
+    schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }],
+    excludeReservationId: 'existing'
+  }), null);
+});
+
+test('specific room conflicts ignore released and rejected reservations', () => {
+  const schedule = [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }];
+  const requestForRoom = {
+    specificRoom: 'Room 301',
+    schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }]
+  };
+  const reservations = [
+    reservation('cancelled', { specificRoom: 'Room 301', status: 'Cancelled', schedule }),
+    reservation('rejected', {
+      specificRoom: 'Room 301',
+      approvals: { admin: { status: 'rejected' } },
+      schedule
+    })
+  ];
+
+  assert.equal(findSpecificRoomConflict(reservations, requestForRoom), null);
 });
 
 test('facility capacity counts only reservations overlapping the selected time', () => {

@@ -943,6 +943,99 @@ main,
     margin-bottom: 1rem;
   }
 
+  .room-occupancy-panel {
+    margin-top: 0;
+  }
+
+  .room-checker-room-panels {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1rem;
+  }
+
+  .room-occupancy-list {
+    display: grid;
+    max-height: 20rem;
+    overflow-y: auto;
+    gap: 0.65rem;
+    padding-right: 0.35rem;
+    overscroll-behavior-y: contain;
+  }
+
+  .room-occupancy-row {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) max-content;
+    align-items: center;
+    gap: 1rem;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid $border;
+
+    &:last-child {
+      border-bottom: 0;
+    }
+  }
+
+  .room-occupancy-main,
+  .room-occupancy-meta {
+    display: flex;
+    min-width: 0;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .room-occupancy-main {
+    strong {
+      color: $ink;
+      font-size: var(--font-body);
+    }
+
+    span {
+      color: $muted;
+      font-size: var(--font-body);
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .room-occupancy-meta {
+    align-items: flex-end;
+    text-align: right;
+
+    > span:last-child {
+      color: $muted;
+      font-size: var(--font-small);
+    }
+  }
+
+  .room-occupancy-state {
+    padding: 0.25rem 0.5rem;
+    border-radius: 999px;
+    background: #edf1f8;
+    color: $muted;
+    font-size: var(--font-small);
+    font-weight: 700;
+    white-space: nowrap;
+
+    &.room-occupancy-state-in-use {
+      background: rgba($green, 0.12);
+      color: $green;
+    }
+
+    &.room-occupancy-state-upcoming {
+      background: rgba($blue, 0.1);
+      color: $blue;
+    }
+
+    &.room-occupancy-state-pending-approval {
+      background: rgba($amber, 0.14);
+      color: $amber;
+    }
+  }
+
+  .room-hours-panel .ranking-list {
+    max-height: none;
+    overflow: visible;
+  }
+
   .dashboard-section-heading {
     margin: 0 0 0.8rem;
 
@@ -2825,6 +2918,12 @@ main,
   }
 }
 
+@media (max-width: 42rem) {
+  .mis-dashboard-content .room-checker-room-panels {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (min-width: 42rem) {
   .mis-dashboard-content {
     .filter-fields {
@@ -2854,10 +2953,14 @@ main,
   }
 
   .mis-dashboard-content.staff-dashboard .dashboard-kpis {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
   .mis-dashboard-content .admin-dashboard-kpis {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .mis-dashboard-content .admin-dashboard-kpis.has-super-admin-kpis {
     grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
@@ -2868,8 +2971,8 @@ main,
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
-    .admin-dashboard-kpis.has-pending-profiles {
-      grid-template-columns: repeat(6, minmax(0, 1fr));
+    .admin-dashboard-kpis.has-super-admin-kpis {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
     }
 
     .reservation-search-fields {
@@ -3017,6 +3120,15 @@ main,
 
     .dashboard-kpis {
       grid-template-columns: minmax(0, 1fr);
+    }
+
+    .room-occupancy-row {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .room-occupancy-meta {
+      align-items: flex-start;
+      text-align: left;
     }
 
     .trend-chart {

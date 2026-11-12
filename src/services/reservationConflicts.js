@@ -188,6 +188,46 @@ export const getOverlappingFacilityReservations = (reservations, request, facili
   )]
 );
 
+const normalizeSpecificRoom = (room) => String(room || '')
+  .toLowerCase()
+  .replace(/[^a-z0-9]/g, '');
+
+export const findSpecificRoomConflict = (reservations, request) => {
+  const requestedRoom = normalizeSpecificRoom(request.specificRoom);
+  if (!requestedRoom) return null;
+
+  const requestSchedule = getRequestSchedule(request);
+  if (requestSchedule.length === 0) return null;
+
+  for (const reservation of reservations) {
+    if (
+      reservation.id === request.excludeReservationId
+      || !isReservationActive(reservation)
+      || hasRejectedApproval(reservation)
+      || normalizeSpecificRoom(reservation.specificRoom) !== requestedRoom
+    ) continue;
+
+    const reservationSchedule = getReservationSchedule(reservation);
+    for (const requestEntry of requestSchedule) {
+      const reservationEntry = reservationSchedule.find((entry) => (
+        getScheduleOverlap(requestEntry, entry)
+      ));
+      if (reservationEntry) {
+        return {
+          ...reservation,
+          conflictType: 'specific-room',
+          conflictRoomName: String(reservation.specificRoom).trim(),
+          conflictDate: requestEntry.date,
+          conflictStartTime: reservationEntry.startTime,
+          conflictEndTime: reservationEntry.endTime
+        };
+      }
+    }
+  }
+
+  return null;
+};
+
 export const getActiveFacilityReservations = (reservations, request, facilityId) => {
   if (!facilityId) return [];
   return reservations.filter((reservation) => (
