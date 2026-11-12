@@ -5,7 +5,9 @@ import {
   getActiveFacilityReservations,
   getFacilityCapacityAvailability,
   getOverlappingFacilityReservations,
-  getReservationScheduleForFacility
+  getReservationDateRange,
+  getReservationScheduleForFacility,
+  reservationDateRangesOverlap
 } from './reservationConflicts.js';
 
 const facility = { id: 'room-a', name: 'Room A', capacity: 100 };
@@ -22,6 +24,18 @@ const request = (schedule, expectedParticipants = 20) => ({
   schedule,
   facilities: ['room-a'],
   expectedParticipants
+});
+
+test('equipment reservation ranges only overlap when selected dates intersect', () => {
+  const existing = getReservationDateRange({
+    eventDate: '11/12/2026',
+    endDate: '11/13/2026'
+  });
+  const sameDate = getReservationDateRange({ eventDate: '2026-11-13', days: 1 });
+  const differentDate = getReservationDateRange({ eventDate: '11/14/2026', days: 1 });
+
+  assert.equal(reservationDateRangesOverlap(existing, sameDate), true);
+  assert.equal(reservationDateRangesOverlap(existing, differentDate), false);
 });
 
 test('daily schedule overrides only conflict on an overlapping date and time', () => {

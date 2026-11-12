@@ -57,7 +57,7 @@ export const parseDateOrdinal = (value) => {
 
 const ordinalToISODate = (ordinal) => new Date(ordinal * 86400000).toISOString().slice(0, 10);
 
-const getDateRange = (reservation) => {
+export const getReservationDateRange = (reservation) => {
   const start = parseDateOrdinal(reservation.eventDate || reservation.date);
   if (start === null) return null;
 
@@ -66,6 +66,10 @@ const getDateRange = (reservation) => {
   const end = explicitEnd ?? start + dayCount - 1;
   return end < start ? null : { start, end };
 };
+
+export const reservationDateRangesOverlap = (firstRange, secondRange) => (
+  firstRange.start <= secondRange.end && secondRange.start <= firstRange.end
+);
 
 const createScheduleEntry = (date, startTime, endTime) => {
   const dateOrdinal = parseDateOrdinal(date);
@@ -101,7 +105,7 @@ const getReservationSchedule = (reservation, facilityId) => {
       .filter(Boolean);
   }
 
-  const range = getDateRange(reservation);
+  const range = getReservationDateRange(reservation);
   if (!range) return [];
   const entries = [];
   for (let dateOrdinal = range.start; dateOrdinal <= range.end; dateOrdinal += 1) {

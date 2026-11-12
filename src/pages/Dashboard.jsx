@@ -9,6 +9,11 @@ import {
   isReservationAssignedToEndorser,
   normalizeApprovalRoleKey
 } from '../services/approvalWorkflow';
+import {
+  getDepartmentalResourceConsumption,
+  getEquipmentReservedHours,
+  getOtherRequestDetails
+} from '../services/dashboardResourceUsage';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import { isReservationActive } from '../services/reservationStatus';
 import { formatTimeForDisplay } from '../services/timeFormatting';
@@ -20,6 +25,15 @@ const ReservationDetails = lazy(() => import('./ReservationDetails'));
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const WEEKLY_OPERATING_HOURS = 15 * 7;
 const HEATMAP_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const RESOURCE_CONSUMPTION_COLORS = [
+  '#315fe8',
+  '#14a779',
+  '#f59e0b',
+  '#8b5cf6',
+  '#e34b76',
+  '#0e9fbb',
+  '#64748b'
+];
 const HEATMAP_HOURS = Array.from({ length: 15 }, (_, index) => {
   const hour = index + 7;
   return {
@@ -37,6 +51,21 @@ const toDateInputValue = (date) => {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const day = String(date.getDate()).padStart(2, '0');
   return `${year}-${month}-${day}`;
+};
+
+const getDefaultDashboardFilters = () => {
+  const startDate = new Date();
+  startDate.setHours(0, 0, 0, 0);
+  const endDate = new Date(startDate);
+  endDate.setDate(endDate.getDate() + 6);
+
+  return {
+    startDate: toDateInputValue(startDate),
+    endDate: toDateInputValue(endDate),
+    startTime: '',
+    endTime: '',
+    status: 'all'
+  };
 };
 
 const getCurrentWeekStart = () => {
@@ -108,26 +137,6 @@ const getReservationAdditionalDetails = (reservation) => ({
     ? reservation.specificRoom.trim()
     : ''
 });
-
-const getOtherRequestDetails = (reservation, nameField, unitsField) => {
-  const rawName = typeof reservation[nameField] === 'string'
-    ? reservation[nameField].trim()
-    : '';
-  if (!rawName) return null;
-
-  const legacyUnits = rawName.match(/\s*-\s*(\d+)(?:\s+units?)?\s*$/i);
-  const name = (legacyUnits ? rawName.slice(0, legacyUnits.index) : rawName).trim();
-  if (!name) return null;
-
-  const requestedUnits = Number(reservation[unitsField]);
-  return {
-    name,
-    key: name.toLowerCase(),
-    quantity: Number.isFinite(requestedUnits) && requestedUnits > 0
-      ? requestedUnits
-      : Number(legacyUnits?.[1]) || 1
-  };
-};
 
 const DashboardDatePicker = ({ id, value, min, max, label, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -373,13 +382,7 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset }) => (
       <button
         className="filter-reset"
         type="button"
-        onClick={() => setFilters({
-          startDate: '',
-          endDate: '',
-          startTime: '',
-          endTime: '',
-          status: 'all'
-        })}
+        onClick={() => setFilters(getDefaultDashboardFilters())}
       >
         Reset filters
       </button>
@@ -477,6 +480,7 @@ const DashboardKpis = ({
   canManagePendingProfiles,
   isAdminDashboard,
   isBuildingAdminDashboard,
+  isMisDashboard,
   canReviewApprovals
 }) => {
   const awaitingReviewCard = (
@@ -509,21 +513,21 @@ const DashboardKpis = ({
       ) : (
         <article className="kpi-card">{awaitingReviewCard}</article>
       )}
-      {isAdminDashboard && !isBuildingAdminDashboard && (
+      {isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard && (
         <Link className="kpi-card kpi-card-link" to="/equipment">
           <span className="kpi-label">Available equipment</span>
           <strong>{metrics.availableUnits}</strong>
           <span className="kpi-footnote">Units available in current inventory</span>
         </Link>
       )}
-      {isAdminDashboard && !isBuildingAdminDashboard && (
+      {isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard && (
         <Link className="kpi-card kpi-card-link" to="/user?filter=pending">
           <span className="kpi-label">Pending users</span>
           <strong>{pendingUsers}</strong>
           <span className="kpi-footnote">View accounts with pending roles</span>
         </Link>
       )}
-      {canManagePendingProfiles && !isBuildingAdminDashboard && (
+      {canManagePendingProfiles && !isBuildingAdminDashboard && !isMisDashboard && (
         <Link className="kpi-card kpi-card-link" to="/user?filter=pending-profile">
           <span className="kpi-label">Pending profiles</span>
           <strong>{pendingProfiles}</strong>
@@ -592,15 +596,11 @@ const DashboardContent = ({ currentUserRole }) => {
     endDate: '',
     sort: 'latest'
   });
-  const [filters, setFilters] = useState({
-    startDate: '',
-    endDate: '',
-    startTime: '',
-    endTime: '',
-    status: 'all'
-  });
+  const [filters, setFilters] = useState(getDefaultDashboardFilters);
   const [isExportingDashboardPdf, setIsExportingDashboardPdf] = useState(false);
   const [dashboardPdfExportError, setDashboardPdfExportError] = useState('');
+  const [isExportingMisDashboardPdf, setIsExportingMisDashboardPdf] = useState(false);
+  const [misDashboardPdfExportError, setMisDashboardPdfExportError] = useState('');
 
   // Remove the search query from the URL when the search dialog closes.
   const closeDashboardSearch = () => {
@@ -694,7 +694,9 @@ const DashboardContent = ({ currentUserRole }) => {
     .trim()
     .replace(/_/g, ' ');
   const isAdminDashboard = ['building admin', 'mis', 'mis admin', 'super admin'].includes(dashboardRole);
+  const isMisDashboard = ['mis', 'mis admin'].includes(dashboardRole);
   const isBuildingAdminDashboard = dashboardRole === 'building admin';
+  const showResourceAlerts = isAdminDashboard && !isMisDashboard;
   const canViewResourceSnapshot = isAdminDashboard || dashboardRole === 'room checker';
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
@@ -1161,6 +1163,22 @@ const DashboardContent = ({ currentUserRole }) => {
     return { ...equipment, total, reserved, available };
   }), [equipmentData, reservationsData]);
 
+  const equipmentTabAvailability = useMemo(() => equipmentInventory.map((equipment) => {
+    const available = Math.max(0, equipment.total - equipment.reserved);
+    const status = available === 0 ? 'Unavailable' : equipment.status;
+    return {
+      ...equipment,
+      available,
+      percentAvailable: equipment.total > 0
+        ? Math.round((available / equipment.total) * 100)
+        : 0,
+      isUnavailable: status === 'Unavailable',
+      isRunningLow: equipment.total > 0
+        && available > 0
+        && available <= Math.ceil(equipment.total * 0.2)
+    };
+  }), [equipmentInventory]);
+
   const metrics = useMemo(() => {
     const approved = countedReservations.filter(
       (reservation) => (reservation.status || '').toLowerCase().trim() === 'approved'
@@ -1354,6 +1372,15 @@ const DashboardContent = ({ currentUserRole }) => {
       least: [...rankedUsage].sort((first, second) => first.quantity - second.quantity)
     };
   }, [filteredReservations, equipmentData]);
+
+  const equipmentHoursRanking = useMemo(
+    () => getEquipmentReservedHours(filteredReservations, equipmentData),
+    [filteredReservations, equipmentData]
+  );
+  const departmentalResourceConsumption = useMemo(
+    () => getDepartmentalResourceConsumption(filteredReservations),
+    [filteredReservations]
+  );
 
   const { most: utilityUsage, least: leastUsedUtilities } = useMemo(() => {
     const totals = new Map();
@@ -1560,6 +1587,45 @@ const DashboardContent = ({ currentUserRole }) => {
   const equipmentRanking = rankingModes.equipment === 'most'
     ? usageByEquipment.filter((equipment) => equipment.quantity > 0)
     : leastUsedEquipment.filter((equipment) => equipment.quantity > 0);
+  const equipmentHoursMaximum = Math.max(
+    1,
+    ...equipmentHoursRanking.map((equipment) => equipment.hours)
+  );
+  const departmentalResourceChart = useMemo(() => {
+    const totalUnits = departmentalResourceConsumption.reduce(
+      (total, group) => total + group.units,
+      0
+    );
+    const { segments } = departmentalResourceConsumption.reduce(
+      (result, group, index) => {
+        const percent = totalUnits ? group.units / totalUnits * 100 : 0;
+        const endPercent = index === departmentalResourceConsumption.length - 1
+          ? 100
+          : result.accumulatedPercent + percent;
+        return {
+          accumulatedPercent: endPercent,
+          segments: [...result.segments, {
+            ...group,
+            percent,
+            startPercent: result.accumulatedPercent,
+            endPercent,
+            color: RESOURCE_CONSUMPTION_COLORS[index % RESOURCE_CONSUMPTION_COLORS.length]
+          }]
+        };
+      },
+      { accumulatedPercent: 0, segments: [] }
+    );
+
+    return {
+      totalUnits,
+      segments,
+      background: segments.length
+        ? `conic-gradient(${segments.map((segment) => (
+          `${segment.color} ${segment.startPercent}% ${segment.endPercent}%`
+        )).join(', ')})`
+        : ''
+    };
+  }, [departmentalResourceConsumption]);
   const utilitiesRanking = rankingModes.utilities === 'most'
     ? utilityUsage.filter((utility) => utility.quantity > 0)
     : leastUsedUtilities.filter((utility) => utility.quantity > 0);
@@ -1570,6 +1636,169 @@ const DashboardContent = ({ currentUserRole }) => {
   const utilityMaximum = Math.max(1, ...utilitiesRanking.map((utility) => utility.quantity));
   const facilityMaximum = Math.max(1, ...facilitiesRanking.map((facility) => facility.count));
   const formatTime = (time) => time ? formatTimeForDisplay(time) : 'Time not set';
+  const exportMisDashboardReport = async () => {
+    setIsExportingMisDashboardPdf(true);
+    setMisDashboardPdfExportError('');
+
+    try {
+      const { exportMisDashboardPdf } = await import('../services/misDashboardPdf');
+      const activeReservationIds = new Set(reservationsData.map((reservation) => reservation.id));
+      const reservationRows = filteredReservations.map((reservation) => {
+        const eventDate = parseDate(reservation.eventDate || reservation.date);
+        const endDate = parseDate(reservation.endDate)
+          || (eventDate
+            ? new Date(eventDate.getTime() + (Math.max(1, Number(reservation.days) || 1) - 1) * DAY_IN_MS)
+            : null);
+        const equipmentRequests = Object.entries(reservation.selectedEquip || {})
+          .filter(([, quantity]) => Number(quantity) > 0)
+          .map(([id, quantity]) => `${equipmentById.get(id)?.name || 'Equipment'} (${Number(quantity)})`);
+        const utilityRequests = (Array.isArray(reservation.selectedUtilities)
+          ? reservation.selectedUtilities
+          : [])
+          .map((id) => {
+            const quantity = Number(reservation.selectedUtilityUnits?.[id] ?? 1);
+            return `${utilitiesById.get(id)?.name || 'Utility'} (${quantity})`;
+          });
+
+        return {
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || reservation.title || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          dates: `${eventDate ? formatDate(eventDate) : 'Date unavailable'}${endDate && eventDate
+            && endDate.toDateString() !== eventDate.toDateString()
+            ? ` - ${formatDate(endDate)}`
+            : ''}`,
+          times: `${formatTime(reservation.startTime)} - ${formatTime(reservation.endTime)}`,
+          status: reservation.status || 'Pending',
+          source: activeReservationIds.has(reservation.id) ? 'Active' : 'Archived',
+          facilities: (reservation.facilities || [])
+            .map((id) => facilitiesById.get(id)?.name || id)
+            .join(', ') || 'No facility',
+          equipment: equipmentRequests.join(', ') || 'None listed',
+          utilities: utilityRequests.join(', ') || 'None listed',
+          otherEquipment: reservation.otherEquipment || '',
+          otherUtility: reservation.otherUtility || '',
+          specificRoom: reservation.specificRoom || '',
+          participants: reservation.specificRoomParticipants || reservation.expectedParticipants || ''
+        };
+      });
+
+      exportMisDashboardPdf({
+        equipmentUsage: equipmentHoursRanking,
+        groupConsumption: departmentalResourceConsumption,
+        generatedAt: new Date().toLocaleString(),
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        timeRange: startMinutes !== null || endMinutes !== null
+          ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+          : 'All times',
+        status: filters.status === 'all'
+          ? 'Approved and pending'
+          : filters.status[0].toUpperCase() + filters.status.slice(1),
+        upcomingWindow: `${upcomingRangeDays} days`,
+        rankingModes: {
+          equipment: rankingModes.equipment,
+          utilities: rankingModes.utilities
+        },
+        metrics: {
+          ...metrics,
+          pendingApprovals,
+          pendingUsers: pendingUserCount,
+          pendingProfiles: pendingProfileCount
+        },
+        trend: trendData,
+        equipmentRanking: equipmentRanking.map((equipment) => ({
+          name: equipment.isOtherRequest ? `Other: ${equipment.name}` : equipment.name,
+          quantity: equipment.quantity,
+          lastUsed: equipment.lastUsed
+        })),
+        utilityRanking: utilitiesRanking.map((utility) => ({
+          name: utility.isOtherRequest ? `Other: ${utility.name}` : utility.name,
+          quantity: utility.quantity,
+          lastUsed: utility.lastUsed
+        })),
+        equipmentInventory: equipmentTabAvailability.map((equipment) => ({
+          name: equipment.name || 'Unnamed equipment',
+          total: equipment.total,
+          reserved: equipment.reserved,
+          available: equipment.available,
+          status: equipment.total === 0
+            ? 'No stock'
+            : equipment.isUnavailable
+              ? 'Unavailable'
+              : equipment.isRunningLow
+                ? 'Running low'
+                : 'On track'
+        })),
+        snapshot: {
+          equipmentCatalog: equipmentData.length,
+          utilitiesCatalog: utilitiesData.length,
+          facilitiesAvailable,
+          facilitiesUnderMaintenance,
+          facilitiesUnavailable,
+          registeredUsers: visibleUserCount
+        },
+        approvals: pendingApprovalReservations.slice(0, 5).map((reservation) => ({
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || reservation.title || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          date: formatDate(parseDate(reservation.eventDate || reservation.date)),
+          time: formatTime(reservation.startTime)
+        })),
+        upcomingReservations: upcomingReservations.map((reservation) => ({
+          reference: reservation.refNo || reservation.id || 'No reference',
+          event: reservation.eventName || reservation.title || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          date: formatDate(reservation.eventDateValue),
+          time: formatTime(reservation.startTime),
+          status: reservation.status || 'Approved',
+          facilities: (reservation.facilities || [])
+            .map((id) => facilitiesById.get(id)?.name || id)
+            .join(', ') || 'No facility'
+        })),
+        recentEquipment: recentEquipmentActivity.map((equipment) => ({
+          name: equipment.name || 'Unnamed equipment',
+          sku: equipment.isOtherRequest ? 'Other request' : equipment.sku || 'No SKU',
+          latestBooking: equipment.lastBorrow
+            ? {
+              borrower: equipment.lastBorrow.borrower,
+              date: formatDate(equipment.lastBorrow.date),
+              time: formatTime(equipment.lastBorrow.startTime),
+              quantity: equipment.lastBorrow.quantity,
+              details: [
+                equipment.lastBorrow.otherEquipment && `Other equipment: ${equipment.lastBorrow.otherEquipment}`,
+                equipment.lastBorrow.otherUtility && `Other utility: ${equipment.lastBorrow.otherUtility}`,
+                equipment.lastBorrow.specificRoom && `Specific room: ${equipment.lastBorrow.specificRoom}`
+              ].filter(Boolean).join('; ')
+            }
+            : null
+        })),
+        recentUtilities: recentUtilityActivity.map((utility) => ({
+          name: utility.name || 'Unnamed utility',
+          sku: utility.isOtherRequest ? 'Other request' : utility.sku || 'No SKU',
+          latestBooking: utility.lastReservation
+            ? {
+              borrower: utility.lastReservation.borrower,
+              date: formatDate(utility.lastReservation.date),
+              time: formatTime(utility.lastReservation.startTime),
+              quantity: utility.lastReservation.quantity,
+              details: [
+                utility.lastReservation.otherEquipment && `Other equipment: ${utility.lastReservation.otherEquipment}`,
+                utility.lastReservation.otherUtility && `Other utility: ${utility.lastReservation.otherUtility}`,
+                utility.lastReservation.specificRoom && `Specific room: ${utility.lastReservation.specificRoom}`
+              ].filter(Boolean).join('; ')
+            }
+            : null
+        })),
+        reservations: reservationRows
+      });
+    } catch (error) {
+      console.error('Failed to export the MIS dashboard PDF:', error);
+      setMisDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+    } finally {
+      setIsExportingMisDashboardPdf(false);
+    }
+  };
   const exportDashboardPdf = async () => {
     setIsExportingDashboardPdf(true);
     setDashboardPdfExportError('');
@@ -1838,6 +2067,23 @@ const DashboardContent = ({ currentUserRole }) => {
             )}
           </div>
         )}
+        {isMisDashboard && (
+          <div className="dashboard-export-actions">
+            <button
+              className="dashboard-export-button"
+              type="button"
+              onClick={exportMisDashboardReport}
+              disabled={isExportingMisDashboardPdf}
+            >
+              {isExportingMisDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
+            </button>
+            {misDashboardPdfExportError && (
+              <span className="dashboard-export-error" role="alert">
+                {misDashboardPdfExportError}
+              </span>
+            )}
+          </div>
+        )}
       </header>
 
       {/* Operations include date filters, key metrics, approval queues, and upcoming events. */}
@@ -1954,6 +2200,89 @@ const DashboardContent = ({ currentUserRole }) => {
           )}
         </article>
         </section>
+
+        {isMisDashboard && (
+          <article className="dashboard-panel pending-account-panel">
+            <div className="panel-heading">
+              <div>
+                <h2>Pending account reviews</h2>
+                <p>Review user accounts and profile changes awaiting approval.</p>
+              </div>
+            </div>
+            <div className="pending-account-actions">
+              <Link className="pending-account-action" to="/user?filter=pending">
+                <span>Pending users</span>
+                <strong>{pendingUserCount}</strong>
+                <small>View accounts with pending roles</small>
+              </Link>
+              {canManagePendingProfiles && (
+                <Link className="pending-account-action" to="/user?filter=pending-profile">
+                  <span>Pending profiles</span>
+                  <strong>{pendingProfileCount}</strong>
+                  <small>Review profile picture and cover changes</small>
+                </Link>
+              )}
+            </div>
+          </article>
+        )}
+
+        {['mis', 'mis admin'].includes(dashboardRole) && (
+          <section className="dashboard-panel equipment-burn-panel" aria-live="polite">
+            <div className="panel-heading">
+              <div>
+                <h2>Equipment inventory</h2>
+                <p>Live availability</p>
+              </div>
+              <span className="panel-total">Live</span>
+            </div>
+            {equipmentTabAvailability.length ? (
+              <div className="equipment-burn-list">
+                {equipmentTabAvailability.map((equipment) => (
+                  <Link
+                    className="equipment-burn-item"
+                    key={equipment.id}
+                    to="/equipment"
+                    aria-label={`${equipment.name || 'Equipment'} inventory outlook. Open equipment management.`}
+                  >
+                    <div className="equipment-burn-item-heading">
+                      <strong>{equipment.name || 'Unnamed equipment'}</strong>
+                      <span className={equipment.total === 0
+                        ? 'equipment-burn-status no-stock'
+                        : equipment.isUnavailable
+                          ? 'equipment-burn-status unavailable'
+                          : equipment.isRunningLow
+                            ? 'equipment-burn-status running-low'
+                            : 'equipment-burn-status'}>
+                        {equipment.total === 0
+                          ? 'No stock'
+                          : equipment.isUnavailable
+                            ? 'Unavailable'
+                            : equipment.isRunningLow
+                              ? 'Running low'
+                              : 'On track'}
+                      </span>
+                    </div>
+                    <div className="equipment-burn-meter">
+                      <strong>{equipment.available} / {equipment.total} available</strong>
+                      <div
+                        className={`equipment-burn-bar${equipment.percentAvailable <= 20 ? ' is-low' : ''}`}
+                        role="meter"
+                        aria-valuemin={0}
+                        aria-valuemax={100}
+                        aria-valuenow={equipment.percentAvailable}
+                        aria-label={`${equipment.available} of ${equipment.total} available`}
+                      >
+                        <span style={{ width: `${equipment.percentAvailable}%` }} />
+                      </div>
+                    </div>
+                  </Link>
+                ))}
+              </div>
+            ) : (
+              <p className="panel-empty">No equipment inventory to display.</p>
+            )}
+          </section>
+        )}
 
           {/* Global search covers active and archived reservations and admin user matches. */}
           {dashboardSearchQuery && (
@@ -2198,8 +2527,8 @@ const DashboardContent = ({ currentUserRole }) => {
           )}
 
       {(isAdminDashboard || canViewResourceSnapshot) && (
-        <section className={`dashboard-resource-panels${isAdminDashboard ? ' has-resource-alerts' : ''}`}>
-          {isAdminDashboard && (
+        <section className={`dashboard-resource-panels${showResourceAlerts ? ' has-resource-alerts' : ''}`}>
+          {showResourceAlerts && (
             <article className="dashboard-panel resource-alerts-panel">
               <div className="panel-heading">
                 <div>
@@ -2262,35 +2591,39 @@ const DashboardContent = ({ currentUserRole }) => {
                   <h2>Resource snapshot</h2>
                   <p>{isBuildingAdminDashboard
                     ? 'Current state of managed facilities.'
-                    : 'Current state of managed facilities, equipment, and utilities.'}</p>
+                    : isMisDashboard
+                      ? 'Current state of equipment and utilities.'
+                      : 'Current state of managed facilities, equipment, and utilities.'}</p>
                 </div>
               </div>
               {!isBuildingAdminDashboard && (
                 <>
-                  <div className="resource-stat">
+                  <Link className="resource-stat resource-stat-link" to="/equipment">
                     <div className="resource-stat-copy">
                       <span>Equipment catalog</span>
                       <strong>{equipmentData.length} <small>items</small></strong>
                     </div>
                     <span className="resource-stat-detail">{metrics.availableUnits} available units</span>
-                  </div>
-                  <div className="resource-stat">
+                  </Link>
+                  <Link className="resource-stat resource-stat-link" to="/equipment#utilities">
                     <div className="resource-stat-copy">
                       <span>Utility catalog</span>
                       <strong>{utilitiesData.length} <small>utilities</small></strong>
                     </div>
                     <span className="resource-stat-detail">Managed utility items</span>
-                  </div>
+                  </Link>
                 </>
               )}
-              <div className="resource-stat">
-                <div className="resource-stat-copy">
-                  <span>Facility directory</span>
-                  <strong>{facilitiesData.length} <small>facilities</small></strong>
+              {!isBuildingAdminDashboard && !isMisDashboard && (
+                <div className="resource-stat">
+                  <div className="resource-stat-copy">
+                    <span>Facility directory</span>
+                    <strong>{facilitiesData.length} <small>facilities</small></strong>
+                  </div>
+                  <span className="resource-stat-detail">{facilitiesAvailable} available now</span>
                 </div>
-                <span className="resource-stat-detail">{facilitiesAvailable} available now</span>
-              </div>
-              {!isBuildingAdminDashboard && (
+              )}
+              {!isBuildingAdminDashboard && !isMisDashboard && (
                 <div className="resource-stat">
                   <div className="resource-stat-copy">
                     <span>Specific rooms</span>
@@ -2390,6 +2723,7 @@ const DashboardContent = ({ currentUserRole }) => {
             canManagePendingProfiles={canManagePendingProfiles}
             isAdminDashboard={isAdminDashboard}
             isBuildingAdminDashboard={isBuildingAdminDashboard}
+            isMisDashboard={isMisDashboard}
             canReviewApprovals={canReviewApprovals}
           />
           {/* Summarize reservation trends. */}
@@ -2423,6 +2757,114 @@ const DashboardContent = ({ currentUserRole }) => {
                 <span><i className="status-key pending" /> Pending <strong>{metrics.pending}</strong></span>
               </div>
             </article>
+
+            {isMisDashboard && (
+              <article className="dashboard-panel ranking-panel equipment-hours-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Equipment usage hours</h2>
+                    <p>
+                      Estimated reserved equipment-hours from approved reservations in the selected period.
+                      Each session shows hours per unit multiplied by quantity.
+                    </p>
+                  </div>
+                </div>
+                {equipmentHoursRanking.length ? (
+                  <div className="ranking-list" tabIndex={0} aria-label="Equipment ranked by reserved hours">
+                    {equipmentHoursRanking.map((equipment, index) => (
+                      <div className="equipment-hours-entry" key={equipment.id}>
+                        <div className="ranking-row">
+                          <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
+                          <span
+                            className="ranking-name"
+                            title={equipment.isOtherRequest ? `Other equipment: ${equipment.name}` : equipment.name}
+                          >
+                            {equipment.isOtherRequest ? `Other: ${equipment.name}` : equipment.name}
+                          </span>
+                          <div className="ranking-track" aria-hidden="true">
+                            <span style={{ width: `${equipment.hours / equipmentHoursMaximum * 100}%` }} />
+                          </div>
+                          <strong>{equipment.hours.toFixed(1)} h</strong>
+                        </div>
+                        <details className="equipment-hours-details">
+                          <summary>View session breakdown ({equipment.sessions.length})</summary>
+                          <ul className="equipment-hours-sessions" aria-label={`${equipment.name} scheduled sessions`}>
+                            {equipment.sessions.map((session, sessionIndex) => (
+                              <li
+                                className="equipment-hours-session"
+                                key={`${session.date}-${session.startTime}-${session.endTime}-${sessionIndex}`}
+                              >
+                                <span>
+                                  {formatDate(parseDate(session.date))},{' '}
+                                  {formatTime(session.startTime)}–{formatTime(session.endTime)}
+                                </span>
+                                <strong>
+                                  {session.quantity} unit{session.quantity === 1 ? '' : 's'} ×{' '}
+                                  {session.durationHours.toFixed(1)} h/unit = {session.hours.toFixed(1)} equipment-hours
+                                </strong>
+                              </li>
+                            ))}
+                          </ul>
+                        </details>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No approved equipment bookings with scheduled hours match these filters.</p>
+                )}
+              </article>
+            )}
+
+            {isMisDashboard && (
+              <article className="dashboard-panel departmental-resource-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>Resource Consumption by Requestor Group</h2>
+                    <p>
+                      Approved equipment units grouped by each reservation’s saved requestor signup dropdown.
+                    </p>
+                  </div>
+                </div>
+                {departmentalResourceChart.segments.length ? (
+                  <div className="departmental-resource-chart">
+                    <div className="departmental-resource-total">
+                      <div
+                        className="venue-utilization-donut departmental-resource-donut"
+                        role="img"
+                        aria-label={`${departmentalResourceChart.totalUnits} approved equipment units: ${
+                          departmentalResourceChart.segments.map((segment) => (
+                            `${segment.name}, ${segment.units} units, ${segment.percent.toFixed(1)} percent`
+                          )).join('; ')
+                        }`}
+                        style={{ background: departmentalResourceChart.background }}
+                      />
+                      <p className="departmental-resource-unit-label">
+                        <strong>{departmentalResourceChart.totalUnits}</strong> equipment units
+                      </p>
+                    </div>
+                    <ul className="departmental-resource-legend">
+                      {departmentalResourceChart.segments.map((segment) => (
+                        <li key={segment.id}>
+                          <span
+                            className="departmental-resource-swatch"
+                            style={{ backgroundColor: segment.color }}
+                            aria-hidden="true"
+                          />
+                          <span className="departmental-resource-name">{segment.name}</span>
+                          <strong>
+                            {segment.units} units <span>{segment.percent.toFixed(1)}%</span>
+                          </strong>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <p className="panel-empty">
+                    No approved equipment-unit requests match the selected date and time filters.
+                  </p>
+                )}
+              </article>
+            )}
 
           </section>
 
@@ -2629,35 +3071,37 @@ const DashboardContent = ({ currentUserRole }) => {
             </>
             )}
 
-            <article className="dashboard-panel ranking-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Facilities</h2>
-                  <p>Approved facility and specific room reservations in the selected period{rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.</p>
+            {!isMisDashboard && (
+              <article className="dashboard-panel ranking-panel">
+                <div className="panel-heading">
+                  <div>
+                    <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Facilities</h2>
+                    <p>Approved facility and specific room reservations in the selected period{rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.</p>
+                  </div>
+                  <RankingModeToggle
+                    label="Facilities"
+                    value={rankingModes.facilities}
+                    onChange={(value) => setRankingModes((current) => ({ ...current, facilities: value }))}
+                  />
                 </div>
-                <RankingModeToggle
-                  label="Facilities"
-                  value={rankingModes.facilities}
-                  onChange={(value) => setRankingModes((current) => ({ ...current, facilities: value }))}
-                />
-              </div>
-              {facilitiesRanking.length ? (
-                <div className="ranking-list" tabIndex={0} aria-label="Facility request rankings">
-                  {facilitiesRanking.map((facility, index) => (
-                    <div className="ranking-row" key={facility.id}>
-                      <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                      <span className="ranking-name" title={facility.name}>{facility.name}</span>
-                      <div className="ranking-track facility-track">
-                        <span style={{ width: `${facility.count / facilityMaximum * 100}%` }} />
+                {facilitiesRanking.length ? (
+                  <div className="ranking-list" tabIndex={0} aria-label="Facility request rankings">
+                    {facilitiesRanking.map((facility, index) => (
+                      <div className="ranking-row" key={facility.id}>
+                        <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
+                        <span className="ranking-name" title={facility.name}>{facility.name}</span>
+                        <div className="ranking-track facility-track">
+                          <span style={{ width: `${facility.count / facilityMaximum * 100}%` }} />
+                        </div>
+                        <strong>{facility.count}</strong>
                       </div>
-                      <strong>{facility.count}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">No approved facility bookings match these filters.</p>
-              )}
-            </article>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="panel-empty">No approved facility bookings match these filters.</p>
+                )}
+              </article>
+            )}
             {isBuildingAdminDashboard && matchedReservationsPanel}
           </section>
           )}

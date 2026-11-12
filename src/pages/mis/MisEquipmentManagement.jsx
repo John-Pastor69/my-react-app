@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { collection, onSnapshot, doc, addDoc, updateDoc, writeBatch } from 'firebase/firestore';
+import { useLocation } from 'react-router-dom';
 import { db, auth } from '../../Firebase';
 import "../../styles/mis/MisEquipmentManagement.scss";
 import { isReservationActive } from '../../services/reservationStatus';
@@ -16,6 +17,7 @@ const getCurrentDateTime = () => {
 };
 
 const MisEquipmentManagement = ({ currentUserRole }) => {
+  const location = useLocation();
   const [currentUser, setCurrentUser] = useState(null);
 
   // ==========================================
@@ -49,6 +51,14 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     const unsubscribeAuth = auth.onAuthStateChanged((user) => setCurrentUser(user));
     return () => unsubscribeAuth();
   }, []);
+
+  useEffect(() => {
+    if (location.hash !== '#utilities') return undefined;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById('utilities')?.scrollIntoView({ block: 'start' });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [location.hash]);
 
   // --- LIVE LISTEN TO FIRESTORE COLLECTIONS ---
   useEffect(() => {
@@ -373,7 +383,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       {/* ========================================== */}
       {/* 2. UTILITIES TABLE CONTAINER (NEW) */}
       {/* ========================================== */}
-      <div className="table-container">
+      <div className="table-container" id="utilities">
         <div className="table-controls">
           <div className="controls-left">
             <h2>Utility</h2>

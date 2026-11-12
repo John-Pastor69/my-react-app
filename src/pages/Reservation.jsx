@@ -22,7 +22,9 @@ import { isReservationEndReached } from '../services/reservationExpiration';
 import {
   findFacilityConflict,
   getFacilityCapacityAvailability,
-  parseDateOrdinal
+  getReservationDateRange,
+  parseDateOrdinal,
+  reservationDateRangesOverlap
 } from '../services/reservationConflicts';
 import {
   getAvailableDatesInRange,
@@ -1150,12 +1152,26 @@ const Reservation = ({ currentUserRole }) => {
   }, [currentUser]);
 
   // --- DYNAMICALLY CALCULATE AVAILABLE COUNTS ---
+  const selectedReservationRange = getReservationDateRange({
+    eventDate,
+    endDate: endDateInput,
+    days
+  });
   const mappedEquipmentList = inventoryEquipments.map(item => {
     let reservedCount = 0;
     reservationsData.forEach(res => {
-      if (res.id !== editReservationId && isReservationActive(res) && res.selectedEquip?.[item.id]) {
-        reservedCount += Number(res.selectedEquip[item.id]);
-      }
+      if (
+        res.id === editReservationId
+        || !isReservationActive(res)
+        || !res.selectedEquip?.[item.id]
+      ) return;
+      const reservationRange = getReservationDateRange(res);
+      if (
+        selectedReservationRange
+        && reservationRange
+        && !reservationDateRangesOverlap(selectedReservationRange, reservationRange)
+      ) return;
+      reservedCount += Number(res.selectedEquip[item.id]);
     });
 
     const total = Number(item.totalCount) || 0;
