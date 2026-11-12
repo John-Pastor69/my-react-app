@@ -546,14 +546,19 @@ const ReservationDetails = ({
     ? 'approved'
     : normalizedReservationStatus === 'rejected' ? 'rejected' : 'pending';
   const isApprovedStatus = normalizedReservationStatus === 'approved';
-  const isPdfAdmin = ['building admin', 'mis', 'mis admin', 'super admin'].includes(
-    currentUserRole.replace(/_/g, ' ')
-  );
+  const normalizedCurrentUserRole = currentUserRole.toLowerCase().trim().replace(/_/g, ' ');
+  const isMisUser = normalizedCurrentUserRole === 'mis';
+  const hasRequestedResources = equipArray.length > 0 || utilityNames.length > 0;
+  const isPdfAdmin = ['building admin', 'mis', 'mis admin', 'super admin'].includes(normalizedCurrentUserRole);
   const isReservationOwner = Boolean(currentUser && (
     currentData.userId === currentUser.uid
     || (currentData.userEmail || '').toLowerCase() === (currentUser.email || '').toLowerCase()
   ));
-  const canDownloadPdf = isApprovedStatus && (isPdfAdmin || isReservationOwner);
+  const canDownloadPdf = Boolean(normalizedCurrentUserRole)
+    && isApprovedStatus
+    && (isMisUser
+      ? hasRequestedResources
+      : isPdfAdmin || isReservationOwner);
 
   const airconSchedule = getAirconScheduleDetails(currentData, facilitiesMap);
 

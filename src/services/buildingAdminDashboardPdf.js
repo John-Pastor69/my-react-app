@@ -1,10 +1,16 @@
-import html2canvas from 'html2canvas';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 
 const PAGE_MARGIN = 12;
 const FOOTER_MARGIN = 18;
 const WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+const HEATMAP_COLORS = [
+  [241, 245, 249],
+  [219, 234, 254],
+  [147, 197, 253],
+  [59, 130, 246],
+  [30, 64, 175]
+];
 
 const toText = (value) => (value === null || value === undefined ? '' : String(value));
 
@@ -89,69 +95,221 @@ const addTable = (doc, { title, headers, rows, y, fontSize = 7, columnStyles = {
   return doc.lastAutoTable.finalY + 8;
 };
 
-const addAnalyticsSectionCapture = async (doc, element, title) => {
-  if (!element) throw new Error('The filtered analytics section is unavailable for capture.');
-
-  const canvas = await html2canvas(element, {
-    scale: 1.5,
-    backgroundColor: '#f4f7fe',
-    useCORS: true,
-    logging: false,
-    width: element.scrollWidth,
-    height: element.scrollHeight,
-    windowWidth: Math.max(document.documentElement.clientWidth, element.scrollWidth),
-    windowHeight: Math.max(window.innerHeight, element.scrollHeight),
-    scrollX: 0,
-    scrollY: 0,
-    ignoreElements: (candidate) => candidate.classList?.contains('dashboard-filters'),
-    onclone: (clonedDocument) => {
-      clonedDocument.querySelectorAll('.trend-chart-scroll, .venue-heatmap-scroll').forEach((container) => {
-        container.style.overflow = 'visible';
-        container.style.maxWidth = 'none';
-      });
-    }
-  });
-  if (!canvas.width || !canvas.height) throw new Error('The filtered analytics section produced an empty image.');
-
-  const pageWidth = doc.internal.pageSize.getWidth();
+const drawTrendChart = (doc, trend, y) => {
+  y = addSectionHeading(doc, 'Reservation activity chart', y);
   const pageHeight = doc.internal.pageSize.getHeight();
-  const imageWidth = pageWidth - PAGE_MARGIN * 2;
-  const imageTop = PAGE_MARGIN + 9;
-  const imageHeight = pageHeight - imageTop - FOOTER_MARGIN;
-  const sourceSliceHeight = Math.max(1, Math.floor(canvas.width * imageHeight / imageWidth));
-
-  for (let offsetY = 0; offsetY < canvas.height; offsetY += sourceSliceHeight) {
-    const sliceHeight = Math.min(sourceSliceHeight, canvas.height - offsetY);
-    const slice = document.createElement('canvas');
-    slice.width = canvas.width;
-    slice.height = sliceHeight;
-    const context = slice.getContext('2d');
-    if (!context) throw new Error('Could not prepare an analytics image for the PDF.');
-    context.drawImage(canvas, 0, offsetY, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-
+  if (y + 62 > pageHeight - FOOTER_MARGIN) {
     doc.addPage();
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(10);
-    doc.setTextColor(23, 36, 59);
-    doc.text(`${title} - dashboard view`, PAGE_MARGIN, PAGE_MARGIN + 4);
-    doc.addImage(
-      slice.toDataURL('image/jpeg', 0.94),
-      'JPEG',
-      PAGE_MARGIN,
-      imageTop,
-      imageWidth,
-      sliceHeight * imageWidth / canvas.width
-    );
+    y = PAGE_MARGIN;
   }
 
-  return pageHeight;
+  if (!trend.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('No reservation activity data is available.', PAGE_MARGIN, y + 5);
+    return y + 14;
+  }
+
+  const chartWidth = doc.internal.pageSize.getWidth() - PAGE_MARGIN * 2;
+  const chartHeight = 38;
+  const baseline = y + chartHeight;
+  const gap = 5;
+  const columnWidth = (chartWidth - gap * (trend.length - 1)) / trend.length;
+  const maximum = Math.max(1, ...trend.map((item) => Number(item.count) || 0));
+  doc.setDrawColor(210, 218, 231);
+  doc.line(PAGE_MARGIN, baseline, PAGE_MARGIN + chartWidth, baseline);
+
+  trend.forEach((item, index) => {
+    const x = PAGE_MARGIN + index * (columnWidth + gap);
+    const value = Number(item.count) || 0;
+    const barHeight = value ? Math.max(2, value / maximum * (chartHeight - 8)) : 1;
+    doc.setFillColor(49, 95, 232);
+    doc.rect(x, baseline - barHeight, columnWidth, barHeight, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7);
+    doc.setTextColor(23, 36, 59);
+    doc.text(String(value), x + columnWidth / 2, baseline - barHeight - 2, { align: 'center' });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(6);
+    doc.text(toText(item.label), x + columnWidth / 2, baseline + 5, {
+      align: 'center',
+      maxWidth: columnWidth + 2
+    });
+  });
+
+  return baseline + 12;
 };
 
-const addAnalyticsCapture = async (doc, sections) => {
-  for (const section of sections) {
-    await addAnalyticsSectionCapture(doc, section.element, section.title);
+const drawDonut = (doc, centerX, centerY, radius, percentage) => {
+  const clampedPercent = Math.min(100, Math.max(0, Number(percentage) || 0));
+  doc.setFillColor(232, 237, 245);
+  doc.circle(centerX, centerY, radius, 'F');
+
+  const segmentCount = Math.round(clampedPercent / 100 * 48);
+  if (segmentCount) {
+    doc.setFillColor(49, 95, 232);
+    for (let index = 0; index < segmentCount; index += 1) {
+      const startAngle = -Math.PI / 2 + index / 48 * Math.PI * 2;
+      const endAngle = -Math.PI / 2 + (index + 1) / 48 * Math.PI * 2;
+      doc.triangle(
+        centerX,
+        centerY,
+        centerX + Math.cos(startAngle) * radius,
+        centerY + Math.sin(startAngle) * radius,
+        centerX + Math.cos(endAngle) * radius,
+        centerY + Math.sin(endAngle) * radius,
+        'F'
+      );
+    }
   }
-  return doc.internal.pageSize.getHeight();
+
+  doc.setFillColor(255, 255, 255);
+  doc.circle(centerX, centerY, radius * 0.62, 'F');
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(7);
+  doc.setTextColor(23, 36, 59);
+  doc.text(`${(Number(percentage) || 0).toFixed(1)}%`, centerX, centerY + 1, { align: 'center' });
+};
+
+const drawUtilizationChart = (doc, utilization, y) => {
+  y = addSectionHeading(doc, 'Venue utilization chart', y);
+  if (!utilization.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.text('No facility utilization data is available.', PAGE_MARGIN, y + 5);
+    return y + 14;
+  }
+
+  const perPage = 3;
+  const cardWidth = (doc.internal.pageSize.getWidth() - PAGE_MARGIN * 2) / perPage;
+  let rowY = y + 12;
+  utilization.forEach((venue, index) => {
+    const position = index % perPage;
+    if (position === 0 && index > 0) {
+      rowY += 34;
+      if (rowY + 28 > doc.internal.pageSize.getHeight() - FOOTER_MARGIN) {
+        doc.addPage();
+        rowY = PAGE_MARGIN + 18;
+      }
+    }
+    const x = PAGE_MARGIN + position * cardWidth;
+    drawDonut(doc, x + 12, rowY, 10, venue.utilizationPercent);
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(8);
+    doc.setTextColor(23, 36, 59);
+    doc.text(toText(venue.name), x + 27, rowY - 2, { maxWidth: cardWidth - 30 });
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7);
+    doc.setTextColor(113, 128, 154);
+    doc.text(`${Number(venue.bookedHours || 0).toFixed(1)} of 105 hours booked`, x + 27, rowY + 5, {
+      maxWidth: cardWidth - 30
+    });
+  });
+  return rowY + 22;
+};
+
+const heatmapIntensity = (minutes, peak) => {
+  if (!minutes || !peak) return 0;
+  const ratio = minutes / peak;
+  if (ratio >= 0.75) return 4;
+  if (ratio >= 0.5) return 3;
+  if (ratio >= 0.25) return 2;
+  return 1;
+};
+
+const drawHeatmap = (doc, venue, dateRangeLabel, statusLabel, y) => {
+  const busiestDays = venue.busiestCellsByWeekday || [];
+  const busiestCellCount = busiestDays.reduce((total, day) => total + day.cells.length, 0);
+  const busiestSummaryHeight = busiestDays.length
+    ? 8 + busiestDays.length * 5 + 3
+    : 7;
+  const heatmapHeight = 10 + 79 + 13 + busiestSummaryHeight;
+  if (y + heatmapHeight > doc.internal.pageSize.getHeight() - FOOTER_MARGIN) {
+    doc.addPage();
+    y = PAGE_MARGIN;
+  }
+  y = addSectionHeading(doc, `${venue.name} booking heatmap`, y);
+
+  const labelWidth = 25;
+  const gridWidth = doc.internal.pageSize.getWidth() - PAGE_MARGIN * 2 - labelWidth;
+  const cellWidth = gridWidth / 15;
+  const cellHeight = 8;
+  const gridY = y + 8;
+  const hours = Array.from({ length: 15 }, (_, index) => index + 7);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(5.5);
+  doc.setTextColor(113, 128, 154);
+  doc.text(`${statusLabel} booking hours by weekday, ${dateRangeLabel}`, PAGE_MARGIN, y + 3);
+
+  hours.forEach((hour, index) => {
+    const label = `${hour % 12 || 12}${hour < 12 ? 'a' : 'p'}`;
+    doc.text(label, PAGE_MARGIN + labelWidth + index * cellWidth + cellWidth / 2, gridY + 5, { align: 'center' });
+  });
+
+  WEEKDAYS.forEach((day, weekday) => {
+    const rowY = gridY + 8 + weekday * (cellHeight + 1);
+    doc.setFontSize(6);
+    doc.setTextColor(23, 36, 59);
+    doc.text(day, PAGE_MARGIN, rowY + 5.5);
+    hours.forEach((_, hourIndex) => {
+      const minutes = Number(venue.cells?.[weekday]?.[hourIndex]) || 0;
+      const level = heatmapIntensity(minutes, venue.peakMinutes);
+      const [red, green, blue] = HEATMAP_COLORS[level];
+      doc.setFillColor(red, green, blue);
+      doc.setDrawColor(255, 255, 255);
+      doc.rect(
+        PAGE_MARGIN + labelWidth + hourIndex * cellWidth,
+        rowY,
+        Math.max(1, cellWidth - 0.6),
+        cellHeight,
+        'FD'
+      );
+    });
+  });
+
+  const gridBottom = gridY + 8 + WEEKDAYS.length * (cellHeight + 1);
+  let legendX = PAGE_MARGIN;
+  doc.setFontSize(6);
+  doc.setTextColor(113, 128, 154);
+  doc.text('Less', legendX, gridBottom + 6);
+  legendX += 12;
+  HEATMAP_COLORS.slice(1).forEach(([red, green, blue]) => {
+    doc.setFillColor(red, green, blue);
+    doc.rect(legendX, gridBottom + 2, 8, 5, 'F');
+    legendX += 10;
+  });
+  doc.text('More (relative to this facility peak)', legendX + 2, gridBottom + 6);
+
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(8);
+  doc.setTextColor(23, 36, 59);
+  const busiestY = gridBottom + 13;
+  if (!busiestDays.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(7.5);
+    doc.text(`No ${statusLabel.toLowerCase()} booking time in this date range.`, PAGE_MARGIN, busiestY);
+    return busiestY + 7;
+  }
+
+  doc.text(
+    `Busiest cell${busiestCellCount === 1 ? '' : 's'}: ${(venue.peakMinutes / 60).toFixed(1)} booked hours each`,
+    PAGE_MARGIN,
+    busiestY
+  );
+  doc.setFontSize(7.5);
+  busiestDays.forEach((day, index) => {
+    const rowY = busiestY + 8 + index * 5;
+    doc.setFillColor(113, 128, 154);
+    doc.circle(PAGE_MARGIN + 1, rowY - 1, 0.6, 'F');
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(23, 36, 59);
+    doc.text(WEEKDAYS[day.weekday], PAGE_MARGIN + 5, rowY);
+    const weekdayWidth = doc.getTextWidth(WEEKDAYS[day.weekday]);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(113, 128, 154);
+    doc.text(` — ${(day.totalMinutes / 60).toFixed(1)} total booked hours that day`, PAGE_MARGIN + 5 + weekdayWidth, rowY);
+  });
+  return busiestY + 8 + busiestDays.length * 5 + 3;
 };
 
 const addFooter = (doc) => {
@@ -170,7 +328,7 @@ const addFooter = (doc) => {
   }
 };
 
-export const exportBuildingAdminDashboardPdf = async (report, analyticsSections) => {
+export const exportBuildingAdminDashboardPdf = (report) => {
   const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(19);
@@ -256,6 +414,7 @@ export const exportBuildingAdminDashboardPdf = async (report, analyticsSections)
     y,
     fontSize: 8
   });
+  y = drawUtilizationChart(doc, report.utilization, y);
   y = addTable(doc, {
     title: 'Venue utilization details',
     headers: ['Facility', 'Booked hours', 'Utilization', 'Week'],
@@ -269,7 +428,8 @@ export const exportBuildingAdminDashboardPdf = async (report, analyticsSections)
     fontSize: 7
   });
 
-  y = await addAnalyticsCapture(doc, analyticsSections);
+  y = addSectionHeading(doc, 'Filtered analytics', y);
+  y = drawTrendChart(doc, report.trend, y);
   y = addTable(doc, {
     title: 'Reservation activity data',
     headers: ['Period', 'Reservations'],
@@ -286,6 +446,13 @@ export const exportBuildingAdminDashboardPdf = async (report, analyticsSections)
   });
 
   report.heatmaps.forEach((venue) => {
+    y = drawHeatmap(
+      doc,
+      venue,
+      report.heatmapDateRangeLabel,
+      report.heatmapStatusLabel,
+      y
+    );
     const hourHeaders = Array.from({ length: 15 }, (_, index) => {
       const hour = index + 7;
       return `${hour % 12 || 12}${hour < 12 ? 'a' : 'p'}`;

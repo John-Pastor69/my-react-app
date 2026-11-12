@@ -566,8 +566,6 @@ const DashboardContent = ({ currentUserRole }) => {
   const dashboardSearchQuery = searchParams.get('search') || '';
   const [reservationsData, setReservationsData] = useState([]);
   const [historyData, setHistoryData] = useState([]);
-  const liveOperationExportRef = useRef(null);
-  const analyticsExportRef = useRef(null);
   const [equipmentData, setEquipmentData] = useState([]);
   const [utilitiesData, setUtilitiesData] = useState([]);
   const [facilitiesData, setFacilitiesData] = useState([]);
@@ -1703,10 +1701,7 @@ const DashboardContent = ({ currentUserRole }) => {
         heatmapStatusLabel,
         heatmaps: visibleVenueTrafficHeatmaps,
         reservations: reservationRows
-      }, [
-        { element: liveOperationExportRef.current, title: 'Live operation' },
-        { element: analyticsExportRef.current, title: 'Filtered analytics' }
-      ]);
+      });
     } catch (error) {
       console.error('Failed to export the Building Admin dashboard PDF:', error);
       setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
@@ -1846,11 +1841,7 @@ const DashboardContent = ({ currentUserRole }) => {
       </header>
 
       {/* Operations include date filters, key metrics, approval queues, and upcoming events. */}
-      <section
-        className="dashboard-live-section"
-        aria-label="Live operation"
-        ref={liveOperationExportRef}
-      >
+      <section className="dashboard-live-section" aria-label="Live operation">
         <div className="dashboard-section-heading">
           <h2>Live operation</h2>
           <p>{isBuildingAdminDashboard
@@ -2376,11 +2367,7 @@ const DashboardContent = ({ currentUserRole }) => {
       )}
       </section>
 
-      <section
-        className="dashboard-filtered-section"
-        aria-label="Filtered analytics"
-        ref={analyticsExportRef}
-      >
+      <section className="dashboard-filtered-section" aria-label="Filtered analytics">
         <div className="dashboard-section-heading">
           <h2>Filtered analytics</h2>
           <p>{hasAnalyticsDashboard

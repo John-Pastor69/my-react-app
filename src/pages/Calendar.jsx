@@ -312,7 +312,7 @@ const Calendar = ({ currentUserRole }) => {
     && reservationsData.some((reservation) => reservation.id === selectedRequest.id)
     && !isReservationEndReached(selectedRequest)
   );
-  const canOpenArchiveList = ['mis', 'mis admin', 'super admin'].includes(
+  const canOpenArchiveList = ['mis admin', 'super admin'].includes(
     normalizedRole.replace(/_/g, ' ')
   );
   const isArchiveListVisible = canOpenArchiveList && showArchiveList;

@@ -30,8 +30,8 @@ const ELEVATED_ROLES = [
   'super admin'
 ];
 
-// Roles with facility and user management tabs
-const FACILITY_ADMIN_ROLES = ['building admin', 'mis', 'mis admin', 'super admin'];
+// Roles with the facility management tab
+const FACILITY_ADMIN_ROLES = ['building admin', 'mis admin', 'super admin'];
 const SYSTEM_ADMIN_ROLES = ['mis', 'mis admin', 'building admin', 'super admin'];
 const EQUIPMENT_ADMIN_ROLES = ['mis', 'mis admin', 'super admin'];
 
