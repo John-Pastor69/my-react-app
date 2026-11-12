@@ -296,8 +296,8 @@ const Calendar = ({ currentUserRole }) => {
     const reservationEmail = (reservation.userEmail || reservation.emailAddress || '').trim().toLowerCase();
     return Boolean(reservationEmail && reservationEmail === (currentUser.email || '').trim().toLowerCase());
   };
-  const canModifyReservations = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRoleKey);
-  const canManageUnavailableDates = canModifyReservations && normalizedRoleKey !== 'building admin';
+  const canModifyReservations = ['mis', 'mis admin', 'super admin'].includes(normalizedRoleKey);
+  const canManageUnavailableDates = canModifyReservations;
   const selectedUnavailableDateId = getUnavailableDateId(selectedDate);
   const selectedUnavailableDate = unavailableDates.find((date) => (
     getUnavailableDateId(date.date || date.id) === selectedUnavailableDateId

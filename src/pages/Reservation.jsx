@@ -807,7 +807,8 @@ const Reservation = ({ currentUserRole }) => {
           (type) => type.value === userData.accountType
         );
         const currentRole = (userData.role || '').toLowerCase().trim().replace(/_/g, ' ');
-        const canEditApprovedReservation = canSkipReservationLeadTime(currentRole)
+        const canEditApprovedReservation = currentRole !== 'building admin'
+          && canSkipReservationLeadTime(currentRole)
           && reservationStatus === 'approved'
           && !isReservationEndReached(reservation);
         if (
