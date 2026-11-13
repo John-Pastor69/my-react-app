@@ -39,6 +39,22 @@ main,
     font-weight: 500;
   }
 
+  .maintenance-validation-message,
+  .maintenance-overcommit-warning {
+    display: block;
+    margin-top: 0.45rem;
+    font-size: var(--font-body);
+    line-height: 1.4;
+  }
+
+  .maintenance-validation-message {
+    color: #b91c1c;
+  }
+
+  .maintenance-overcommit-warning {
+    color: #9a6700;
+  }
+
   .metrics-header {
       margin-bottom: 1.0667rem;
       h1 {
@@ -61,6 +77,10 @@ main,
     @media (min-width: $bp-tablet) {
       grid-template-columns: repeat(2, 1fr);
       gap: 1.0667rem;
+    }
+
+    @media (min-width: $bp-desktop) {
+      grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 
     .metric-card {

@@ -4,6 +4,10 @@ import { useLocation } from 'react-router-dom';
 import { db, auth } from '../../Firebase';
 import "../../styles/mis/MisEquipmentManagement.scss";
 import { isReservationActive } from '../../services/reservationStatus';
+import {
+  getEquipmentAvailability,
+  isValidEquipmentMaintenanceCount
+} from '../../services/equipmentAvailability';
 
 // Helper function to get real-time date and time
 const getCurrentDateTime = () => {
@@ -100,18 +104,25 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       }
     });
 
-    const total = Number(item.totalCount) || 0;
-    const availableCount = Math.max(0, total - reservedCount);
+    const inventory = getEquipmentAvailability({
+      totalCount: item.totalCount,
+      underMaintenance: item.underMaintenance,
+      reservedCount
+    });
 
-    const effectiveStatus = availableCount === 0 ? 'Unavailable' : (item.status || 'Available');
+    const effectiveStatus = inventory.available === 0 ? 'Unavailable' : (item.status || 'Available');
     const effectiveStatusClass = effectiveStatus === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     return {
       ...item,
       status: effectiveStatus,
+      inventoryStatus: item.status || 'Available',
       statusClass: effectiveStatusClass,
-      computedReserved: reservedCount,
-      computedAvailable: availableCount
+      underMaintenance: inventory.underMaintenance,
+      computedTotal: inventory.total,
+      computedReserved: inventory.reserved,
+      computedAvailable: inventory.available,
+      isOvercommitted: inventory.isOvercommitted
     };
   });
 
@@ -143,21 +154,33 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     } catch (error) { console.error('Failed to delete equipment:', error); }
   };
 
-  const handleEditClick = (item) => setEditingItem({ ...item, adjustment: 0 });
+  const handleEditClick = (item) => setEditingItem({
+    ...item,
+    status: item.inventoryStatus,
+    adjustment: 0
+  });
 
   const handleSaveEdit = async (e) => {
     e.preventDefault();
     if (!editingItem) return;
     const adjTotal = parseInt(editingItem.adjustment, 10) || 0;
     const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal);
-    let newAvailable = Math.max(0, newTotal - editingItem.computedReserved);
-    let status = editingItem.status;
-    if (newAvailable === 0) status = 'Unavailable';
-    let statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
+    const maintenanceValue = editingItem.underMaintenance ?? 0;
+    if (!isValidEquipmentMaintenanceCount(maintenanceValue, newTotal)) return;
+    const normalizedMaintenanceValue = Number(maintenanceValue);
+    const inventory = getEquipmentAvailability({
+      totalCount: newTotal,
+      underMaintenance: normalizedMaintenanceValue,
+      reservedCount: editingItem.computedReserved
+    });
+    const newAvailable = inventory.available;
+    const status = editingItem.status || 'Available';
+    const statusClass = status === 'Unavailable' ? 'status-unavailable' : 'status-available';
 
     try {
       await updateDoc(doc(db, 'equipments', editingItem.id), {
         totalCount: newTotal,
+        underMaintenance: normalizedMaintenanceValue,
         availableCount: newAvailable,
         status: status,
         statusClass: statusClass,
@@ -179,6 +202,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       await addDoc(collection(db, 'equipments'), {
         name: newItem.name.trim() || 'Untitled Equipment',
         sku: newItem.sku.trim() || `SKU: NEW-${Date.now().toString().slice(-4)}`,
+        underMaintenance: 0,
         availableCount: status === 'Unavailable' ? 0 : newAvailable,
         totalCount: newTotal,
         status: status,
@@ -259,6 +283,23 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
   // --- METRIC CALCULATIONS ---
   const totalAvailableUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedAvailable, 0);
   const totalReservedUnits = mappedEquipmentData.reduce((acc, curr) => acc + curr.computedReserved, 0);
+  const totalUnitsUnderMaintenance = mappedEquipmentData.reduce(
+    (total, equipment) => total + equipment.underMaintenance,
+    0
+  );
+  const editingTotalCount = editingItem
+    ? Math.max(0, (Number(editingItem.totalCount) || 0) + (parseInt(editingItem.adjustment, 10) || 0))
+    : 0;
+  const editingMaintenanceValue = editingItem?.underMaintenance ?? 0;
+  const isEditingMaintenanceInvalid = Boolean(editingItem)
+    && !isValidEquipmentMaintenanceCount(editingMaintenanceValue, editingTotalCount);
+  const editingInventoryPreview = editingItem && !isEditingMaintenanceInvalid
+    ? getEquipmentAvailability({
+      totalCount: editingTotalCount,
+      underMaintenance: editingMaintenanceValue,
+      reservedCount: editingItem.computedReserved
+    })
+    : null;
 
   // --- ROLE ACCESS CHECK ---
   const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
@@ -289,6 +330,12 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
           <div className="metric-info">
             <span className="label">Reserved Equipment</span>
             <span className="count">{totalReservedUnits}</span>
+          </div>
+        </div>
+        <div className="metric-card">
+          <div className="metric-info">
+            <span className="label">Under Maintenance</span>
+            <span className="count">{totalUnitsUnderMaintenance}</span>
           </div>
         </div>
       </div>
@@ -325,8 +372,10 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                 <input type="checkbox" checked={filteredData.length > 0 && filteredData.every((item) => selectedIds.includes(item.id))} onChange={toggleSelectAll} />
               </th>
               <th>EQUIPMENT NAME</th>
+              <th>TOTAL</th>
               <th>AVAILABLE</th>
               <th>RESERVED</th>
+              <th>UNDER MAINTENANCE</th>
               <th>STATUS</th>
               <th>LAST UPDATED</th>
               <th>ACTIONS</th>
@@ -335,7 +384,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
           <tbody>
             {filteredData.length === 0 ? (
               <tr>
-                <td colSpan={7} className="empty-state-cell">
+                <td colSpan={9} className="empty-state-cell">
                   <div className="empty-state">
                     <span className="empty-state-icon">📦</span>
                     <p className="empty-state-title">{searchQuery ? 'No matching equipment found' : 'No equipment yet'}</p>
@@ -357,8 +406,10 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                       </div>
                     </div>
                   </td>
+                  <td className="font-semibold">{item.computedTotal}</td>
                   <td className="font-semibold">{item.computedAvailable}</td>
                   <td className="font-semibold">{item.computedReserved}</td>
+                  <td className="font-semibold">{item.underMaintenance}</td>
                   <td><span className={`status-badge ${item.statusClass}`}>{item.status}</span></td>
                   <td className="text-muted">{item.lastUpdated}</td>
                   <td>
@@ -501,7 +552,32 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               </div>
               <div className="form-group">
                 <label>Add / Deduct Total Inventory</label>
-                <input type="number" min={-editingItem.computedAvailable} value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const minimumAdjustment = -editingItem.computedAvailable; const adjustment = e.target.value === '' ? '' : Math.max(minimumAdjustment, parseInt(e.target.value, 10) || 0); const adjTotal = parseInt(adjustment, 10) || 0; const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal); const newAvailable = Math.max(0, newTotal - editingItem.computedReserved); setEditingItem({ ...editingItem, adjustment, status: newAvailable === 0 ? 'Unavailable' : 'Available' }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+                <input type="number" min={Number(editingItem.underMaintenance || 0) - (Number(editingItem.totalCount) || 0)} value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const minimumAdjustment = Number(editingItem.underMaintenance || 0) - (Number(editingItem.totalCount) || 0); const adjustment = e.target.value === '' ? '' : Math.max(minimumAdjustment, parseInt(e.target.value, 10) || 0); setEditingItem({ ...editingItem, adjustment }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+              </div>
+              <div className="form-group">
+                <label>Units Under Maintenance (0–{editingTotalCount})</label>
+                <input
+                  type="number"
+                  min="0"
+                  max={editingTotalCount}
+                  step="1"
+                  value={editingItem.underMaintenance ?? 0}
+                  onChange={(event) => {
+                    const value = event.target.value === '' ? '' : Number(event.target.value);
+                    setEditingItem({ ...editingItem, underMaintenance: value });
+                  }}
+                  style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }}
+                />
+                {isEditingMaintenanceInvalid && (
+                  <span className="maintenance-validation-message" role="alert">
+                    Enter a whole number between 0 and the total inventory.
+                  </span>
+                )}
+                {editingInventoryPreview?.isOvercommitted && (
+                  <span className="maintenance-overcommit-warning" role="status">
+                    Warning: {editingItem.computedReserved} units are reserved, but only {editingInventoryPreview.bookablePool} remain bookable. Existing reservations are unchanged; new requests will see no available units.
+                  </span>
+                )}
               </div>
               <div className="form-group">
                 <label>Current Reserved (Automated)</label>
@@ -509,7 +585,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               </div>
               <div className="modal-actions">
                 <button type="button" onClick={() => setEditingItem(null)}>Cancel</button>
-                <button type="submit" className="btn-save">Save Changes</button>
+                <button type="submit" className="btn-save" disabled={isEditingMaintenanceInvalid}>Save Changes</button>
               </div>
             </form>
           </div>

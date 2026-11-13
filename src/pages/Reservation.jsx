@@ -16,6 +16,7 @@ import {
 } from 'firebase/firestore';
 import { db, auth } from '../Firebase';
 import MonthYearPicker from '../components/MonthYearPicker';
+import { getEquipmentAvailability } from '../services/equipmentAvailability';
 import { sendApprovalRequiredEmails } from '../services/approvalNotifications';
 import { isReservationActive } from '../services/reservationStatus';
 import { isReservationEndReached } from '../services/reservationExpiration';
@@ -1175,10 +1176,21 @@ const Reservation = ({ currentUserRole }) => {
       reservedCount += Number(res.selectedEquip[item.id]);
     });
 
-    const total = Number(item.totalCount) || 0;
-    const availableCount = Math.max(0, total - reservedCount);
+    const inventory = getEquipmentAvailability({
+      totalCount: item.totalCount,
+      underMaintenance: item.underMaintenance,
+      reservedCount
+    });
+    const availableCount = inventory.available;
     const effectiveStatus = availableCount === 0 ? 'Unavailable' : item.status;
-    return { ...item, status: effectiveStatus, computedReserved: reservedCount, computedAvailable: availableCount };
+    return {
+      ...item,
+      status: effectiveStatus,
+      computedTotal: inventory.total,
+      computedUnderMaintenance: inventory.underMaintenance,
+      computedReserved: inventory.reserved,
+      computedAvailable: availableCount
+    };
   });
   const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
   const otherEquipmentUnitsInvalid = Boolean(formData.otherEquipment.trim())
@@ -3034,7 +3046,8 @@ const Reservation = ({ currentUserRole }) => {
                         <strong>{item.name}</strong>
                         <span>{item.sku}</span>
                         <span className={`equip-status ${item.status?.toLowerCase() || ''}`}>
-                          ● {item.status} ({item.computedAvailable} / {item.totalCount} units)
+                          ● {item.status} ({item.computedAvailable} / {item.computedTotal} units)
+                          {' · '}{item.computedUnderMaintenance} under maintenance
                         </span>
                       </div>
                     </div>

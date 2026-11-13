@@ -194,10 +194,11 @@ export const exportMisDashboardPdf = (report) => {
   });
   y = addTable(doc, {
     title: 'Equipment inventory',
-    headers: ['Equipment', 'Total units', 'Reserved units', 'Available units', 'Inventory status'],
+    headers: ['Equipment', 'Total units', 'Under maintenance', 'Reserved units', 'Available units', 'Inventory status'],
     rows: report.equipmentInventory.map((equipment) => [
       equipment.name,
       equipment.total,
+      equipment.underMaintenance || 0,
       equipment.reserved,
       equipment.available,
       equipment.status

@@ -902,18 +902,28 @@ main,
   }
 
   .equipment-burn-meter {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto auto auto auto minmax(4rem, 1fr);
     align-items: center;
     gap: 0.75rem;
     color: $muted;
     font-size: 0.75rem;
 
     strong {
-      flex: 0 0 11rem;
       color: $ink;
       font-size: var(--font-body);
       font-weight: 600;
     }
+  }
+
+  .equipment-burn-maintenance {
+    white-space: nowrap;
+  }
+
+  .equipment-burn-total {
+    color: $ink;
+    font-weight: 600;
+    white-space: nowrap;
   }
 
   .equipment-burn-bar {
@@ -2919,8 +2929,22 @@ main,
 }
 
 @media (max-width: 42rem) {
-  .mis-dashboard-content .room-checker-room-panels {
-    grid-template-columns: minmax(0, 1fr);
+  .mis-dashboard-content {
+    .room-checker-room-panels {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .equipment-burn-meter {
+      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+      gap: 0.4rem 0.75rem;
+
+      strong,
+      .equipment-burn-maintenance,
+      .equipment-burn-total,
+      .equipment-burn-bar {
+        grid-column: 1 / -1;
+      }
+    }
   }
 }
 

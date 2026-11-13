@@ -16,6 +16,7 @@ import {
 } from '../services/dashboardResourceUsage';
 import { matchesDashboardReservationDateRange } from '../services/dashboardReservationDateFilter';
 import { matchesDashboardReservationScope } from '../services/dashboardReservationScope';
+import { getEquipmentAvailability } from '../services/equipmentAvailability';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import {
   getSpecificRoomReservedHours,
@@ -493,7 +494,7 @@ const DashboardKpis = ({
       aria-label="Key analytics"
     >
       <article className="kpi-card kpi-primary">
-        <span className="kpi-label">Reservations in range</span>
+        <span className="kpi-label">Reservations Filtered by date</span>
         <strong>{metrics.total}</strong>
         <span className="kpi-footnote">Pending and approved across selected filters</span>
       </article>
@@ -1171,13 +1172,24 @@ const DashboardContent = ({ currentUserRole }) => {
       if (!isReservationActive(reservation)) return total;
       return total + (Number(reservation.selectedEquip?.[equipment.id]) || 0);
     }, 0);
-    const total = Number(equipment.totalCount) || 0;
-    const available = equipment.status === 'Unavailable' ? 0 : Math.max(0, total - reserved);
-    return { ...equipment, total, reserved, available };
+    const inventory = getEquipmentAvailability({
+      totalCount: equipment.totalCount,
+      underMaintenance: equipment.underMaintenance,
+      reservedCount: reserved
+    });
+    const available = equipment.status === 'Unavailable' ? 0 : inventory.available;
+    return {
+      ...equipment,
+      total: inventory.total,
+      underMaintenance: inventory.underMaintenance,
+      reserved: inventory.reserved,
+      available,
+      isOvercommitted: inventory.isOvercommitted
+    };
   }), [equipmentData, reservationsData]);
 
   const equipmentTabAvailability = useMemo(() => equipmentInventory.map((equipment) => {
-    const available = Math.max(0, equipment.total - equipment.reserved);
+    const available = equipment.available;
     const status = available === 0 ? 'Unavailable' : equipment.status;
     return {
       ...equipment,
@@ -1772,6 +1784,7 @@ const DashboardContent = ({ currentUserRole }) => {
         equipmentInventory: equipmentTabAvailability.map((equipment) => ({
           name: equipment.name || 'Unnamed equipment',
           total: equipment.total,
+          underMaintenance: equipment.underMaintenance,
           reserved: equipment.reserved,
           available: equipment.available,
           status: equipment.total === 0
@@ -2461,14 +2474,19 @@ const DashboardContent = ({ currentUserRole }) => {
                       </span>
                     </div>
                     <div className="equipment-burn-meter">
-                      <strong>{equipment.available} / {equipment.total} available</strong>
+                      <strong>{equipment.available} available</strong>
+                      <span>{equipment.reserved} reserved</span>
+                      <span className="equipment-burn-maintenance">
+                        {equipment.underMaintenance} under maintenance
+                      </span>
+                      <span className="equipment-burn-total">{equipment.total} total units</span>
                       <div
                         className={`equipment-burn-bar${equipment.percentAvailable <= 20 ? ' is-low' : ''}`}
                         role="meter"
                         aria-valuemin={0}
                         aria-valuemax={100}
                         aria-valuenow={equipment.percentAvailable}
-                        aria-label={`${equipment.available} of ${equipment.total} available`}
+                        aria-label={`${equipment.available} of ${equipment.total} units available`}
                       >
                         <span style={{ width: `${equipment.percentAvailable}%` }} />
                       </div>
@@ -2862,7 +2880,7 @@ const DashboardContent = ({ currentUserRole }) => {
         <section className="dashboard-panel venue-utilization-panel">
           <div className="panel-heading">
             <div>
-              <h2>Venue utilization percentage</h2>
+              <h2>Facility Usage Rate</h2>
               <p>
                 Approved reservation hours this week out of 105 operating hours
                 ({formatDate(liveWeekStartDate)} – {formatDate(liveWeekEndDate)}; 7:00 AM–10:00 PM daily)
@@ -2888,11 +2906,11 @@ const DashboardContent = ({ currentUserRole }) => {
                     <div className="venue-utilization-details">
                       <h3>{venue.name}</h3>
                       <p>
-                        {venue.bookedHours.toFixed(1)} of {WEEKLY_OPERATING_HOURS} operating hours booked
+                        {venue.bookedHours.toFixed(1)} of {WEEKLY_OPERATING_HOURS} operating hours reserved
                       </p>
                       {venue.utilizationPercent > 100 && (
                         <span className="venue-utilization-overbooked">
-                          Bookings exceed the weekly operating hours
+                          Reservations exceed the weekly operating hours
                         </span>
                       )}
                     </div>
@@ -2967,7 +2985,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <article className="dashboard-panel room-occupancy-panel" aria-live="polite">
                 <div className="panel-heading">
                   <div>
-                    <h2>Specific-room occupancy</h2>
+                    <h2>Classroom occupancy</h2>
                     <p>
                       Specific-room requests within the selected date range.
                     </p>
@@ -3031,9 +3049,9 @@ const DashboardContent = ({ currentUserRole }) => {
               <article className="dashboard-panel ranking-panel room-hours-panel">
                 <div className="panel-heading">
                   <div>
-                    <h2>Specific-room reserved-hours</h2>
+                    <h2>Classroom reserved-hours</h2>
                     <p>
-                      Approved scheduled hours for specific-room reservations, matching the dashboard filters.
+                      Approved scheduled hours for specific-room reservations.
                     </p>
                   </div>
                 </div>
@@ -3059,7 +3077,7 @@ const DashboardContent = ({ currentUserRole }) => {
               <article className="dashboard-panel ranking-panel">
                 <div className="panel-heading">
                   <div>
-                    <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Specific Rooms</h2>
+                    <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Classrooms</h2>
                     <p>Approved specific-room reservations in the selected period.</p>
                   </div>
                   <RankingModeToggle
@@ -3202,10 +3220,9 @@ const DashboardContent = ({ currentUserRole }) => {
             <section className="dashboard-panel venue-traffic-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Zone-based traffic</h2>
+                  <h2>Busiest Hours Map</h2>
                   <p>
                     {heatmapStatusLabel} reservations for {heatmapDateRangeLabel}.
-                    Darker cells indicate more booked time between 7:00 AM and 10:00 PM.
                   </p>
                 </div>
                 <label className="venue-traffic-filter">
