@@ -139,31 +139,7 @@ export const exportRoomCheckerDashboardPdf = (report) => {
   doc.setTextColor(113, 128, 154);
   doc.text(`Generated ${toText(report.generatedAt)}`, PAGE_MARGIN, 23);
 
-  let y = addTable(doc, {
-    title: 'Current dashboard selections',
-    headers: ['Date range', 'Start-time range', 'Status', 'Upcoming window'],
-    rows: [[
-      report.filters.dates,
-      report.filters.times,
-      report.filters.status,
-      report.filters.upcomingWindow
-    ]],
-    y: 29
-  });
-  y = addTable(doc, {
-    title: 'Filtered reservation summary',
-    headers: ['Matching reservations', 'Approved', 'Pending', 'Approved equipment units'],
-    rows: [[
-      report.summary.total,
-      report.summary.approved,
-      report.summary.pending,
-      report.summary.reservedUnits
-    ]],
-    y,
-    fontSize: 8
-  });
-
-  y = addSectionHeading(doc, 'Live operation', y);
+  let y = addSectionHeading(doc, 'Live operation', 29);
   y = addTable(doc, {
     title: 'Reservations awaiting your approval',
     headers: ['Reference', 'Event', 'Requestor', 'Event date', 'Start time'],
@@ -192,8 +168,40 @@ export const exportRoomCheckerDashboardPdf = (report) => {
     y,
     fontSize: 6.5
   });
+  y = addSectionHeading(doc, 'Filtered analytics', y);
   y = addTable(doc, {
-    title: 'Live specific-room occupancy',
+    title: 'Current dashboard selections',
+    headers: ['Date range', 'Start-time range', 'Status', 'Upcoming window'],
+    rows: [[
+      report.filters.dates,
+      report.filters.times,
+      report.filters.status,
+      report.filters.upcomingWindow
+    ]],
+    y
+  });
+  y = addTable(doc, {
+    title: 'Filtered reservation summary',
+    headers: ['Matching reservations', 'Approved', 'Pending', 'Approved equipment units'],
+    rows: [[
+      report.summary.total,
+      report.summary.approved,
+      report.summary.pending,
+      report.summary.reservedUnits
+    ]],
+    y,
+    fontSize: 8
+  });
+  y = drawTrendChart(doc, report.trend, y);
+  y = addTable(doc, {
+    title: 'Reservation activity data',
+    headers: ['Period', 'Reservations'],
+    rows: report.trend.map((bucket) => [bucket.label, bucket.count]),
+    y,
+    fontSize: 7
+  });
+  y = addTable(doc, {
+    title: 'Room occupancy',
     headers: ['Specific room', 'Date', 'Event', 'Requestor', 'Time', 'Status', 'Scheduled air-con'],
     rows: report.liveOccupancy.map((room) => [
       room.name,
@@ -207,25 +215,15 @@ export const exportRoomCheckerDashboardPdf = (report) => {
     y,
     fontSize: 6.5
   });
-
-  y = addSectionHeading(doc, 'Filtered analytics', y);
-  y = drawTrendChart(doc, report.trend, y);
   y = addTable(doc, {
-    title: 'Reservation activity data',
-    headers: ['Period', 'Reservations'],
-    rows: report.trend.map((bucket) => [bucket.label, bucket.count]),
-    y,
-    fontSize: 7
-  });
-  y = addTable(doc, {
-    title: 'Specific-room reserved hours',
+    title: 'Reserved Room hours',
     headers: ['Specific room', 'Reserved hours'],
     rows: report.reservedHours.map((room) => [room.name, `${Number(room.hours || 0).toFixed(1)} h`]),
     y,
     fontSize: 7
   });
   y = addTable(doc, {
-    title: 'Most requested specific rooms',
+    title: 'Most requested Rooms',
     headers: ['Specific room', 'Approved reservations'],
     rows: report.roomRanking.map((room) => [room.name, room.count]),
     y,

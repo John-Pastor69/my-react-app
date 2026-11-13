@@ -4,6 +4,27 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { auth, db } from '../Firebase';
 import MonthYearPicker from '../components/MonthYearPicker';
 import {
+  BuildingAdminExportActions,
+  BuildingAdminFacilityInsights,
+  BuildingAdminResourceOverview,
+  BuildingAdminVenueTraffic,
+  BuildingAdminVenueUtilization
+} from './BuildingAdminDashboard';
+import {
+  MisDashboardEquipmentInventory,
+  MisDashboardEquipmentUsageHours,
+  MisDashboardExportActions,
+  MisDashboardPendingAccounts,
+  MisDashboardResourceConsumption,
+  MisDashboardUtilityInventory
+} from './MisDashboard';
+import {
+  RoomCheckerClassroomRankings,
+  RoomCheckerExportActions,
+  RoomCheckerOccupancy
+} from './RoomCheckerDashboard';
+import { RankingModeToggle } from './DashboardShared';
+import {
   APPROVAL_ROLE_HIERARCHY,
   isApprovalStepReady,
   isReservationAssignedToEndorser,
@@ -16,6 +37,7 @@ import {
 } from '../services/dashboardResourceUsage';
 import { matchesDashboardReservationDateRange } from '../services/dashboardReservationDateFilter';
 import { matchesDashboardReservationScope } from '../services/dashboardReservationScope';
+import { buildDashboardReservationTrend } from '../services/dashboardReservationTrend';
 import { getEquipmentAvailability } from '../services/equipmentAvailability';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import {
@@ -23,6 +45,7 @@ import {
   getLiveSpecificRoomOccupancy
 } from '../services/roomCheckerDashboard';
 import { isReservationActive } from '../services/reservationStatus';
+import { getUtilityReservedCount } from '../services/utilityAvailability';
 import { formatTimeForDisplay } from '../services/timeFormatting';
 import "../styles/Dashboard.scss";
 
@@ -31,7 +54,6 @@ const ReservationDetails = lazy(() => import('./ReservationDetails'));
 // Shared date and time helpers normalize values from filters and stored reservations.
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
 const WEEKLY_OPERATING_HOURS = 15 * 7;
-const HEATMAP_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const RESOURCE_CONSUMPTION_COLORS = [
   '#315fe8',
   '#14a779',
@@ -48,11 +70,6 @@ const HEATMAP_HOURS = Array.from({ length: 15 }, (_, index) => {
     label: `${hour % 12 || 12}${hour < 12 ? 'a' : 'p'}`
   };
 });
-const formatHeatmapTime = (minutes) => {
-  const hour = Math.floor(minutes / 60);
-  const minute = minutes % 60;
-  return `${hour % 12 || 12}:${String(minute).padStart(2, '0')} ${hour < 12 ? 'AM' : 'PM'}`;
-};
 const toDateInputValue = (date) => {
   const year = date.getFullYear();
   const month = String(date.getMonth() + 1).padStart(2, '0');
@@ -527,13 +544,6 @@ const DashboardKpis = ({
     </section>
   );
 };
-
-const RankingModeToggle = ({ label, value, onChange }) => (
-  <div className="ranking-mode-toggle" role="group" aria-label={`${label} ranking`}>
-    <button type="button" aria-pressed={value === 'most'} onClick={() => onChange('most')}>Most</button>
-    <button type="button" aria-pressed={value === 'least'} onClick={() => onChange('least')}>Least</button>
-  </div>
-);
 
 // Restricted landing page for accounts awaiting review.
 const PendingAccountDashboard = () => (
@@ -1204,6 +1214,14 @@ const DashboardContent = ({ currentUserRole }) => {
     };
   }), [equipmentInventory]);
 
+  const utilityInventory = useMemo(() => utilitiesData.map((utility) => ({
+    ...utility,
+    reserved: getUtilityReservedCount(reservationsData, utility.id),
+    status: String(utility.status || '').trim().toLowerCase() === 'unavailable'
+      ? 'Unavailable'
+      : 'Available'
+  })), [utilitiesData, reservationsData]);
+
   const metrics = useMemo(() => {
     const approved = countedReservations.filter(
       (reservation) => (reservation.status || '').toLowerCase().trim() === 'approved'
@@ -1546,28 +1564,11 @@ const DashboardContent = ({ currentUserRole }) => {
 
   // Group filtered reservations into chart buckets and find resource alerts.
   const trendData = useMemo(() => {
-    const from = startDate || endDate || new Date();
-    const to = endDate || startDate || new Date();
-    const firstDay = new Date(Math.min(from.getTime(), to.getTime()));
-    firstDay.setHours(0, 0, 0, 0);
-    const lastDay = new Date(Math.max(from.getTime(), to.getTime()));
-    lastDay.setHours(0, 0, 0, 0);
-    const dayCount = Math.max(1, Math.floor((lastDay - firstDay) / DAY_IN_MS) + 1);
-    const bucketCount = Math.min(7, dayCount);
-    const buckets = Array.from({ length: bucketCount }, (_, index) => {
-      const bucketStart = new Date(firstDay.getTime() + Math.floor(index * dayCount / bucketCount) * DAY_IN_MS);
-      const bucketEnd = new Date(firstDay.getTime() + Math.floor((index + 1) * dayCount / bucketCount) * DAY_IN_MS);
-      return {
-        label: dayCount <= 7
-          ? bucketStart.toLocaleDateString(undefined, { weekday: 'short' })
-          : bucketStart.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }),
-        count: countedReservations.filter((reservation) => {
-          const date = parseDate(reservation.eventDate || reservation.date);
-          return date && date >= bucketStart && date < bucketEnd;
-        }).length
-      };
+    return buildDashboardReservationTrend(countedReservations, {
+      startDate,
+      endDate,
+      parseDate
     });
-    return buckets;
   }, [countedReservations, startDate, endDate]);
 
   const facilitiesAvailable = facilitiesData.filter((facility) => facility.status === 'Available').length;
@@ -1794,6 +1795,11 @@ const DashboardContent = ({ currentUserRole }) => {
               : equipment.isRunningLow
                 ? 'Running low'
                 : 'On track'
+        })),
+        utilityInventory: utilityInventory.map((utility) => ({
+          name: utility.name || 'Unnamed utility',
+          reserved: utility.reserved,
+          status: utility.status
         })),
         snapshot: {
           equipmentCatalog: equipmentData.length,
@@ -2245,55 +2251,25 @@ const DashboardContent = ({ currentUserRole }) => {
           <h1>{isAdminDashboard ? 'Admin dashboard' : 'Dashboard'}</h1>
         </div>
         {isBuildingAdminDashboard && (
-          <div className="dashboard-export-actions">
-            <button
-              className="dashboard-export-button"
-              type="button"
-              onClick={exportDashboardPdf}
-              disabled={isExportingDashboardPdf}
-            >
-              {isExportingDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
-            </button>
-            {dashboardPdfExportError && (
-              <span className="dashboard-export-error" role="alert">
-                {dashboardPdfExportError}
-              </span>
-            )}
-          </div>
+          <BuildingAdminExportActions
+            isExporting={isExportingDashboardPdf}
+            error={dashboardPdfExportError}
+            onExport={exportDashboardPdf}
+          />
         )}
         {isRoomCheckerDashboard && (
-          <div className="dashboard-export-actions">
-            <button
-              className="dashboard-export-button"
-              type="button"
-              onClick={exportRoomCheckerDashboardReport}
-              disabled={isExportingDashboardPdf}
-            >
-              {isExportingDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
-            </button>
-            {dashboardPdfExportError && (
-              <span className="dashboard-export-error" role="alert">
-                {dashboardPdfExportError}
-              </span>
-            )}
-          </div>
+          <RoomCheckerExportActions
+            isExporting={isExportingDashboardPdf}
+            error={dashboardPdfExportError}
+            onExport={exportRoomCheckerDashboardReport}
+          />
         )}
         {isMisDashboard && (
-          <div className="dashboard-export-actions">
-            <button
-              className="dashboard-export-button"
-              type="button"
-              onClick={exportMisDashboardReport}
-              disabled={isExportingMisDashboardPdf}
-            >
-              {isExportingMisDashboardPdf ? 'Generating PDF...' : 'Export dashboard PDF'}
-            </button>
-            {misDashboardPdfExportError && (
-              <span className="dashboard-export-error" role="alert">
-                {misDashboardPdfExportError}
-              </span>
-            )}
-          </div>
+          <MisDashboardExportActions
+            isExporting={isExportingMisDashboardPdf}
+            error={misDashboardPdfExportError}
+            onExport={exportMisDashboardReport}
+          />
         )}
       </header>
 
@@ -2413,91 +2389,18 @@ const DashboardContent = ({ currentUserRole }) => {
         </section>
 
         {isMisDashboard && (
-          <article className="dashboard-panel pending-account-panel">
-            <div className="panel-heading">
-              <div>
-                <h2>Pending account reviews</h2>
-                <p>Review user accounts and profile changes awaiting approval.</p>
-              </div>
-            </div>
-            <div className="pending-account-actions">
-              <Link className="pending-account-action" to="/user?filter=pending">
-                <span>Pending users</span>
-                <strong>{pendingUserCount}</strong>
-                <small>View accounts with pending roles</small>
-              </Link>
-              {canManagePendingProfiles && (
-                <Link className="pending-account-action" to="/user?filter=pending-profile">
-                  <span>Pending profiles</span>
-                  <strong>{pendingProfileCount}</strong>
-                  <small>Review profile picture and cover changes</small>
-                </Link>
-              )}
-            </div>
-          </article>
+          <MisDashboardPendingAccounts
+            pendingUserCount={pendingUserCount}
+            pendingProfileCount={pendingProfileCount}
+            canManagePendingProfiles={canManagePendingProfiles}
+          />
         )}
 
-        {['mis', 'mis admin'].includes(dashboardRole) && (
-          <section className="dashboard-panel equipment-burn-panel" aria-live="polite">
-            <div className="panel-heading">
-              <div>
-                <h2>Equipment inventory</h2>
-                <p>Live availability</p>
-              </div>
-              <span className="panel-total">Live</span>
-            </div>
-            {equipmentTabAvailability.length ? (
-              <div className="equipment-burn-list">
-                {equipmentTabAvailability.map((equipment) => (
-                  <Link
-                    className="equipment-burn-item"
-                    key={equipment.id}
-                    to="/equipment"
-                    aria-label={`${equipment.name || 'Equipment'} inventory outlook. Open equipment management.`}
-                  >
-                    <div className="equipment-burn-item-heading">
-                      <strong>{equipment.name || 'Unnamed equipment'}</strong>
-                      <span className={equipment.total === 0
-                        ? 'equipment-burn-status no-stock'
-                        : equipment.isUnavailable
-                          ? 'equipment-burn-status unavailable'
-                          : equipment.isRunningLow
-                            ? 'equipment-burn-status running-low'
-                            : 'equipment-burn-status'}>
-                        {equipment.total === 0
-                          ? 'No stock'
-                          : equipment.isUnavailable
-                            ? 'Unavailable'
-                            : equipment.isRunningLow
-                              ? 'Running low'
-                              : 'On track'}
-                      </span>
-                    </div>
-                    <div className="equipment-burn-meter">
-                      <strong>{equipment.available} available</strong>
-                      <span>{equipment.reserved} reserved</span>
-                      <span className="equipment-burn-maintenance">
-                        {equipment.underMaintenance} under maintenance
-                      </span>
-                      <span className="equipment-burn-total">{equipment.total} total units</span>
-                      <div
-                        className={`equipment-burn-bar${equipment.percentAvailable <= 20 ? ' is-low' : ''}`}
-                        role="meter"
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={equipment.percentAvailable}
-                        aria-label={`${equipment.available} of ${equipment.total} units available`}
-                      >
-                        <span style={{ width: `${equipment.percentAvailable}%` }} />
-                      </div>
-                    </div>
-                  </Link>
-                ))}
-              </div>
-            ) : (
-              <p className="panel-empty">No equipment inventory to display.</p>
-            )}
-          </section>
+        {isMisDashboard && (
+          <div className="mis-inventory-panels">
+            <MisDashboardEquipmentInventory equipment={equipmentTabAvailability} />
+            <MisDashboardUtilityInventory utilities={utilityInventory} />
+          </div>
         )}
 
           {/* Global search covers active and archived reservations and admin user matches. */}
@@ -2742,7 +2645,19 @@ const DashboardContent = ({ currentUserRole }) => {
             </div>
           )}
 
-      {(isAdminDashboard || canViewResourceSnapshot) && (
+      {isBuildingAdminDashboard ? (
+        <BuildingAdminResourceOverview
+          alerts={visibleResourceAlerts}
+          alertCounts={dashboardResourceAlertCounts}
+          totalAlertCount={dashboardResourceAlerts.length}
+          alertCategory={resourceAlertCategory}
+          onAlertCategoryChange={setResourceAlertCategory}
+          facilities={facilitiesData}
+          availableFacilities={facilitiesAvailable}
+          facilitiesUnderMaintenance={facilitiesUnderMaintenance}
+          unavailableFacilities={facilitiesUnavailable}
+        />
+      ) : (isAdminDashboard || canViewResourceSnapshot) && (
         <section className={`dashboard-resource-panels${showResourceAlerts ? ' has-resource-alerts' : ''}`}>
           {showResourceAlerts && (
             <article className="dashboard-panel resource-alerts-panel">
@@ -2877,51 +2792,12 @@ const DashboardContent = ({ currentUserRole }) => {
         </section>
       )}
       {isBuildingAdminDashboard && (
-        <section className="dashboard-panel venue-utilization-panel">
-          <div className="panel-heading">
-            <div>
-              <h2>Facility Usage Rate</h2>
-              <p>
-                Approved reservation hours this week out of 105 operating hours
-                ({formatDate(liveWeekStartDate)} – {formatDate(liveWeekEndDate)}; 7:00 AM–10:00 PM daily)
-              </p>
-            </div>
-          </div>
-          {liveVenueUtilization.length ? (
-            <div className="venue-utilization-grid">
-              {liveVenueUtilization.map((venue) => {
-                const displayedPercent = Math.min(venue.utilizationPercent, 100);
-                return (
-                  <article className="venue-utilization-card" key={venue.id}>
-                    <div
-                      className="venue-utilization-donut"
-                      role="img"
-                      aria-label={`${venue.name}: ${venue.utilizationPercent.toFixed(1)} percent utilized this week`}
-                      style={{
-                        background: `conic-gradient(#315fe8 ${displayedPercent}%, #e8edf5 ${displayedPercent}% 100%)`
-                      }}
-                    >
-                      <span>{venue.utilizationPercent.toFixed(1)}%</span>
-                    </div>
-                    <div className="venue-utilization-details">
-                      <h3>{venue.name}</h3>
-                      <p>
-                        {venue.bookedHours.toFixed(1)} of {WEEKLY_OPERATING_HOURS} operating hours reserved
-                      </p>
-                      {venue.utilizationPercent > 100 && (
-                        <span className="venue-utilization-overbooked">
-                          Reservations exceed the weekly operating hours
-                        </span>
-                      )}
-                    </div>
-                  </article>
-                );
-              })}
-            </div>
-          ) : (
-            <p className="panel-empty">No facilities are available to calculate venue utilization.</p>
-          )}
-        </section>
+        <BuildingAdminVenueUtilization
+          venues={liveVenueUtilization}
+          weekStartDate={liveWeekStartDate}
+          weekEndDate={liveWeekEndDate}
+          formatDate={formatDate}
+        />
       )}
       </section>
 
@@ -2982,363 +2858,62 @@ const DashboardContent = ({ currentUserRole }) => {
             </article>
 
             {isRoomCheckerDashboard && (
-              <article className="dashboard-panel room-occupancy-panel" aria-live="polite">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Classroom occupancy</h2>
-                    <p>
-                      Specific-room requests within the selected date range.
-                    </p>
-                  </div>
-                  <span className="panel-total">
-                    {filters.startDate ? formatDate(parseDate(filters.startDate)) : 'Any date'}
-                    {' – '}
-                    {filters.endDate ? formatDate(parseDate(filters.endDate)) : 'Any date'}
-                    {' · '}{liveSpecificRoomOccupancy.length} rooms
-                  </span>
-                </div>
-                {liveSpecificRoomOccupancy.length ? (
-                  <div
-                    className="room-occupancy-list"
-                    tabIndex={0}
-                    aria-label="Scroll through specific-room occupancy"
-                  >
-                    {liveSpecificRoomOccupancy.map((room) => (
-                      <button
-                        className="room-occupancy-row operation-row-button"
-                        key={room.id}
-                        type="button"
-                        aria-label={`View reservation details for ${room.name} on ${formatDate(parseDate(room.date))}: ${room.eventName}`}
-                        onClick={() => {
-                          const reservation = reservationsData.find(
-                            (item) => item.id === room.reservationId
-                          );
-                          if (reservation) {
-                            setSelectedReservation({ data: reservation, source: 'active' });
-                          }
-                        }}
-                      >
-                        <div className="room-occupancy-main">
-                          <strong>{room.name}</strong>
-                          <span>
-                            {formatDate(parseDate(room.date))} · {room.eventName}
-                            {' · '}{formatTime(room.startTime)}–{formatTime(room.endTime)}
-                          </span>
-                          <span>{room.requestor}</span>
-                        </div>
-                        <div className="room-occupancy-meta">
-                          <span className={`room-occupancy-state room-occupancy-state-${room.state.toLowerCase().replace(/\s+/g, '-')}`}>
-                            {room.state}
-                          </span>
-                          <span>
-                            Air-con {room.state === 'In use' ? 'expected' : 'scheduled'}{' '}
-                            {room.aircon ? 'ON' : 'OFF'}
-                          </span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="panel-empty">No specific-room requests match the selected date range.</p>
-                )}
-              </article>
+              <RoomCheckerOccupancy
+                rooms={liveSpecificRoomOccupancy}
+                startDate={filters.startDate}
+                endDate={filters.endDate}
+                formatDate={formatDate}
+                parseDate={parseDate}
+                formatTime={formatTime}
+                onOpenReservation={(reservationId) => {
+                  const reservation = reservationsData.find(
+                    (item) => item.id === reservationId
+                  );
+                  if (reservation) {
+                    setSelectedReservation({ data: reservation, source: 'active' });
+                  }
+                }}
+              />
             )}
 
             {isRoomCheckerDashboard && (
-              <section className="room-checker-room-panels" aria-label="Specific room rankings">
-              <article className="dashboard-panel ranking-panel room-hours-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Classroom reserved-hours</h2>
-                    <p>
-                      Approved scheduled hours for specific-room reservations.
-                    </p>
-                  </div>
-                </div>
-                {specificRoomReservedHours.length ? (
-                  <div className="ranking-list" tabIndex={0} aria-label="Specific rooms ranked by reserved hours">
-                    {specificRoomReservedHours.map((room, index) => (
-                      <div className="ranking-row" key={room.id}>
-                        <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                        <span className="ranking-name" title={room.name}>{room.name}</span>
-                        <div className="ranking-track" aria-hidden="true">
-                          <span style={{ width: `${room.hours / specificRoomHoursMaximum * 100}%` }} />
-                        </div>
-                        <strong>{room.hours.toFixed(1)} h</strong>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="panel-empty">
-                    No approved specific-room hours match the selected date and time filters.
-                  </p>
+              <RoomCheckerClassroomRankings
+                reservedHours={specificRoomReservedHours}
+                reservedHoursMaximum={specificRoomHoursMaximum}
+                requestedRooms={facilitiesRanking}
+                requestedRoomsMaximum={facilityMaximum}
+                rankingMode={rankingModes.facilities}
+                onRankingModeChange={(value) => (
+                  setRankingModes((current) => ({ ...current, facilities: value }))
                 )}
-              </article>
-              <article className="dashboard-panel ranking-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Classrooms</h2>
-                    <p>Approved specific-room reservations in the selected period.</p>
-                  </div>
-                  <RankingModeToggle
-                    label="Specific rooms"
-                    value={rankingModes.facilities}
-                    onChange={(value) => setRankingModes((current) => ({ ...current, facilities: value }))}
-                  />
-                </div>
-                {facilitiesRanking.length ? (
-                  <div className="ranking-list" tabIndex={0} aria-label="Specific room request rankings">
-                    {facilitiesRanking.map((facility, index) => (
-                      <div className="ranking-row" key={facility.id}>
-                        <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                        <span className="ranking-name" title={facility.name}>{facility.name}</span>
-                        <div className="ranking-track facility-track">
-                          <span style={{ width: `${facility.count / facilityMaximum * 100}%` }} />
-                        </div>
-                        <strong>{facility.count}</strong>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="panel-empty">No approved specific-room requests match these filters.</p>
-                )}
-              </article>
-              </section>
+              />
             )}
 
             {isMisDashboard && (
-              <article className="dashboard-panel ranking-panel equipment-hours-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Equipment usage hours</h2>
-                    <p>
-                      Estimated reserved equipment-hours from approved reservations in the selected period.
-                      Each session shows hours per unit multiplied by quantity.
-                    </p>
-                  </div>
-                </div>
-                {equipmentHoursRanking.length ? (
-                  <div className="ranking-list" tabIndex={0} aria-label="Equipment ranked by reserved hours">
-                    {equipmentHoursRanking.map((equipment, index) => (
-                      <div className="equipment-hours-entry" key={equipment.id}>
-                        <div className="ranking-row">
-                          <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                          <span
-                            className="ranking-name"
-                            title={equipment.isOtherRequest ? `Other equipment: ${equipment.name}` : equipment.name}
-                          >
-                            {equipment.isOtherRequest ? `Other: ${equipment.name}` : equipment.name}
-                          </span>
-                          <div className="ranking-track" aria-hidden="true">
-                            <span style={{ width: `${equipment.hours / equipmentHoursMaximum * 100}%` }} />
-                          </div>
-                          <strong>{equipment.hours.toFixed(1)} h</strong>
-                        </div>
-                        <details className="equipment-hours-details">
-                          <summary>View session breakdown ({equipment.sessions.length})</summary>
-                          <ul className="equipment-hours-sessions" aria-label={`${equipment.name} scheduled sessions`}>
-                            {equipment.sessions.map((session, sessionIndex) => (
-                              <li
-                                className="equipment-hours-session"
-                                key={`${session.date}-${session.startTime}-${session.endTime}-${sessionIndex}`}
-                              >
-                                <span>
-                                  {formatDate(parseDate(session.date))},{' '}
-                                  {formatTime(session.startTime)}–{formatTime(session.endTime)}
-                                </span>
-                                <strong>
-                                  {session.quantity} unit{session.quantity === 1 ? '' : 's'} ×{' '}
-                                  {session.durationHours.toFixed(1)} h/unit = {session.hours.toFixed(1)} equipment-hours
-                                </strong>
-                              </li>
-                            ))}
-                          </ul>
-                        </details>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="panel-empty">No approved equipment bookings with scheduled hours match these filters.</p>
-                )}
-              </article>
+              <MisDashboardEquipmentUsageHours
+                equipment={equipmentHoursRanking}
+                maximum={equipmentHoursMaximum}
+                formatDate={formatDate}
+                parseDate={parseDate}
+                formatTime={formatTime}
+              />
             )}
 
             {isMisDashboard && (
-              <article className="dashboard-panel departmental-resource-panel">
-                <div className="panel-heading">
-                  <div>
-                    <h2>Resource Consumption by Requestor Group</h2>
-                    <p>
-                      Approved equipment units grouped by each reservation’s saved requestor signup dropdown.
-                    </p>
-                  </div>
-                </div>
-                {departmentalResourceChart.segments.length ? (
-                  <div className="departmental-resource-chart">
-                    <div className="departmental-resource-total">
-                      <div
-                        className="venue-utilization-donut departmental-resource-donut"
-                        role="img"
-                        aria-label={`${departmentalResourceChart.totalUnits} approved equipment units: ${
-                          departmentalResourceChart.segments.map((segment) => (
-                            `${segment.name}, ${segment.units} units, ${segment.percent.toFixed(1)} percent`
-                          )).join('; ')
-                        }`}
-                        style={{ background: departmentalResourceChart.background }}
-                      />
-                      <p className="departmental-resource-unit-label">
-                        <strong>{departmentalResourceChart.totalUnits}</strong> equipment units
-                      </p>
-                    </div>
-                    <ul className="departmental-resource-legend">
-                      {departmentalResourceChart.segments.map((segment) => (
-                        <li key={segment.id}>
-                          <span
-                            className="departmental-resource-swatch"
-                            style={{ backgroundColor: segment.color }}
-                            aria-hidden="true"
-                          />
-                          <span className="departmental-resource-name">{segment.name}</span>
-                          <strong>
-                            {segment.units} units <span>{segment.percent.toFixed(1)}%</span>
-                          </strong>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : (
-                  <p className="panel-empty">
-                    No approved equipment-unit requests match the selected date and time filters.
-                  </p>
-                )}
-              </article>
+              <MisDashboardResourceConsumption chart={departmentalResourceChart} />
             )}
 
           </section>
 
           {isBuildingAdminDashboard && (
-            <section className="dashboard-panel venue-traffic-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Busiest Hours Map</h2>
-                  <p>
-                    {heatmapStatusLabel} reservations for {heatmapDateRangeLabel}.
-                  </p>
-                </div>
-                <label className="venue-traffic-filter">
-                  <span>Facility</span>
-                  <select
-                    value={selectedHeatmapFacilityId}
-                    onChange={(event) => setSelectedHeatmapFacilityId(event.target.value)}
-                  >
-                    <option value="all">All facilities</option>
-                    {facilitiesData.map((facility) => (
-                      <option key={facility.id} value={String(facility.id)}>
-                        {facility.name || 'Facility'}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-              </div>
-              {visibleVenueTrafficHeatmaps.length ? (
-                <div className="venue-heatmap-facilities">
-                  {visibleVenueTrafficHeatmaps.map((venue) => (
-                    <article className="venue-heatmap-facility" key={venue.id}>
-                      <h3>{venue.name}</h3>
-                      <div
-                        className="venue-heatmap-scroll"
-                        tabIndex={0}
-                        aria-label={`${venue.name} booking heatmap for ${heatmapDateRangeLabel}, 7 AM to 10 PM`}
-                      >
-                        <table className="venue-heatmap-table">
-                          <caption className="visually-hidden">
-                            {venue.name} {heatmapStatusLabel.toLowerCase()} booking hours by weekday from 7 AM to 10 PM for {heatmapDateRangeLabel}
-                          </caption>
-                          <thead>
-                            <tr>
-                              <th scope="col">Day</th>
-                              {HEATMAP_HOURS.map((hour) => (
-                                <th scope="col" key={hour.value} title={formatHeatmapTime(hour.value * 60)}>
-                                  {hour.label}
-                                </th>
-                              ))}
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {HEATMAP_WEEKDAYS.map((day, weekday) => (
-                              <tr key={day}>
-                                <th scope="row">{day}</th>
-                                {venue.cells[weekday].map((bookedMinutes, index) => {
-                                  const hour = HEATMAP_HOURS[index].value;
-                                  const intensity = venue.peakMinutes
-                                    ? bookedMinutes / venue.peakMinutes
-                                    : 0;
-                                  const level = bookedMinutes === 0
-                                    ? 0
-                                    : intensity >= 0.75
-                                      ? 4
-                                      : intensity >= 0.5
-                                        ? 3
-                                        : intensity >= 0.25
-                                          ? 2
-                                          : 1;
-                                  const cellLabel = `${day}, ${formatHeatmapTime(hour * 60)}–`
-                                    + `${formatHeatmapTime((hour + 1) * 60)}: `
-                                    + `${(bookedMinutes / 60).toFixed(1)} booked hours`;
-                                  return (
-                                    <td
-                                      className={`venue-heatmap-cell intensity-${level}`}
-                                      key={`${day}-${hour}`}
-                                      title={cellLabel}
-                                      aria-label={cellLabel}
-                                    />
-                                  );
-                                })}
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
-                      </div>
-                      <div className="venue-heatmap-legend" aria-label="Booking intensity legend">
-                        <span>Less</span>
-                        {[1, 2, 3, 4].map((level) => (
-                          <i
-                            className={`venue-heatmap-cell intensity-${level}`}
-                            key={level}
-                            aria-hidden="true"
-                          />
-                        ))}
-                        <span>More</span>
-                        <span className="venue-heatmap-note">Intensity is relative to this venue’s busiest hour.</span>
-                      </div>
-                      {venue.busiestCellsByWeekday.length ? (
-                        <div className="venue-heatmap-busiest">
-                          <strong>
-                            Busiest cell{venue.busiestCellsByWeekday.reduce(
-                              (total, day) => total + day.cells.length,
-                              0
-                            ) > 1 ? 's' : ''}:
-                            {' '}{(venue.peakMinutes / 60).toFixed(1)} booked hours each
-                          </strong>
-                          <ul>
-                            {venue.busiestCellsByWeekday.map((day) => (
-                              <li key={day.weekday}>
-                                <strong>{HEATMAP_WEEKDAYS[day.weekday]}</strong>
-                                {' — '}{(day.totalMinutes / 60).toFixed(1)} total booked hours that day
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      ) : (
-                        <p className="venue-heatmap-busiest">No approved booking time in this date range.</p>
-                      )}
-                    </article>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">No facilities are available to calculate venue booking traffic.</p>
-              )}
-            </section>
+            <BuildingAdminVenueTraffic
+              statusLabel={heatmapStatusLabel}
+              dateRangeLabel={heatmapDateRangeLabel}
+              selectedFacilityId={selectedHeatmapFacilityId}
+              onFacilityChange={setSelectedHeatmapFacilityId}
+              facilities={facilitiesData}
+              venues={visibleVenueTrafficHeatmaps}
+            />
           )}
 
           {/* Rank requested resources for the selected period. */}
@@ -3422,14 +2997,23 @@ const DashboardContent = ({ currentUserRole }) => {
             </>
             )}
 
-            {!isMisDashboard && !isRoomCheckerDashboard && (
+            {isBuildingAdminDashboard ? (
+              <BuildingAdminFacilityInsights
+                rankingModes={rankingModes}
+                setRankingModes={setRankingModes}
+                facilities={facilitiesRanking}
+                facilityMaximum={facilityMaximum}
+                matchedReservations={matchedReservationsPanel}
+              />
+            ) : !isMisDashboard && !isRoomCheckerDashboard && (
               <article className="dashboard-panel ranking-panel">
                 <div className="panel-heading">
                   <div>
                     <h2>{rankingModes.facilities === 'most' ? 'Most' : 'Least'} Requested Facilities</h2>
-                    <p>{isBuildingAdminDashboard
-                      ? `Approved facility reservations in the selected period${rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.`
-                      : `Approved facility and specific room reservations in the selected period${rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.`}</p>
+                    <p>
+                      Approved facility and specific room reservations in the selected period
+                      {rankingModes.facilities === 'least' ? ', including facilities with no bookings' : ''}.
+                    </p>
                   </div>
                   <RankingModeToggle
                     label="Facilities"
@@ -3438,11 +3022,7 @@ const DashboardContent = ({ currentUserRole }) => {
                   />
                 </div>
                 {facilitiesRanking.length ? (
-                  <div
-                    className="ranking-list"
-                    tabIndex={0}
-                    aria-label="Facility request rankings"
-                  >
+                  <div className="ranking-list" tabIndex={0} aria-label="Facility request rankings">
                     {facilitiesRanking.map((facility, index) => (
                       <div className="ranking-row" key={facility.id}>
                         <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
@@ -3459,7 +3039,6 @@ const DashboardContent = ({ currentUserRole }) => {
                 )}
               </article>
             )}
-            {isBuildingAdminDashboard && matchedReservationsPanel}
           </section>
           )}
 

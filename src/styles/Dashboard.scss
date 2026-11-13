@@ -840,6 +840,17 @@ main,
     margin-bottom: 1rem;
   }
 
+  .mis-inventory-panels {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1rem;
+    padding-bottom: 1.5rem;
+
+    .equipment-burn-panel {
+      margin-bottom: 0;
+    }
+  }
+
   .equipment-burn-list {
     display: grid;
     gap: 0.65rem;
@@ -2991,6 +3002,11 @@ main,
 
 @media (min-width: 64rem) {
   .mis-dashboard-content {
+    .mis-inventory-panels {
+      grid-template-columns: minmax(0, 2fr) minmax(0, 1fr);
+      align-items: start;
+    }
+
     .filter-fields {
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }

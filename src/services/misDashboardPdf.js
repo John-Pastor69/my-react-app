@@ -80,6 +80,7 @@ export const exportMisDashboardPdf = (report) => {
     'equipmentRanking',
     'utilityRanking',
     'equipmentInventory',
+    'utilityInventory',
     'approvals',
     'upcomingReservations',
     'recentEquipment',
@@ -109,102 +110,7 @@ export const exportMisDashboardPdf = (report) => {
     0
   );
   const dateRange = getDashboardPdfDateRange(report);
-  let y = addTable(doc, {
-    title: 'Current dashboard selections',
-    headers: [
-      'Date range',
-      'Time range',
-      'Reservation status',
-      'Upcoming window',
-      'Equipment ranking',
-      'Utility ranking'
-    ],
-    rows: [[
-      dateRange,
-      report.timeRange,
-      report.status,
-      report.upcomingWindow,
-      report.rankingModes.equipment,
-      report.rankingModes.utilities
-    ]],
-    y: 29
-  });
-  y = addTable(doc, {
-    title: 'Dashboard summary',
-    headers: [
-      'Reservations in range',
-      'Approved',
-      'Pending',
-      'Approved equipment units',
-      'Equipment units available',
-      'Assigned approvals',
-      'Pending users',
-      'Pending profiles'
-    ],
-    rows: [[
-      report.metrics.total,
-      report.metrics.approved,
-      report.metrics.pending,
-      report.metrics.reservedUnits,
-      report.metrics.availableUnits,
-      report.metrics.pendingApprovals,
-      report.metrics.pendingUsers,
-      report.metrics.pendingProfiles
-    ]],
-    y,
-    fontSize: 7
-  });
-  y = addTable(doc, {
-    title: 'MIS resource metrics',
-    headers: [
-      'Equipment types',
-      'Reserved equipment-hours',
-      'Approved equipment units',
-      'Requestor groups'
-    ],
-    rows: [[
-      report.equipmentUsage.length,
-      formatNumber(totalEquipmentHours),
-      totalUnits,
-      report.groupConsumption.length
-    ]],
-    y,
-    fontSize: 7
-  });
-  y = addTable(doc, {
-    title: 'Resource snapshot',
-    headers: [
-      'Equipment catalog',
-      'Utility catalog',
-      'Available facilities',
-      'Facilities in maintenance',
-      'Unavailable facilities',
-      'Registered users'
-    ],
-    rows: [[
-      report.snapshot.equipmentCatalog,
-      report.snapshot.utilitiesCatalog,
-      report.snapshot.facilitiesAvailable,
-      report.snapshot.facilitiesUnderMaintenance,
-      report.snapshot.facilitiesUnavailable,
-      report.snapshot.registeredUsers
-    ]],
-    y,
-    fontSize: 7
-  });
-  y = addTable(doc, {
-    title: 'Equipment inventory',
-    headers: ['Equipment', 'Total units', 'Under maintenance', 'Reserved units', 'Available units', 'Inventory status'],
-    rows: report.equipmentInventory.map((equipment) => [
-      equipment.name,
-      equipment.total,
-      equipment.underMaintenance || 0,
-      equipment.reserved,
-      equipment.available,
-      equipment.status
-    ]),
-    y
-  });
+  let y = addSectionHeading(doc, 'Live operation', 29);
   y = addTable(doc, {
     title: 'Reservations awaiting approval',
     headers: ['Reference', 'Event', 'Requestor', 'Event date', 'Start time'],
@@ -230,6 +136,115 @@ export const exportMisDashboardPdf = (report) => {
       reservation.status,
       reservation.facilities
     ]),
+    y,
+    fontSize: 7
+  });
+  y = addTable(doc, {
+    title: 'Action queue summary',
+    headers: ['Assigned approvals', 'Pending users', 'Pending profiles'],
+    rows: [[
+      report.metrics.pendingApprovals,
+      report.metrics.pendingUsers,
+      report.metrics.pendingProfiles
+    ]],
+    y
+  });
+  y = addTable(doc, {
+    title: 'Equipment inventory',
+    headers: ['Equipment', 'Total units', 'Under maintenance', 'Reserved units', 'Available units', 'Inventory status'],
+    rows: report.equipmentInventory.map((equipment) => [
+      equipment.name,
+      equipment.total,
+      equipment.underMaintenance || 0,
+      equipment.reserved,
+      equipment.available,
+      equipment.status
+    ]),
+    y
+  });
+  y = addTable(doc, {
+    title: 'Resource snapshot',
+    headers: [
+      'Equipment catalog',
+      'Utility catalog',  
+      'Registered users'
+    ],
+    rows: [[
+      report.snapshot.equipmentCatalog,
+      report.snapshot.utilitiesCatalog,
+      report.snapshot.facilitiesAvailable,
+      report.snapshot.facilitiesUnderMaintenance,
+      report.snapshot.facilitiesUnavailable,
+      report.snapshot.registeredUsers
+    ]],
+    y,
+    fontSize: 7
+  });
+  y = addTable(doc, {
+    title: 'Utility inventory',
+    headers: ['Utility', 'Reserved units', 'Status'],
+    rows: report.utilityInventory.map((utility) => [
+      utility.name,
+      utility.reserved,
+      utility.status
+    ]),
+    y
+  });
+
+  y = addSectionHeading(doc, 'Filtered analytics', y);
+  y = addTable(doc, {
+    title: 'Current dashboard selections',
+    headers: [
+      'Date range',
+      'Time range',
+      'Reservation status',
+      'Upcoming window',
+      'Equipment ranking',
+      'Utility ranking'
+    ],
+    rows: [[
+      dateRange,
+      report.timeRange,
+      report.status,
+      report.upcomingWindow,
+      report.rankingModes.equipment,
+      report.rankingModes.utilities
+    ]],
+    y
+  });
+  y = addTable(doc, {
+    title: 'Dashboard summary',
+    headers: [
+      'Reservations filtered by date',
+      'Approved',
+      'Pending',
+      'Approved equipment units',
+      'Equipment units available'
+    ],
+    rows: [[
+      report.metrics.total,
+      report.metrics.approved,
+      report.metrics.pending,
+      report.metrics.reservedUnits,
+      report.metrics.availableUnits
+    ]],
+    y,
+    fontSize: 7
+  });
+  y = addTable(doc, {
+    title: 'MIS resource metrics',
+    headers: [
+      'Equipment types',
+      'Reserved equipment-hours',
+      'Approved equipment units',
+      'Requestor groups'
+    ],
+    rows: [[
+      report.equipmentUsage.length,
+      formatNumber(totalEquipmentHours),
+      totalUnits,
+      report.groupConsumption.length
+    ]],
     y,
     fontSize: 7
   });

@@ -8,6 +8,7 @@ import {
   getEquipmentAvailability,
   isValidEquipmentMaintenanceCount
 } from '../../services/equipmentAvailability';
+import { getUtilityReservedCount } from '../../services/utilityAvailability';
 
 // Helper function to get real-time date and time
 const getCurrentDateTime = () => {
@@ -133,6 +134,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       : 'Available';
     return {
       ...item,
+      reserved: getUtilityReservedCount(reservationsData, item.id),
       status,
       statusClass: status === 'Unavailable' ? 'status-unavailable' : 'status-available'
     };
@@ -467,6 +469,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                 <input type="checkbox" checked={filteredUtilities.length > 0 && filteredUtilities.every((item) => selectedUtilityIds.includes(item.id))} onChange={toggleSelectAllUtilities} />
               </th>
               <th>UTILITY NAME</th>
+              <th>RESERVED</th>
               <th>STATUS</th>
               <th>LAST UPDATED</th>
               <th>ACTIONS</th>
@@ -475,7 +478,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
           <tbody>
             {filteredUtilities.length === 0 ? (
               <tr>
-                <td colSpan={5} className="empty-state-cell">
+                <td colSpan={6} className="empty-state-cell">
                   <div className="empty-state">
                     <span className="empty-state-icon">⚡</span>
                     <p className="empty-state-title">{utilitySearchQuery ? 'No matching utilities found' : 'No utilities yet'}</p>
@@ -497,6 +500,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                       </div>
                     </div>
                   </td>
+                  <td className="font-semibold">{item.reserved}</td>
                   <td><span className={`status-badge ${item.statusClass}`}>{item.status}</span></td>
                   <td className="text-muted">{item.lastUpdated}</td>
                   <td>

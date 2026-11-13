@@ -303,35 +303,7 @@ export const exportBuildingAdminDashboardPdf = (report) => {
   doc.setTextColor(113, 128, 154);
   doc.text(`Generated ${toText(report.generatedAt)}`, PAGE_MARGIN, 23);
 
-  let y = addTable(doc, {
-    title: 'Current dashboard selections',
-    headers: ['Date range', 'Start-time range', 'Status', 'Upcoming window', 'Alert category', 'Heatmap facility'],
-    rows: [[
-      report.filters.dates,
-      report.filters.times,
-      report.filters.status,
-      report.filters.upcomingWindow,
-      report.filters.alertCategory,
-      report.filters.heatmapFacility
-    ]],
-    y: 29,
-    fontSize: 7
-  });
-
-  y = addTable(doc, {
-    title: 'Filtered reservation summary',
-    headers: ['Matching reservations', 'Approved', 'Pending', 'Approved equipment units'],
-    rows: [[
-      report.summary.total,
-      report.summary.approved,
-      report.summary.pending,
-      report.summary.reservedUnits
-    ]],
-    y,
-    fontSize: 8
-  });
-
-  y = addSectionHeading(doc, 'Live operation', y);
+  let y = addSectionHeading(doc, 'Live operation', 29);
   y = addTable(doc, {
     title: 'Reservations awaiting your approval',
     headers: ['Reference', 'Event', 'Requestor', 'Event date', 'Start time'],
@@ -393,6 +365,32 @@ export const exportBuildingAdminDashboardPdf = (report) => {
   });
 
   y = addSectionHeading(doc, 'Filtered analytics', y);
+  y = addTable(doc, {
+    title: 'Current dashboard selections',
+    headers: ['Date range', 'Start-time range', 'Status', 'Upcoming window', 'Alert category', 'Heatmap facility'],
+    rows: [[
+      report.filters.dates,
+      report.filters.times,
+      report.filters.status,
+      report.filters.upcomingWindow,
+      report.filters.alertCategory,
+      report.filters.heatmapFacility
+    ]],
+    y,
+    fontSize: 7
+  });
+  y = addTable(doc, {
+    title: 'Filtered reservation summary',
+    headers: ['Matching reservations', 'Approved', 'Pending', 'Approved equipment units'],
+    rows: [[
+      report.summary.total,
+      report.summary.approved,
+      report.summary.pending,
+      report.summary.reservedUnits
+    ]],
+    y,
+    fontSize: 8
+  });
   y = drawTrendChart(doc, report.trend, y);
   y = addTable(doc, {
     title: 'Reservation activity data',
