@@ -396,6 +396,27 @@ export default function Login({ error, setError }) {
     }
   }, [error, isLogin, showForm]);
 
+  // Lock background page scroll while the login/signup modal is open
+  useEffect(() => {
+    if (!showForm) return undefined;
+
+    const { body, documentElement } = document;
+    const prevBodyOverflow = body.style.overflow;
+    const prevHtmlOverflow = documentElement.style.overflow;
+    const prevPaddingRight = body.style.paddingRight;
+    const scrollbarWidth = window.innerWidth - documentElement.clientWidth;
+
+    body.style.overflow = 'hidden';
+    documentElement.style.overflow = 'hidden';
+    if (scrollbarWidth > 0) body.style.paddingRight = `${scrollbarWidth}px`;
+
+    return () => {
+      body.style.overflow = prevBodyOverflow;
+      documentElement.style.overflow = prevHtmlOverflow;
+      body.style.paddingRight = prevPaddingRight;
+    };
+  }, [showForm]);
+
   const selectedSignupAccountType = signupOptions.accountTypes.find((accountType) => accountType.value === tag);
   const selectedSignupDropdownType = signupOptions.dropdownTypes.find(
     (dropdown) => dropdown.value === selectedSignupAccountType?.dropdown
