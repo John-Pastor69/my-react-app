@@ -5,8 +5,9 @@ $text-muted: #64748B;
 $border-color: #E2E8F0;
 $blue-main: #3B82F6;
 
+// No min-height: 100vh here; the page sits inside the padded content area below the top bar, so a
+// full-viewport height always made the page scroll even when everything fit.
 .schedule-container {
-  min-height: 100vh;
   width: 100%;
   background: $bg-main;
   font-family: inherit;

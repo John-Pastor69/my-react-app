@@ -6,8 +6,8 @@ $text-muted: #64748b;
 $border: #e2e8f0;
 $blue: #3b82f6;
 
+// No min-height: 100vh here (same reason as the Schedule page: it made the page scroll when it fit).
 .approval {
-  min-height: 100vh;
   width: 100%;
   background: $bg-main;
   color: $text-dark;
