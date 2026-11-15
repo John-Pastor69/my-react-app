@@ -336,23 +336,15 @@ const Approval = ({ currentUserRole = '' }) => {
                 </div>
             </div>
 
-            <div className="approval-summary">
-                <div className="summary-card">
-                    <div className="summary-icon pending">◷</div>
-                    <div className="summary-info">
-                        <span>Pending</span>
-                        <strong>{pendingCount}</strong>
-                    </div>
-                </div>
-            </div>
-
             <div className="requests-container">
                 <div className="requests-header">
                     <div className="requests-title">
                         <h2>Pending Request</h2>
                         <div className="approval-status-legend" aria-label="Reservation status legend">
-                            <span><i className="status-legend-dot pending" /> Pending</span>
-                            <span><i className="status-legend-dot approved" /> Approved</span>
+                            <span>
+                                <i className="status-legend-dot pending" /> Pending
+                                <strong className="status-legend-count">{pendingCount}</strong>
+                            </span>
                         </div>
                     </div>
 

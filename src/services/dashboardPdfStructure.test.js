@@ -30,61 +30,93 @@ const assertPdfSectionOrder = (pdf, orderedHeadings) => {
   assert.deepEqual(positions, [...positions].sort((first, second) => first - second));
 };
 
-test('MIS PDF puts live operation before filtered analytics and groups related data', () => {
-  const pdf = createPdfOutput(exportMisDashboardPdf, {
-    generatedAt: 'test',
-    startDate: '',
-    endDate: '',
-    timeRange: 'All times',
-    status: 'All statuses',
-    upcomingWindow: '7 days',
-    rankingModes: { equipment: 'most', utilities: 'most' },
-    metrics: {
-      pendingApprovals: 0,
-      pendingUsers: 0,
-      pendingProfiles: 0,
-      total: 0,
-      approved: 0,
-      pending: 0,
-      reservedUnits: 0,
-      availableUnits: 0
-    },
-    snapshot: {
-      equipmentCatalog: 0,
-      utilitiesCatalog: 0,
-      facilitiesAvailable: 0,
-      facilitiesUnderMaintenance: 0,
-      facilitiesUnavailable: 0,
-      registeredUsers: 0
-    },
-    equipmentUsage: [],
-    groupConsumption: [],
-    trend: [],
-    equipmentRanking: [],
-    utilityRanking: [],
-    equipmentInventory: [],
-    utilityInventory: [],
-    approvals: [],
-    upcomingReservations: [],
-    recentEquipment: [],
-    recentUtilities: [],
-    reservations: []
-  });
+const misReport = (overrides = {}) => ({
+  generatedAt: 'test',
+  filters: {
+    startDate: '2026-11-15',
+    endDate: '2026-11-21',
+    dates: 'Nov 15, 2026 - Nov 21, 2026',
+    times: 'All times',
+    status: 'Approved and pending',
+    equipment: 'Sound System',
+    utilities: 'All utilities'
+  },
+  summary: { total: 2, approved: 1, pending: 1 },
+  rankingModes: { equipment: 'most', utilities: 'least' },
+  equipmentInventory: [
+    { name: 'LCD Projector', total: 19, underMaintenance: 0, reserved: 3, available: 16 },
+    { name: 'Microphone', total: 14, underMaintenance: 8, reserved: 6, available: 0 }
+  ],
+  utilityInventory: [
+    { name: 'Chair', reserved: 0, status: 'Available' },
+    { name: 'Whiteboard', reserved: 18, status: 'Available' }
+  ],
+  trend: [{ label: 'Sun', count: 1 }],
+  equipmentUsage: [{
+    id: 'sound',
+    name: 'Sound System',
+    hours: 10,
+    sessions: [{ date: '2026-11-16', startTime: '10:00 AM', endTime: '12:00 PM', quantity: 5, durationHours: 2, hours: 10 }]
+  }],
+  groupConsumption: [{ name: 'Department / Office: OSA', units: 5 }],
+  equipmentRanking: [{ name: 'Sound System', quantity: 5 }],
+  utilityRanking: [{ name: 'Whiteboard', quantity: 1 }, { name: 'Chair', quantity: 0 }],
+  recentEquipment: [{
+    name: 'Sound System',
+    sku: 'NEW-1874',
+    latestBooking: { borrower: 'Requestor', dateTime: 'Nov 16, 2026 · 10:00 AM', quantity: 5 }
+  }],
+  recentUtilities: [{ name: 'Chair', sku: 'UTIL-1', latestBooking: null }],
+  matchedReservations: [{
+    event: 'STI Celebration',
+    requestor: 'Requestor',
+    dateTime: 'Nov 17, 2026 · 9:00 AM',
+    equipment: '5 × Sound System',
+    utilities: '1 × Whiteboard',
+    status: 'Pending'
+  }],
+  ...overrides
+});
+
+test('MIS PDF puts live inventory first, then the filter table and analytics in dashboard order', () => {
+  const pdf = createPdfOutput(exportMisDashboardPdf, misReport());
 
   assertPdfSectionOrder(pdf, [
-    'Live operation',
-    'Reservations awaiting approval',
-    'Upcoming events',
-    'Action queue summary',
+    'Live inventory',
     'Equipment inventory',
-    'Resource snapshot',
     'Utility inventory',
     'Filtered analytics',
-    'Current dashboard selections',
-    'Dashboard summary',
-    'MIS resource metrics',
-    'Reservation activity'
+    'Filter by date',
+    'Reservation activity chart',
+    'Equipment usage hours',
+    'Resource consumption by requestor group',
+    'Most Requested Equipment',
+    'Least Requested Utilities',
+    'Recent Approved Equipment',
+    'Recent Approved Utilities',
+    'Matched reservations'
   ]);
+  assert.equal(pdf.indexOf('Reservations awaiting approval'), -1);
+  assert.equal(pdf.indexOf('Pending users'), -1);
+});
+
+test('MIS PDF includes only the chosen sections', () => {
+  const inventoryOnly = createPdfOutput(exportMisDashboardPdf, misReport({ sections: ['utilityInventory'] }));
+  assert.ok(inventoryOnly.includes('Utility inventory'));
+  assert.equal(inventoryOnly.indexOf('Equipment inventory'), -1);
+  assert.equal(inventoryOnly.indexOf('Filter by date'), -1);
+
+  const analyticsOnly = createPdfOutput(exportMisDashboardPdf, misReport({ sections: ['matched'] }));
+  assertPdfSectionOrder(analyticsOnly, ['Filtered analytics', 'Filter by date', 'Matched reservations']);
+  assert.equal(analyticsOnly.indexOf('Live inventory'), -1);
+  assert.equal(analyticsOnly.indexOf('Reservation activity chart'), -1);
+});
+
+test('MIS PDF refuses an export with no sections', () => {
+  assert.throws(
+    () => createPdfOutput(exportMisDashboardPdf, misReport({ sections: [] })),
+    /at least one section/
+  );
 });
 
 const buildingAdminReport = (overrides = {}) => ({

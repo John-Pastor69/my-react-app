@@ -6,6 +6,7 @@ import "../../styles/mis/MisEquipmentManagement.scss";
 import { isReservationActive } from '../../services/reservationStatus';
 import {
   getEquipmentAvailability,
+  getMaxMaintenanceCount,
   isValidEquipmentMaintenanceCount
 } from '../../services/equipmentAvailability';
 import { getUtilityReservedCount } from '../../services/utilityAvailability';
@@ -168,7 +169,7 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     const adjTotal = parseInt(editingItem.adjustment, 10) || 0;
     const newTotal = Math.max(0, (Number(editingItem.totalCount) || 0) + adjTotal);
     const maintenanceValue = editingItem.underMaintenance ?? 0;
-    if (!isValidEquipmentMaintenanceCount(maintenanceValue, newTotal)) return;
+    if (!isValidEquipmentMaintenanceCount(maintenanceValue, newTotal, editingItem.computedReserved)) return;
     const normalizedMaintenanceValue = Number(maintenanceValue);
     const inventory = getEquipmentAvailability({
       totalCount: newTotal,
@@ -293,8 +294,16 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
     ? Math.max(0, (Number(editingItem.totalCount) || 0) + (parseInt(editingItem.adjustment, 10) || 0))
     : 0;
   const editingMaintenanceValue = editingItem?.underMaintenance ?? 0;
+  const editingReservedCount = editingItem ? Number(editingItem.computedReserved) || 0 : 0;
+  // Maintenance can only use units that aren't reserved (available + those already in maintenance).
+  const editingMaxMaintenance = getMaxMaintenanceCount(editingTotalCount, editingReservedCount);
   const isEditingMaintenanceInvalid = Boolean(editingItem)
-    && !isValidEquipmentMaintenanceCount(editingMaintenanceValue, editingTotalCount);
+    && !isValidEquipmentMaintenanceCount(editingMaintenanceValue, editingTotalCount, editingReservedCount);
+  // Smallest allowed adjustment: the total can't drop below reserved + under-maintenance units
+  // (never forced above 0, so an already over-committed item can still be saved after lowering maintenance).
+  const editingMinimumAdjustment = editingItem
+    ? Math.min(0, (Number(editingItem.underMaintenance) || 0) + editingReservedCount - (Number(editingItem.totalCount) || 0))
+    : 0;
   const editingInventoryPreview = editingItem && !isEditingMaintenanceInvalid
     ? getEquipmentAvailability({
       totalCount: editingTotalCount,
@@ -321,34 +330,27 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
       <div className="metrics-header">
         <h1>Equipments & Utilities</h1>
       </div>
-      <div className="metrics-grid">
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Available Equipment</span>
-            <span className="count">{totalAvailableUnits}</span>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Reserved Equipment</span>
-            <span className="count">{totalReservedUnits}</span>
-          </div>
-        </div>
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Under Maintenance</span>
-            <span className="count">{totalUnitsUnderMaintenance}</span>
-          </div>
-        </div>
-      </div>
-
       {/* ========================================== */}
       {/* 1. EQUIPMENT TABLE CONTAINER */}
       {/* ========================================== */}
       <div className="table-container" style={{ marginBottom: '2rem' }}>
         <div className="table-controls">
           <div className="controls-left">
-            <h2>Equipment</h2>
+            {/* "Equipment" with the available, reserved, and under-maintenance unit totals beside it. */}
+            <div className="equipment-heading">
+              <h2>Equipment</h2>
+              <div className="equipment-stats" aria-label="Equipment unit totals">
+                <span className="equipment-stat is-available">
+                  <strong>{totalAvailableUnits}</strong> Available
+                </span>
+                <span className="equipment-stat is-reserved">
+                  <strong>{totalReservedUnits}</strong> Reserved
+                </span>
+                <span className="equipment-stat is-maintenance">
+                  <strong>{totalUnitsUnderMaintenance}</strong> Under maintenance
+                </span>
+              </div>
+            </div>
             <p>{equipmentData.length} total items listed</p>
           </div>
           <div className="controls-right">
@@ -556,14 +558,14 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
               </div>
               <div className="form-group">
                 <label>Add / Deduct Total Inventory</label>
-                <input type="number" min={Number(editingItem.underMaintenance || 0) - (Number(editingItem.totalCount) || 0)} value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const minimumAdjustment = Number(editingItem.underMaintenance || 0) - (Number(editingItem.totalCount) || 0); const adjustment = e.target.value === '' ? '' : Math.max(minimumAdjustment, parseInt(e.target.value, 10) || 0); setEditingItem({ ...editingItem, adjustment }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
+                <input type="number" min={editingMinimumAdjustment} value={editingItem.adjustment !== undefined ? editingItem.adjustment : 0} onChange={(e) => { const adjustment = e.target.value === '' ? '' : Math.max(editingMinimumAdjustment, parseInt(e.target.value, 10) || 0); setEditingItem({ ...editingItem, adjustment }); }} style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }} />
               </div>
               <div className="form-group">
-                <label>Units Under Maintenance (0–{editingTotalCount})</label>
+                <label>Units Under Maintenance (0–{editingMaxMaintenance})</label>
                 <input
                   type="number"
                   min="0"
-                  max={editingTotalCount}
+                  max={editingMaxMaintenance}
                   step="1"
                   value={editingItem.underMaintenance ?? 0}
                   onChange={(event) => {
@@ -572,9 +574,14 @@ const MisEquipmentManagement = ({ currentUserRole }) => {
                   }}
                   style={{ border: '1px solid #E2E8F0', borderRadius: '6px', padding: '9px 12px', textAlign: 'center', fontWeight: 600, fontSize: '15px', background: '#FFFFFF', color: '#1E293B', width: '100%', outline: 'none', boxSizing: 'border-box' }}
                 />
-                {isEditingMaintenanceInvalid && (
+                {isEditingMaintenanceInvalid ? (
                   <span className="maintenance-validation-message" role="alert">
-                    Enter a whole number between 0 and the total inventory.
+                    Enter a whole number from 0 to {editingMaxMaintenance}. Maintenance can only use units that
+                    aren&apos;t reserved ({editingReservedCount} of {editingTotalCount} are reserved).
+                  </span>
+                ) : editingInventoryPreview && (
+                  <span className="maintenance-available-preview" role="status">
+                    {editingInventoryPreview.available} unit{editingInventoryPreview.available === 1 ? '' : 's'} will be available after saving.
                   </span>
                 )}
                 {editingInventoryPreview?.isOvercommitted && (

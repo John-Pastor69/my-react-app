@@ -146,6 +146,22 @@ const canSkipReservationLeadTime = (role) => {
   return ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedRole);
 };
 
+const RESERVATION_DAY_END_MINUTES = 22 * 60;
+
+const getMinutesSinceMidnight = (date) => date.getHours() * 60 + date.getMinutes();
+
+// Today's local date in the schedule format used by the daily schedule (YYYY-MM-DD).
+const getLocalScheduleDateKey = (date) => [
+  date.getFullYear(),
+  String(date.getMonth() + 1).padStart(2, '0'),
+  String(date.getDate()).padStart(2, '0')
+].join('-');
+
+// A reservation must start before it ends at 10:00 PM, so once it's 9:59 PM no start time is left today.
+const isTodayClosedForReservations = (now = new Date()) => (
+  getMinutesSinceMidnight(now) >= RESERVATION_DAY_END_MINUTES - 1
+);
+
 const getReservationDateMinimum = (role, skipLeadTime = false) => {
   const minDate = new Date();
   minDate.setHours(0, 0, 0, 0);
@@ -154,6 +170,9 @@ const getReservationDateMinimum = (role, skipLeadTime = false) => {
     minDate.setDate(minDate.getDate() + 4);
   } else if (!skipLeadTime && !canSkipReservationLeadTime(role)) {
     minDate.setDate(minDate.getDate() + 3);
+  } else if (isTodayClosedForReservations()) {
+    // Same-day reservations are allowed for these roles, but not once today's hours are over.
+    minDate.setDate(minDate.getDate() + 1);
   }
   return minDate;
 };
@@ -175,10 +194,30 @@ const getReservationDateInputError = (value, role, editingReservation) => {
     && parseDateOrdinal(value) !== null;
   if (!isValidFormat) return 'Invalid format. Use MM/DD/YYYY';
   const [month, day, year] = value.split('/').map(Number);
+  const inputDate = new Date(year, month - 1, day);
   const minDate = getReservationDateMinimum(role, Boolean(editingReservation));
-  return new Date(year, month - 1, day) < minDate
-    ? getReservationDateErrorMessage(role, editingReservation)
-    : '';
+  if (inputDate >= minDate) return '';
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const tomorrow = new Date(today);
+  tomorrow.setDate(tomorrow.getDate() + 1);
+  // Today is only blocked because its reservation hours are over (not by a lead time).
+  if (inputDate.getTime() === today.getTime() && minDate.getTime() === tomorrow.getTime()) {
+    return 'No reservation times are left today (reservations end at 10:00 PM). Choose a later date.';
+  }
+  return getReservationDateErrorMessage(role, editingReservation);
+};
+
+// Schedule entries on today's date whose start time has already passed.
+const getPastStartScheduleEntries = (schedule, now = new Date()) => {
+  const todayKey = getLocalScheduleDateKey(now);
+  const nowMinutes = getMinutesSinceMidnight(now);
+  return schedule.filter((entry) => {
+    if (entry.date !== todayKey) return false;
+    const start = parseTimeToMinutes(entry.startTime);
+    return start !== null && start <= nowMinutes;
+  });
 };
 
 const getFacilityCapacityLimits = (facility) => ({
@@ -719,6 +758,13 @@ const Reservation = ({ currentUserRole }) => {
   const [missingFields, setMissingFields] = useState({});
   const fieldRefs = useRef({});
   const conflictNoticeRef = useRef(null);
+  // Current time, refreshed every 30 seconds so same-day rules (past start times, today's hours ending)
+  // stay correct while the form is open.
+  const [currentTime, setCurrentTime] = useState(() => new Date());
+  useEffect(() => {
+    const timer = setInterval(() => setCurrentTime(new Date()), 30000);
+    return () => clearInterval(timer);
+  }, []);
 
   useEffect(() => {
     if (!participantPromptFacilityId) return;
@@ -1132,16 +1178,13 @@ const Reservation = ({ currentUserRole }) => {
     isAdminEditMode && editingReservation && value && value === originalValue
   );
 
-  useEffect(() => {
-    const error = isOriginalAdminEditDate(eventDate, editingReservation?.eventDate || editingReservation?.date)
+  const getStartDateError = () => (
+    isOriginalAdminEditDate(eventDate, editingReservation?.eventDate || editingReservation?.date)
       ? ''
-      : getReservationDateInputError(eventDate, userRole, editingReservation);
-    setDateError(error);
-    if (eventDate && !error) clearMissingField('eventDate');
-  }, [eventDate, userRole, editingReservation, isAdminEditMode]);
-
-  useEffect(() => {
-    const error = isOriginalAdminEditDate(
+      : getReservationDateInputError(eventDate, userRole, editingReservation)
+  );
+  const getEndDateError = () => (
+    isOriginalAdminEditDate(
       endDateInput,
       editingReservation?.endDate || calculateEndDate(
         editingReservation?.eventDate || editingReservation?.date || '',
@@ -1149,10 +1192,22 @@ const Reservation = ({ currentUserRole }) => {
       )
     )
       ? ''
-      : getReservationDateInputError(endDateInput, userRole, editingReservation);
+      : getReservationDateInputError(endDateInput, userRole, editingReservation)
+  );
+  // Changes at midnight and when today's reservation hours end, so the date rules are re-checked then too.
+  const reservationDayKey = `${getLocalScheduleDateKey(currentTime)}|${isTodayClosedForReservations(currentTime)}`;
+
+  useEffect(() => {
+    const error = getStartDateError();
+    setDateError(error);
+    if (eventDate && !error) clearMissingField('eventDate');
+  }, [eventDate, userRole, editingReservation, isAdminEditMode, reservationDayKey]);
+
+  useEffect(() => {
+    const error = getEndDateError();
     setDaysDateError(error);
     if (endDateInput && !error) clearMissingField('endDateInput');
-  }, [endDateInput, userRole, editingReservation, isAdminEditMode]);
+  }, [endDateInput, userRole, editingReservation, isAdminEditMode, reservationDayKey]);
 
   // Automatically calculate `days` from `eventDate` and `endDateInput`
   useEffect(() => {
@@ -1432,6 +1487,14 @@ const Reservation = ({ currentUserRole }) => {
     return isValidReservationTimeRange(entry.startTime, entry.endTime);
   });
   const isStartTimeValid = isWithinReservationHours(startTime);
+  // On today's date, every start time (default, per-day or per-facility) must be later than now.
+  // Admin edits of an approved reservation that may already be under way are exempt.
+  const checksPastStartTimes = !(isAdminEditMode && editingReservation);
+  const hasPastStartTime = checksPastStartTimes
+    && getPastStartScheduleEntries(reservationSchedule, currentTime).length > 0;
+  const currentTimeLabel = formatTimeForStorage(
+    `${String(currentTime.getHours()).padStart(2, '0')}:${String(currentTime.getMinutes()).padStart(2, '0')}`
+  );
   const isEndTimeValid = isWithinReservationHours(endTime)
     && (!startTime || (parseTimeToMinutes(endTime) ?? 0) > (parseTimeToMinutes(startTime) ?? 0));
   const totalScheduledHours = getTotalScheduledHours(reservationSchedule);
@@ -1942,6 +2005,17 @@ const Reservation = ({ currentUserRole }) => {
       return;
     }
 
+    // Re-check the time-dependent rules with the exact current time (the on-screen clock can be up to
+    // 30 seconds old), and refresh the on-screen errors to match.
+    const submitTime = new Date();
+    const submitStartDateError = getStartDateError();
+    const submitEndDateError = getEndDateError();
+    setDateError(submitStartDateError);
+    setDaysDateError(submitEndDateError);
+    const submitHasPastStartTime = checksPastStartTimes
+      && getPastStartScheduleEntries(reservationSchedule, submitTime).length > 0;
+    setCurrentTime(submitTime);
+
     const hasEquipment = Object.values(selectedEquip).some(qty => qty > 0)
       || Boolean(formData.otherEquipment.trim());
     // Validate all required fields in top-to-bottom order
@@ -2012,9 +2086,9 @@ const Reservation = ({ currentUserRole }) => {
         missing: otherUtilityUnitsInvalid
       }] : []),
       { key: 'eventType', missing: formData.eventType.length === 0 },
-      { key: 'eventDate', missing: !eventDate.trim() || !!dateError || Boolean(blockedStartDate) },
-      { key: 'endDateInput', missing: !endDateInput.trim() || !!daysDateError || days < 1 || invalidDateRange },
-      { key: 'startTime', missing: !isStartTimeValid },
+      { key: 'eventDate', missing: !eventDate.trim() || !!submitStartDateError || Boolean(blockedStartDate) },
+      { key: 'endDateInput', missing: !endDateInput.trim() || !!submitEndDateError || days < 1 || invalidDateRange },
+      { key: 'startTime', missing: !isStartTimeValid || submitHasPastStartTime },
       { key: 'endTime', missing: !isEndTimeValid },
       { key: 'schedule', missing: !isDailyScheduleValid },
       ...formData.facilities.map((facilityId) => ({
@@ -3520,14 +3594,21 @@ const Reservation = ({ currentUserRole }) => {
                 value={startTime}
                 label="Default start time"
                 maxTime={offsetReservationTime(endTime || '22:00', -1)}
-                invalid={Boolean(missingFields.startTime || (startTime && !isStartTimeValid))}
+                invalid={Boolean(missingFields.startTime || (startTime && !isStartTimeValid) || hasPastStartTime)}
                 onChange={(value) => {
                   setStartTime(value);
                   if (value) clearMissingField('startTime');
                 }}
               />
-              {startTime && !isStartTimeValid && (
+              {startTime && !isStartTimeValid ? (
                 <span className="field-error">Choose a time between 7:00 AM and 10:00 PM.</span>
+              ) : hasPastStartTime && (
+                <span className="field-error">
+                  Today&apos;s schedule must start later than the current time ({currentTimeLabel}).
+                  {dailySchedule.length > 1 || formData.facilities.length > 0
+                    ? ' Check the default, daily, and facility start times for today.'
+                    : ''}
+                </span>
               )}
             </div>
             <div 

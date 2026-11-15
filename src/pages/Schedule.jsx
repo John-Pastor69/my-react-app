@@ -155,6 +155,10 @@ const Schedule = ({ currentUserRole = '' }) => {
       };
     }).sort((a, b) => b.rawDate - a.rawDate); 
 
+  // Totals for the legend; they count every listed reservation, not just the search results.
+  const pendingScheduleCount = scheduleData.filter((row) => row.scheduleStatus === 'pending').length;
+  const approvedScheduleCount = scheduleData.filter((row) => row.scheduleStatus === 'approved').length;
+
   // --- SEARCH & FILTER LOGIC ---
   const filteredData = scheduleData.filter((row) => {
     const matchesSearch = row.event.toLowerCase().includes(searchQuery.toLowerCase())
@@ -218,17 +222,33 @@ const Schedule = ({ currentUserRole = '' }) => {
   return (
     <div className="schedule-container">
       <div className="schedule-header">
-        <h1>Schedule</h1>
+        <h1>Schedule Overview</h1>
       </div>
       <div className="schedule-main-card">
         <div className="card-header">
           <div className="title-group">
+            <h2>Pending Request</h2>
             <div className="schedule-status-legend" aria-label="Reservation status legend">
-              <span><i className="status-legend-dot pending" /> Pending</span>
-              <span><i className="status-legend-dot approved" /> Approved</span>
+              <span>
+                <i className="status-legend-dot pending" /> Pending
+                <strong className="status-legend-count">{pendingScheduleCount}</strong>
+              </span>
+              <span>
+                <i className="status-legend-dot approved" /> Approved
+                <strong className="status-legend-count">{approvedScheduleCount}</strong>
+              </span>
             </div>
           </div>
           <div className="controls-group">
+            <div className="search-box">
+              <i className="ph ph-magnifying-glass"></i>
+              <input
+                type="text"
+                placeholder="Search requests or reference no..."
+                value={searchQuery}
+                onChange={(event) => setSearchQuery(event.target.value)}
+              />
+            </div>
             <select
               className="status-filter"
               aria-label="Filter reservations by status"
@@ -240,15 +260,6 @@ const Schedule = ({ currentUserRole = '' }) => {
               <option value="approved">Approved</option>
               <option value="modify">Modify</option>
             </select>
-            <div className="search-box">
-              <i className="ph ph-magnifying-glass"></i>
-              <input 
-                type="text" 
-                placeholder="Search requests or reference no..."
-                value={searchQuery}
-                onChange={(event) => setSearchQuery(event.target.value)}
-              />
-            </div>
           </div>
         </div>
 

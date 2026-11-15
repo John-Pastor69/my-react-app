@@ -55,6 +55,13 @@ $blue-main: #3B82F6;
     .title-group {
       min-width: 0;
 
+      h2 {
+        margin: 0;
+        color: $text-dark;
+        font-size: 1.133rem;
+        font-weight: 700;
+      }
+
       h3 {
         margin: 0 0 4px;
         color: $text-dark;
@@ -85,6 +92,28 @@ $blue-main: #3B82F6;
 
           &.pending { background: #f59e0b; }
           &.approved { background: #10b981; }
+        }
+
+        // Count of reservations with each status, shown beside its legend label.
+        .status-legend-count {
+          min-width: 1.4rem;
+          padding: 0.05rem 0.45rem;
+          border-radius: 999px;
+          background: #f1f5f9;
+          color: #1e293b;
+          font-size: 0.8rem;
+          font-weight: 700;
+          text-align: center;
+        }
+
+        .status-legend-dot.pending ~ .status-legend-count {
+          background: rgba(245, 158, 11, 0.14);
+          color: #b45309;
+        }
+
+        .status-legend-dot.approved ~ .status-legend-count {
+          background: rgba(16, 185, 129, 0.14);
+          color: #047857;
         }
       }
 
@@ -479,19 +508,20 @@ $blue-main: #3B82F6;
       gap: 20px;
       padding: 20px 24px;
 
+      // Same layout as the Approval page: search box first, status dropdown on its right.
       .controls-group {
-        width: min(100%, 540px);
-        flex: 0 1 540px;
+        width: min(100%, 27rem);
+        flex: 0 1 27rem;
         flex-direction: row;
         align-items: center;
 
-        .status-filter {
-          width: 120px;
-          flex: 0 0 120px;
+        .search-box {
+          flex: 1 1 14rem;
         }
 
-        .search-box {
-          flex: 1 1 auto;
+        .status-filter {
+          width: 11rem;
+          flex: 0 0 11rem;
         }
       }
     }

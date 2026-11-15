@@ -1,5 +1,5 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { RankingModeToggle } from './DashboardShared';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { IndeterminateCheckbox, RankingModeToggle } from './DashboardShared';
 import {
   sortFacilitiesByName,
   sortFacilityRanking,
@@ -36,14 +36,6 @@ export const BUILDING_ADMIN_EXPORT_SECTIONS = [
   { key: 'ranking', label: 'Most / Least Requested Facilities' },
   { key: 'matched', label: 'Matched reservations' }
 ];
-
-const IndeterminateCheckbox = ({ checked, indeterminate, ...props }) => {
-  const ref = useRef(null);
-  useEffect(() => {
-    if (ref.current) ref.current.indeterminate = indeterminate;
-  }, [indeterminate]);
-  return <input ref={ref} type="checkbox" checked={checked} {...props} />;
-};
 
 export const BuildingAdminExportActions = ({
   isExporting,

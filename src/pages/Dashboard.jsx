@@ -22,7 +22,7 @@ import {
   RoomCheckerExportActions,
   RoomCheckerOccupancy
 } from './RoomCheckerDashboard';
-import { RankingModeToggle } from './DashboardShared';
+import { RankingModeToggle, ResourceRankingPanel } from './DashboardShared';
 import {
   APPROVAL_ROLE_HIERARCHY,
   isApprovalStepReady,
@@ -88,8 +88,10 @@ const getDefaultDashboardFilters = () => {
     startTime: '',
     endTime: '',
     status: 'all',
-    // Facility IDs to include; an empty list means all facilities.
-    facilities: []
+    // IDs to include for each checkbox filter; an empty list means all.
+    facilities: [],
+    equipment: [],
+    utilities: []
   };
 };
 
@@ -155,6 +157,49 @@ const getReservationAdditionalDetails = (reservation) => ({
     ? reservation.specificRoom.trim()
     : ''
 });
+
+// One card in "Recent Approved Equipment" / "Recent Approved Utilities": the item and units, then who
+// booked it and when. Clicking it opens the full reservation.
+const RecentResourceRow = ({ item, booking, fallbackName, formatTime, onOpen }) => {
+  const name = item.name || fallbackName;
+  const isClickable = Boolean(booking?.reservation);
+  const Row = isClickable ? 'button' : 'div';
+
+  return (
+    <Row
+      className={`recent-resource-row${isClickable ? ' is-clickable' : ''}`}
+      {...(isClickable ? {
+        type: 'button',
+        'aria-label': `View reservation details for ${name}, booked by ${booking.borrower}`,
+        onClick: () => onOpen(booking.reservation)
+      } : {})}
+    >
+      <div className="recent-resource-header">
+        <span className="recent-resource-initial" aria-hidden="true">{name.slice(0, 1).toUpperCase()}</span>
+        <div className="recent-resource-title">
+          <strong title={name}>{name}</strong>
+          <span>{item.isOtherRequest ? 'Other request' : item.sku || 'No SKU'}</span>
+        </div>
+        {booking && (
+          <span className="recent-resource-quantity">
+            {booking.quantity} unit{booking.quantity === 1 ? '' : 's'}
+          </span>
+        )}
+      </div>
+      {booking ? (
+        <div className="recent-resource-booking">
+          <span className="recent-resource-borrower">{booking.borrower}</span>
+          <span className="recent-resource-when">
+            {formatDate(booking.date)}
+            {booking.startTime ? ` · ${formatTime(booking.startTime)}` : ''}
+          </span>
+        </div>
+      ) : (
+        <p className="recent-resource-empty">No approved booking in this date range.</p>
+      )}
+    </Row>
+  );
+};
 
 const DashboardDatePicker = ({ id, value, min, max, label, onChange }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -390,7 +435,9 @@ const DashboardTimePicker = ({ value, onChange, label }) => {
 };
 
 // Date, time, status, and quick-range filters for analytics dashboards.
-const DashboardFilters = ({ filters, setFilters, setDatePreset, resultCount, facilityOptions }) => (
+// `checkboxFilters`: optional checkbox rows ({ key, legend, allLabel, options }) where `key` is the
+// filters field holding the ticked IDs; none ticked means all.
+const DashboardFilters = ({ filters, setFilters, setDatePreset, resultCount, checkboxFilters }) => (
   <section className="dashboard-filters" aria-label="Dashboard filters">
     <div className="filter-heading">
       <div>
@@ -459,40 +506,40 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, resultCount, fac
         </select>
       </label>
     </div>
-    {facilityOptions && (
-      <fieldset className="dashboard-facility-filter">
-        <legend>Facilities</legend>
+    {(checkboxFilters || []).map((group) => (
+      <fieldset className="dashboard-facility-filter" key={group.key}>
+        <legend>{group.legend}</legend>
         <div className="dashboard-facility-filter-options">
           <label className="dashboard-facility-filter-option">
             <input
               type="checkbox"
-              checked={filters.facilities.length === 0}
-              onChange={() => setFilters((current) => ({ ...current, facilities: [] }))}
+              checked={filters[group.key].length === 0}
+              onChange={() => setFilters((current) => ({ ...current, [group.key]: [] }))}
             />
-            <span>All facilities</span>
+            <span>{group.allLabel}</span>
           </label>
-          {facilityOptions.map((facility) => {
-            const facilityId = String(facility.id);
-            const isChecked = filters.facilities.includes(facilityId);
+          {group.options.map((option) => {
+            const optionId = String(option.id);
+            const isChecked = filters[group.key].includes(optionId);
             return (
-              <label className="dashboard-facility-filter-option" key={facilityId}>
+              <label className="dashboard-facility-filter-option" key={optionId}>
                 <input
                   type="checkbox"
                   checked={isChecked}
                   onChange={() => setFilters((current) => ({
                     ...current,
-                    facilities: isChecked
-                      ? current.facilities.filter((id) => id !== facilityId)
-                      : [...current.facilities, facilityId]
+                    [group.key]: isChecked
+                      ? current[group.key].filter((id) => id !== optionId)
+                      : [...current[group.key], optionId]
                   }))}
                 />
-                <span>{facility.name}</span>
+                <span>{option.name}</span>
               </label>
             );
           })}
         </div>
       </fieldset>
-    )}
+    ))}
     <label className="date-presets">
       <span className="date-presets-label">Quick range</span>
       <select
@@ -537,36 +584,32 @@ const DashboardKpis = ({
   isBuildingAdminDashboard,
   isMisDashboard
 }) => {
+  // The filtered reservation count is shown beside Quick range ("x reservations found"), so only the
+  // super admin's inventory and account cards remain here.
+  const showSuperAdminCards = isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard;
+  const showPendingProfiles = canManagePendingProfiles && !isBuildingAdminDashboard && !isMisDashboard;
+  if (!showSuperAdminCards && !showPendingProfiles) return null;
+
   return (
     <section
-      className={`dashboard-kpis admin-dashboard-kpis${isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard ? ' has-super-admin-kpis' : ''}`}
+      className={`dashboard-kpis admin-dashboard-kpis${showSuperAdminCards ? ' has-super-admin-kpis' : ''}`}
       aria-label="Key analytics"
     >
-      <article className="kpi-card kpi-primary">
-        <span className="kpi-label">Reservations Filtered by date</span>
-        <strong>{metrics.total}</strong>
-        <span className="kpi-footnote">Pending and approved across selected filters</span>
-      </article>
-      <article className="kpi-card">
-        <span className="kpi-label">Approved reservation</span>
-        <strong>{metrics.approved}</strong>
-        <span className="kpi-footnote">Reservations approved within selected filters</span>
-      </article>
-      {isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard && (
+      {showSuperAdminCards && (
         <Link className="kpi-card kpi-card-link" to="/equipment">
           <span className="kpi-label">Available equipment</span>
           <strong>{metrics.availableUnits}</strong>
           <span className="kpi-footnote">Units available in current inventory</span>
         </Link>
       )}
-      {isAdminDashboard && !isBuildingAdminDashboard && !isMisDashboard && (
+      {showSuperAdminCards && (
         <Link className="kpi-card kpi-card-link" to="/user?filter=pending">
           <span className="kpi-label">Pending users</span>
           <strong>{pendingUsers}</strong>
           <span className="kpi-footnote">View accounts with pending roles</span>
         </Link>
       )}
-      {canManagePendingProfiles && !isBuildingAdminDashboard && !isMisDashboard && (
+      {showPendingProfiles && (
         <Link className="kpi-card kpi-card-link" to="/user?filter=pending-profile">
           <span className="kpi-label">Pending profiles</span>
           <strong>{pendingProfiles}</strong>
@@ -739,12 +782,6 @@ const DashboardContent = ({ currentUserRole }) => {
     const intervalId = window.setInterval(() => setLiveOccupancyNow(new Date()), 30_000);
     return () => window.clearInterval(intervalId);
   }, [isRoomCheckerDashboard]);
-  const visibleUserCount = usersData.filter(
-    (user) => {
-      const role = (user.role || '').toLowerCase().trim().replace(/_/g, ' ');
-      return role !== 'super admin';
-    }
-  ).length;
   const pendingUserCount = usersData.filter(
     (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending'
       && user.emailVerified === true
@@ -863,17 +900,49 @@ const DashboardContent = ({ currentUserRole }) => {
   const selectedFilterFacilityLabel = selectedFilterFacilities.length
     ? selectedFilterFacilities.map((facility) => facility.name || 'Facility').sort().join(', ')
     : 'All facilities';
-  // Drop ticked facilities that have been deleted, so the filter never points at a missing facility.
+  // Equipment and utility filters (MIS): same idea as the facility filter, from the live inventory lists.
+  const toFilterOptions = (items, fallbackName) => [...items]
+    .map((item) => ({ id: item.id, name: item.name || fallbackName }))
+    .sort((first, second) => first.name.localeCompare(second.name, undefined, { sensitivity: 'base' }));
+  const equipmentFilterOptions = useMemo(() => toFilterOptions(equipmentData, 'Equipment'), [equipmentData]);
+  const utilityFilterOptions = useMemo(() => toFilterOptions(utilitiesData, 'Utility'), [utilitiesData]);
+  const getTickedIds = (items, tickedIds) => {
+    const ids = items.map((item) => String(item.id)).filter((id) => tickedIds.includes(id));
+    return ids.length ? new Set(ids) : null;
+  };
+  // null means "all" (nothing ticked).
+  const selectedFilterEquipmentIds = useMemo(
+    () => getTickedIds(equipmentData, filters.equipment),
+    [equipmentData, filters.equipment]
+  );
+  const selectedFilterUtilityIds = useMemo(
+    () => getTickedIds(utilitiesData, filters.utilities),
+    [utilitiesData, filters.utilities]
+  );
+  const getSelectedFilterLabel = (options, selectedIds, allLabel) => (selectedIds
+    ? options.filter((option) => selectedIds.has(String(option.id))).map((option) => option.name).join(', ')
+    : allLabel);
+  // Equipment/utility rows shown in item panels: only ticked catalogue items while a filter is active
+  // ("Other:" free-text requests aren't in the checkbox list, so they're left out then).
+  const matchesEquipmentFilter = (item) => !selectedFilterEquipmentIds
+    || (!item.isOtherRequest && selectedFilterEquipmentIds.has(String(item.id)));
+  const matchesUtilityFilter = (item) => !selectedFilterUtilityIds
+    || (!item.isOtherRequest && selectedFilterUtilityIds.has(String(item.id)));
+
+  // Drop ticked facilities, equipment, or utilities that have been deleted, so a filter never points
+  // at a missing item.
   useEffect(() => {
-    if (!facilitiesData.length) return;
-    const existingIds = new Set(facilitiesData.map((facility) => String(facility.id)));
-    if (filters.facilities.some((id) => !existingIds.has(id))) {
-      setFilters((current) => ({
-        ...current,
-        facilities: current.facilities.filter((id) => existingIds.has(id))
-      }));
-    }
-  }, [facilitiesData, filters.facilities]);
+    const sources = { facilities: facilitiesData, equipment: equipmentData, utilities: utilitiesData };
+    const updates = {};
+    Object.entries(sources).forEach(([key, items]) => {
+      if (!items.length) return;
+      const existingIds = new Set(items.map((item) => String(item.id)));
+      if (filters[key].some((id) => !existingIds.has(id))) {
+        updates[key] = filters[key].filter((id) => existingIds.has(id));
+      }
+    });
+    if (Object.keys(updates).length) setFilters((current) => ({ ...current, ...updates }));
+  }, [facilitiesData, equipmentData, utilitiesData, filters.facilities, filters.equipment, filters.utilities]);
 
   const dashboardReservations = useMemo(() => {
     const activeReservationIds = new Set(reservationsData.map(({ id }) => id));
@@ -1089,6 +1158,15 @@ const DashboardContent = ({ currentUserRole }) => {
       selectedFilterFacilityIds
       && !(reservation.facilities || []).some((facilityId) => selectedFilterFacilityIds.has(String(facilityId)))
     ) return false;
+    // Equipment/utility filters: keep reservations that include any ticked equipment or utility.
+    if (selectedFilterEquipmentIds || selectedFilterUtilityIds) {
+      const hasTickedEquipment = Boolean(selectedFilterEquipmentIds) && Object.entries(reservation.selectedEquip || {})
+        .some(([equipmentId, quantity]) => Number(quantity) > 0 && selectedFilterEquipmentIds.has(String(equipmentId)));
+      const hasTickedUtility = Boolean(selectedFilterUtilityIds)
+        && (Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : [])
+          .some((utilityId) => selectedFilterUtilityIds.has(String(utilityId)));
+      if (!hasTickedEquipment && !hasTickedUtility) return false;
+    }
 
     const reservationDate = parseDate(reservation.eventDate || reservation.date);
     const scheduledDates = getReservationScheduleForFacility(reservation)
@@ -1126,6 +1204,8 @@ const DashboardContent = ({ currentUserRole }) => {
     filters.endDate,
     filters.status,
     selectedFilterFacilityIds,
+    selectedFilterEquipmentIds,
+    selectedFilterUtilityIds,
     startMinutes,
     endMinutes
   ]);
@@ -1345,17 +1425,38 @@ const DashboardContent = ({ currentUserRole }) => {
         const facilityNames = (reservation.facilities || [])
           .map((id) => facilitiesById.get(id)?.name || id)
           .filter(Boolean);
-        const equipmentNames = Object.entries(reservation.selectedEquip || {})
+        const catalogEquipment = Object.entries(reservation.selectedEquip || {})
           .filter(([, quantity]) => Number(quantity) > 0)
           .map(([id, quantity]) => `${quantity} × ${equipmentById.get(id)?.name || 'Equipment'}`);
+        const equipmentNames = [...catalogEquipment];
         if (typeof reservation.otherEquipment === 'string' && reservation.otherEquipment.trim()) {
           equipmentNames.push(reservation.otherEquipment.trim());
         }
+        // Equipment and utilities with their units ("6 × Microphone"), including "Other" requests.
+        const formatOtherRequest = (field, unitsField) => {
+          const other = getOtherRequestDetails(reservation, field, unitsField);
+          const text = typeof reservation[field] === 'string' ? reservation[field].trim() : '';
+          if (other) return `${other.quantity} × ${other.name}`;
+          return text || null;
+        };
+        const otherEquipmentWithUnits = formatOtherRequest('otherEquipment', 'otherEquipmentUnits');
+        const equipmentWithUnits = otherEquipmentWithUnits
+          ? [...catalogEquipment, otherEquipmentWithUnits]
+          : catalogEquipment;
+        const utilityNames = (Array.isArray(reservation.selectedUtilities) ? reservation.selectedUtilities : [])
+          .map((id) => {
+            const quantity = Number(reservation.selectedUtilityUnits?.[id] ?? 1);
+            return `${Number.isFinite(quantity) && quantity > 0 ? quantity : 1} × ${utilitiesById.get(id)?.name || 'Utility'}`;
+          });
+        const otherUtilityWithUnits = formatOtherRequest('otherUtility', 'otherUtilityUnits');
+        if (otherUtilityWithUnits) utilityNames.push(otherUtilityWithUnits);
 
         return {
           ...reservation,
           facilityNames,
           equipmentNames,
+          equipmentWithUnits,
+          utilityNames,
           eventDateValue: parseDate(reservation.eventDate || reservation.date)
         };
       });
@@ -1444,10 +1545,10 @@ const DashboardContent = ({ currentUserRole }) => {
       lastBorrowedByOtherEquipment,
       lastReservedByOtherUtility
     };
-  }, [filteredReservations, facilitiesById, equipmentById]);
+  }, [filteredReservations, facilitiesById, equipmentById, utilitiesById]);
 
   // Rank approved equipment, utility, and facility usage.
-  const { most: usageByEquipment, least: leastUsedEquipment } = useMemo(() => {
+  const { most: usageByEquipment } = useMemo(() => {
     const totals = new Map();
     const lastUsedByEquipment = new Map();
     const otherRequests = new Map();
@@ -1493,7 +1594,7 @@ const DashboardContent = ({ currentUserRole }) => {
         ...value,
         isOtherRequest: true
       }))
-    );
+    ).filter(matchesEquipmentFilter);
 
     return {
       most: [...rankedUsage].sort((first, second) => (
@@ -1501,11 +1602,11 @@ const DashboardContent = ({ currentUserRole }) => {
       )),
       least: [...rankedUsage].sort((first, second) => first.quantity - second.quantity)
     };
-  }, [filteredReservations, equipmentData]);
+  }, [filteredReservations, equipmentData, selectedFilterEquipmentIds]);
 
   const equipmentHoursRanking = useMemo(
-    () => getEquipmentReservedHours(filteredReservations, equipmentData),
-    [filteredReservations, equipmentData]
+    () => getEquipmentReservedHours(filteredReservations, equipmentData).filter(matchesEquipmentFilter),
+    [filteredReservations, equipmentData, selectedFilterEquipmentIds]
   );
   const specificRoomReservedHours = useMemo(
     () => getSpecificRoomReservedHours(dashboardReservations, {
@@ -1536,12 +1637,21 @@ const DashboardContent = ({ currentUserRole }) => {
     ),
     [reservationsData, filters.startDate, filters.endDate, liveOccupancyNow]
   );
+  // With an equipment filter, only the ticked equipment's units count toward each requestor group.
   const departmentalResourceConsumption = useMemo(
-    () => getDepartmentalResourceConsumption(filteredReservations),
-    [filteredReservations]
+    () => getDepartmentalResourceConsumption(selectedFilterEquipmentIds
+      ? filteredReservations.map((reservation) => ({
+        ...reservation,
+        selectedEquip: Object.fromEntries(Object.entries(reservation.selectedEquip || {})
+          .filter(([equipmentId]) => selectedFilterEquipmentIds.has(String(equipmentId)))),
+        otherEquipment: '',
+        otherEquipmentUnits: ''
+      }))
+      : filteredReservations),
+    [filteredReservations, selectedFilterEquipmentIds]
   );
 
-  const { most: utilityUsage, least: leastUsedUtilities } = useMemo(() => {
+  const { most: utilityUsage } = useMemo(() => {
     const totals = new Map();
     const lastUsedByUtility = new Map();
     const otherRequests = new Map();
@@ -1587,7 +1697,7 @@ const DashboardContent = ({ currentUserRole }) => {
         ...value,
         isOtherRequest: true
       }))
-    );
+    ).filter(matchesUtilityFilter);
 
     return {
       most: [...rankedUsage].sort((first, second) => (
@@ -1595,7 +1705,7 @@ const DashboardContent = ({ currentUserRole }) => {
       )),
       least: [...rankedUsage].sort((first, second) => first.quantity - second.quantity)
     };
-  }, [filteredReservations, utilitiesData]);
+  }, [filteredReservations, utilitiesData, selectedFilterUtilityIds]);
 
   const { most: facilityUsage, least: leastUsedFacilities } = useMemo(() => {
     const totals = new Map();
@@ -1658,14 +1768,8 @@ const DashboardContent = ({ currentUserRole }) => {
     });
   }, [countedReservations, startDate, endDate]);
 
-  const facilitiesAvailable = facilitiesData.filter((facility) => facility.status === 'Available').length;
-  const facilitiesUnderMaintenance = facilitiesData.filter((facility) => facility.status === 'Maintenance').length;
-  const facilitiesUnavailable = facilitiesData.filter((facility) => facility.status === 'Unavailable').length;
   // Calculate chart scales and quick date-range presets for the rendered panels.
   const chartMaximum = Math.max(1, ...trendData.map((bucket) => bucket.count));
-  const equipmentRanking = rankingModes.equipment === 'most'
-    ? usageByEquipment.filter((equipment) => equipment.quantity > 0)
-    : leastUsedEquipment.filter((equipment) => equipment.quantity > 0);
   const equipmentHoursMaximum = Math.max(
     1,
     ...equipmentHoursRanking.map((equipment) => equipment.hours)
@@ -1709,9 +1813,6 @@ const DashboardContent = ({ currentUserRole }) => {
         : ''
     };
   }, [departmentalResourceConsumption]);
-  const utilitiesRanking = rankingModes.utilities === 'most'
-    ? utilityUsage.filter((utility) => utility.quantity > 0)
-    : leastUsedUtilities.filter((utility) => utility.quantity > 0);
   const facilitiesRanking = (rankingModes.facilities === 'most'
     ? facilityUsage
     : leastUsedFacilities)
@@ -1728,175 +1829,93 @@ const DashboardContent = ({ currentUserRole }) => {
     )),
     [facilityUsage, selectedFilterFacilityIds]
   );
-  const equipmentMaximum = Math.max(1, ...equipmentRanking.map((equipment) => equipment.quantity));
-  const utilityMaximum = Math.max(1, ...utilitiesRanking.map((utility) => utility.quantity));
   const facilityMaximum = Math.max(1, ...facilitiesRanking.map((facility) => facility.count));
   const formatTime = (time) => time ? formatTimeForDisplay(time) : 'Time not set';
-  const exportMisDashboardReport = async () => {
+  const exportMisDashboardReport = async ({ sections }) => {
     setIsExportingMisDashboardPdf(true);
     setMisDashboardPdfExportError('');
 
     try {
       const { exportMisDashboardPdf } = await import('../services/misDashboardPdf');
-      const activeReservationIds = new Set(reservationsData.map((reservation) => reservation.id));
-      const reservationRows = filteredReservations.map((reservation) => {
-        const eventDate = parseDate(reservation.eventDate || reservation.date);
-        const endDate = parseDate(reservation.endDate)
-          || (eventDate
-            ? new Date(eventDate.getTime() + (Math.max(1, Number(reservation.days) || 1) - 1) * DAY_IN_MS)
-            : null);
-        const equipmentRequests = Object.entries(reservation.selectedEquip || {})
-          .filter(([, quantity]) => Number(quantity) > 0)
-          .map(([id, quantity]) => `${equipmentById.get(id)?.name || 'Equipment'} (${Number(quantity)})`);
-        const utilityRequests = (Array.isArray(reservation.selectedUtilities)
-          ? reservation.selectedUtilities
-          : [])
-          .map((id) => {
-            const quantity = Number(reservation.selectedUtilityUnits?.[id] ?? 1);
-            return `${utilitiesById.get(id)?.name || 'Utility'} (${quantity})`;
-          });
-
-        return {
-          reference: reservation.refNo || reservation.id || 'No reference',
-          event: reservation.eventName || reservation.title || 'Untitled reservation',
-          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-          dates: `${eventDate ? formatDate(eventDate) : 'Date unavailable'}${endDate && eventDate
-            && endDate.toDateString() !== eventDate.toDateString()
-            ? ` - ${formatDate(endDate)}`
-            : ''}`,
-          times: `${formatTime(reservation.startTime)} - ${formatTime(reservation.endTime)}`,
-          status: reservation.status || 'Pending',
-          source: activeReservationIds.has(reservation.id) ? 'Active' : 'Archived',
-          facilities: (reservation.facilities || [])
-            .map((id) => facilitiesById.get(id)?.name || id)
-            .join(', ') || 'No facility',
-          equipment: equipmentRequests.join(', ') || 'None listed',
-          utilities: utilityRequests.join(', ') || 'None listed',
-          otherEquipment: reservation.otherEquipment || '',
-          otherUtility: reservation.otherUtility || '',
-          specificRoom: reservation.specificRoom || '',
-          participants: reservation.specificRoomParticipants || reservation.expectedParticipants || ''
-        };
+      const toRecentRow = (item, booking) => ({
+        name: item.isOtherRequest ? `Other: ${item.name}` : item.name || 'Unnamed item',
+        sku: item.isOtherRequest ? 'Other request' : item.sku || 'No SKU',
+        latestBooking: booking
+          ? {
+            borrower: booking.borrower,
+            dateTime: `${formatDate(booking.date)}${booking.startTime ? ` · ${formatTime(booking.startTime)}` : ''}`,
+            quantity: booking.quantity
+          }
+          : null
       });
 
       exportMisDashboardPdf({
-        equipmentUsage: equipmentHoursRanking,
-        groupConsumption: departmentalResourceConsumption,
         generatedAt: new Date().toLocaleString(),
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        timeRange: startMinutes !== null || endMinutes !== null
-          ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
-          : 'All times',
-        status: filters.status === 'all'
-          ? 'Approved and pending'
-          : filters.status[0].toUpperCase() + filters.status.slice(1),
-        upcomingWindow: `${upcomingRangeDays} days`,
+        sections,
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dates: startDate || endDate
+            ? `${startDate ? formatDate(startDate) : 'Any date'} - ${endDate ? formatDate(endDate) : 'Any date'}`
+            : 'All dates',
+          times: startMinutes !== null || endMinutes !== null
+            ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+            : 'All times',
+          status: filters.status === 'all'
+            ? 'Approved and pending'
+            : filters.status[0].toUpperCase() + filters.status.slice(1),
+          equipment: getSelectedFilterLabel(equipmentFilterOptions, selectedFilterEquipmentIds, 'All equipment'),
+          utilities: getSelectedFilterLabel(utilityFilterOptions, selectedFilterUtilityIds, 'All utilities')
+        },
+        summary: metrics,
         rankingModes: {
           equipment: rankingModes.equipment,
           utilities: rankingModes.utilities
         },
-        metrics: {
-          ...metrics,
-          pendingApprovals,
-          pendingUsers: pendingUserCount,
-          pendingProfiles: pendingProfileCount
-        },
-        trend: trendData,
-        equipmentRanking: equipmentRanking.map((equipment) => ({
-          name: equipment.isOtherRequest ? `Other: ${equipment.name}` : equipment.name,
-          quantity: equipment.quantity,
-          lastUsed: equipment.lastUsed
-        })),
-        utilityRanking: utilitiesRanking.map((utility) => ({
-          name: utility.isOtherRequest ? `Other: ${utility.name}` : utility.name,
-          quantity: utility.quantity,
-          lastUsed: utility.lastUsed
-        })),
         equipmentInventory: equipmentTabAvailability.map((equipment) => ({
           name: equipment.name || 'Unnamed equipment',
           total: equipment.total,
-          underMaintenance: equipment.underMaintenance,
+          underMaintenance: equipment.underMaintenance || 0,
           reserved: equipment.reserved,
-          available: equipment.available,
-          status: equipment.total === 0
-            ? 'No stock'
-            : equipment.isUnavailable
-              ? 'Unavailable'
-              : equipment.isRunningLow
-                ? 'Running low'
-                : 'On track'
+          available: equipment.available
         })),
         utilityInventory: utilityInventory.map((utility) => ({
           name: utility.name || 'Unnamed utility',
           reserved: utility.reserved,
           status: utility.status
         })),
-        snapshot: {
-          equipmentCatalog: equipmentData.length,
-          utilitiesCatalog: utilitiesData.length,
-          facilitiesAvailable,
-          facilitiesUnderMaintenance,
-          facilitiesUnavailable,
-          registeredUsers: visibleUserCount
-        },
-        approvals: pendingApprovalReservations.slice(0, 5).map((reservation) => ({
-          reference: reservation.refNo || reservation.id || 'No reference',
-          event: reservation.eventName || reservation.title || 'Untitled reservation',
+        trend: trendData,
+        equipmentUsage: equipmentHoursRanking,
+        groupConsumption: departmentalResourceConsumption,
+        // Every item, including ones with no requests, like the dashboard's View All lists.
+        equipmentRanking: usageByEquipment.map((equipment) => ({
+          name: equipment.name,
+          isOtherRequest: equipment.isOtherRequest,
+          quantity: equipment.quantity
+        })),
+        utilityRanking: utilityUsage.map((utility) => ({
+          name: utility.name,
+          isOtherRequest: utility.isOtherRequest,
+          quantity: utility.quantity
+        })),
+        recentEquipment: recentEquipmentActivity.map((equipment) => toRecentRow(equipment, equipment.lastBorrow)),
+        recentUtilities: recentUtilityActivity.map((utility) => toRecentRow(utility, utility.lastReservation)),
+        // MIS: equipment and utilities with their units instead of facilities and participants.
+        matchedReservations: activity.recentReservations.map((reservation) => ({
+          event: reservation.eventName || 'Untitled reservation',
           requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-          date: formatDate(parseDate(reservation.eventDate || reservation.date)),
-          time: formatTime(reservation.startTime)
-        })),
-        upcomingReservations: upcomingReservations.map((reservation) => ({
-          reference: reservation.refNo || reservation.id || 'No reference',
-          event: reservation.eventName || reservation.title || 'Untitled reservation',
-          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-          date: formatDate(reservation.eventDateValue),
-          time: formatTime(reservation.startTime),
-          status: reservation.status || 'Approved',
-          facilities: (reservation.facilities || [])
-            .map((id) => facilitiesById.get(id)?.name || id)
-            .join(', ') || 'No facility'
-        })),
-        recentEquipment: recentEquipmentActivity.map((equipment) => ({
-          name: equipment.name || 'Unnamed equipment',
-          sku: equipment.isOtherRequest ? 'Other request' : equipment.sku || 'No SKU',
-          latestBooking: equipment.lastBorrow
-            ? {
-              borrower: equipment.lastBorrow.borrower,
-              date: formatDate(equipment.lastBorrow.date),
-              time: formatTime(equipment.lastBorrow.startTime),
-              quantity: equipment.lastBorrow.quantity,
-              details: [
-                equipment.lastBorrow.otherEquipment && `Other equipment: ${equipment.lastBorrow.otherEquipment}`,
-                equipment.lastBorrow.otherUtility && `Other utility: ${equipment.lastBorrow.otherUtility}`,
-                equipment.lastBorrow.specificRoom && `Specific room: ${equipment.lastBorrow.specificRoom}`
-              ].filter(Boolean).join('; ')
-            }
-            : null
-        })),
-        recentUtilities: recentUtilityActivity.map((utility) => ({
-          name: utility.name || 'Unnamed utility',
-          sku: utility.isOtherRequest ? 'Other request' : utility.sku || 'No SKU',
-          latestBooking: utility.lastReservation
-            ? {
-              borrower: utility.lastReservation.borrower,
-              date: formatDate(utility.lastReservation.date),
-              time: formatTime(utility.lastReservation.startTime),
-              quantity: utility.lastReservation.quantity,
-              details: [
-                utility.lastReservation.otherEquipment && `Other equipment: ${utility.lastReservation.otherEquipment}`,
-                utility.lastReservation.otherUtility && `Other utility: ${utility.lastReservation.otherUtility}`,
-                utility.lastReservation.specificRoom && `Specific room: ${utility.lastReservation.specificRoom}`
-              ].filter(Boolean).join('; ')
-            }
-            : null
-        })),
-        reservations: reservationRows
+          dateTime: `${reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}`
+            + ` · ${formatTime(reservation.startTime)}`,
+          equipment: reservation.equipmentWithUnits.join(', '),
+          utilities: reservation.utilityNames.join(', '),
+          status: reservation.status || 'Pending'
+        }))
       });
+      return true;
     } catch (error) {
       console.error('Failed to export the MIS dashboard PDF:', error);
       setMisDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+      return false;
     } finally {
       setIsExportingMisDashboardPdf(false);
     }
@@ -2105,7 +2124,7 @@ const DashboardContent = ({ currentUserRole }) => {
       lastBorrow,
       isOtherRequest: true
     }))
-  ].sort((first, second) => (
+  ].filter(matchesEquipmentFilter).sort((first, second) => (
     (second.lastBorrow?.date.getTime() || 0) - (first.lastBorrow?.date.getTime() || 0)
   )).slice(0, 6);
   const recentUtilityActivity = [
@@ -2120,7 +2139,7 @@ const DashboardContent = ({ currentUserRole }) => {
       lastReservation,
       isOtherRequest: true
     }))
-  ].sort((first, second) => (
+  ].filter(matchesUtilityFilter).sort((first, second) => (
     (second.lastReservation?.date.getTime() || 0) - (first.lastReservation?.date.getTime() || 0)
   )).slice(0, 6);
 
@@ -2184,6 +2203,25 @@ const DashboardContent = ({ currentUserRole }) => {
                         <span className="recent-reservation-resources">
                           {reservation.facilityNames.join(' · ')}
                         </span>
+                      )}
+                    </>
+                  ) : isMisDashboard ? (
+                    // MIS: equipment and utilities with their units, instead of facilities and participants.
+                    <>
+                      {reservation.equipmentWithUnits.length > 0 && (
+                        <span className="recent-reservation-resources recent-reservation-resource-list">
+                          <span className="recent-reservation-resource-label">Equipment:</span>{' '}
+                          {reservation.equipmentWithUnits.join(' · ')}
+                        </span>
+                      )}
+                      {reservation.utilityNames.length > 0 && (
+                        <span className="recent-reservation-resources recent-reservation-resource-list">
+                          <span className="recent-reservation-resource-label">Utilities:</span>{' '}
+                          {reservation.utilityNames.join(' · ')}
+                        </span>
+                      )}
+                      {reservation.equipmentWithUnits.length === 0 && reservation.utilityNames.length === 0 && (
+                        <span className="recent-reservation-resources">No equipment or utilities requested</span>
                       )}
                     </>
                   ) : (
@@ -2255,13 +2293,19 @@ const DashboardContent = ({ currentUserRole }) => {
             isExporting={isExportingMisDashboardPdf}
             error={misDashboardPdfExportError}
             onExport={exportMisDashboardReport}
+            dateRangeLabel={heatmapDateRangeLabel}
+            resultCount={metrics.total}
+            rankingModes={rankingModes}
           />
         )}
       </header>
 
       {/* Operations include date filters, key metrics, approval queues, and upcoming events. */}
       <section className="dashboard-live-section" aria-label="Live operation">
-        <section className="dashboard-operations" aria-label="Dashboard operations">
+        <section
+          className={`dashboard-operations${isMisDashboard ? ' has-pending-accounts' : ''}`}
+          aria-label="Dashboard operations"
+        >
 
         <article className="dashboard-panel operations-panel approval-panel">
           <div className="panel-heading">
@@ -2364,8 +2408,8 @@ const DashboardContent = ({ currentUserRole }) => {
             </p>
           )}
         </article>
-        </section>
 
+        {/* MIS: shown as a third, narrower column beside Approval and Upcoming Events. */}
         {isMisDashboard && (
           <MisDashboardPendingAccounts
             pendingUserCount={pendingUserCount}
@@ -2373,6 +2417,7 @@ const DashboardContent = ({ currentUserRole }) => {
             canManagePendingProfiles={canManagePendingProfiles}
           />
         )}
+        </section>
 
         {isMisDashboard && (
           <div className="mis-inventory-panels">
@@ -2636,8 +2681,15 @@ const DashboardContent = ({ currentUserRole }) => {
             setFilters={setFilters}
             setDatePreset={setDatePreset}
             isAdminDashboard={isAdminDashboard}
-            resultCount={isBuildingAdminDashboard ? metrics.total : undefined}
-            facilityOptions={isBuildingAdminDashboard ? facilityFilterOptions : undefined}
+            resultCount={metrics.total}
+            checkboxFilters={isBuildingAdminDashboard
+              ? [{ key: 'facilities', legend: 'Facilities', allLabel: 'All facilities', options: facilityFilterOptions }]
+              : isMisDashboard
+                ? [
+                  { key: 'equipment', legend: 'Equipment', allLabel: 'All equipment', options: equipmentFilterOptions },
+                  { key: 'utilities', legend: 'Utilities', allLabel: 'All utilities', options: utilityFilterOptions }
+                ]
+                : undefined}
           />
           {!isBuildingAdminDashboard && dashboardKpis}
           {/* Summarize reservation trends. */}
@@ -2740,77 +2792,30 @@ const DashboardContent = ({ currentUserRole }) => {
             {!isBuildingAdminDashboard && (
             <>
             {!isRoomCheckerDashboard && (
-            <article className="dashboard-panel ranking-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>{rankingModes.equipment === 'most' ? 'Most' : 'Least'} Requested Equipment</h2>
-                  <p>Approved equipment units and other equipment requests in the selected period{rankingModes.equipment === 'least' ? ', including items with no requests' : ''}.</p>
-                </div>
-                <RankingModeToggle
-                  label="Equipment"
-                  value={rankingModes.equipment}
-                  onChange={(value) => setRankingModes((current) => ({ ...current, equipment: value }))}
-                />
-              </div>
-              {equipmentRanking.length ? (
-                <div className="ranking-list" tabIndex={0} aria-label="Equipment request rankings">
-                  {equipmentRanking.map((equipment, index) => (
-                    <div className="ranking-row" key={equipment.id}>
-                      <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                      <span
-                        className="ranking-name"
-                        title={equipment.isOtherRequest ? `Other equipment: ${equipment.name}` : equipment.name}
-                      >
-                        {equipment.isOtherRequest ? `Other: ${equipment.name}` : equipment.name}
-                      </span>
-                      <div className="ranking-track">
-                        <span style={{ width: `${equipment.quantity / equipmentMaximum * 100}%` }} />
-                      </div>
-                      <strong>{equipment.quantity}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">No approved equipment requests match these filters.</p>
-              )}
-            </article>
+              <ResourceRankingPanel
+                title="Equipment"
+                modeLabel="Equipment"
+                mode={rankingModes.equipment}
+                onModeChange={(value) => setRankingModes((current) => ({ ...current, equipment: value }))}
+                items={usageByEquipment}
+                itemLabel="equipment"
+                otherLabel="Other equipment"
+                emptyMessage="No approved equipment requests match these filters."
+              />
             )}
 
             {!isRoomCheckerDashboard && (
-            <article className="dashboard-panel ranking-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>{rankingModes.utilities === 'most' ? 'Most' : 'Least'} Requested Utilities</h2>
-                  <p>Approved utility units and other utility requests in the selected period{rankingModes.utilities === 'least' ? ', including items with no requests' : ''}.</p>
-                </div>
-                <RankingModeToggle
-                  label="Utilities"
-                  value={rankingModes.utilities}
-                  onChange={(value) => setRankingModes((current) => ({ ...current, utilities: value }))}
-                />
-              </div>
-              {utilitiesRanking.length ? (
-                <div className="ranking-list" tabIndex={0} aria-label="Utility request rankings">
-                  {utilitiesRanking.map((utility, index) => (
-                    <div className="ranking-row" key={utility.id}>
-                      <span className="ranking-position">{String(index + 1).padStart(2, '0')}</span>
-                      <span
-                        className="ranking-name"
-                        title={utility.isOtherRequest ? `Other utility: ${utility.name}` : utility.name}
-                      >
-                        {utility.isOtherRequest ? `Other: ${utility.name}` : utility.name}
-                      </span>
-                      <div className="ranking-track utility-track">
-                        <span style={{ width: `${utility.quantity / utilityMaximum * 100}%` }} />
-                      </div>
-                      <strong>{utility.quantity}</strong>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">No approved utility requests match these filters.</p>
-              )}
-            </article>
+              <ResourceRankingPanel
+                title="Utilities"
+                modeLabel="Utilities"
+                mode={rankingModes.utilities}
+                onModeChange={(value) => setRankingModes((current) => ({ ...current, utilities: value }))}
+                items={utilityUsage}
+                itemLabel="utility"
+                otherLabel="Other utility"
+                trackClassName="utility-track"
+                emptyMessage="No approved utility requests match these filters."
+              />
             )}
             </>
             )}
@@ -2865,71 +2870,20 @@ const DashboardContent = ({ currentUserRole }) => {
             <article className="dashboard-panel equipment-history-panel">
               <div className="panel-heading">
                 <div>
-                  <h2>Recent Approved Equipment</h2>
-                  <p>Most recent approved booking for each equipment item and other request in range.</p>
-                </div>
+                  <h2>Recent Approved Equipment</h2>                </div>
               </div>
               {recentEquipmentActivity.length ? (
-                <div className="equipment-history-list">
-                  {recentEquipmentActivity.map((equipment) => {
-                    const Row = equipment.lastBorrow?.reservation ? 'button' : 'div';
-                    return (
-                      <Row
-                        className={`equipment-history-row${equipment.lastBorrow?.reservation ? ' equipment-history-row-clickable' : ''}`}
-                        key={equipment.id}
-                        {...(equipment.lastBorrow?.reservation ? {
-                          type: 'button',
-                          'aria-label': `View reservation details for ${equipment.name}, booked by ${equipment.lastBorrow.borrower}`,
-                          onClick: () => setSelectedReservation({
-                            data: equipment.lastBorrow.reservation,
-                            source: 'active'
-                          })
-                        } : {})}
-                      >
-                        <div className="equipment-initial">{(equipment.name || 'E').slice(0, 1).toUpperCase()}</div>
-                        <div className="equipment-history-name">
-                          <strong>{equipment.name || 'Unnamed equipment'}</strong>
-                          <span className="equipment-history-sku">
-                            {equipment.isOtherRequest ? 'Other request' : equipment.sku || 'No SKU'}
-                          </span>
-                        </div>
-                        {equipment.lastBorrow ? (
-                          <div className="equipment-history-borrow">
-                            <strong>{equipment.lastBorrow.borrower}</strong>
-                            <div className="equipment-history-meta">
-                              <span>
-                                {formatDate(equipment.lastBorrow.date)}
-                                {equipment.lastBorrow.startTime ? ` · ${formatTime(equipment.lastBorrow.startTime)}` : ''}
-                              </span>
-                              <span className="equipment-quantity">
-                                {equipment.lastBorrow.quantity} unit{equipment.lastBorrow.quantity === 1 ? '' : 's'}
-                              </span>
-                            </div>
-                            {(equipment.lastBorrow.otherEquipment
-                              || equipment.lastBorrow.otherUtility
-                              || equipment.lastBorrow.specificRoom) && (
-                              <div className="equipment-history-request-details">
-                                {equipment.lastBorrow.otherEquipment && (
-                                  <span><strong>Other equipment:</strong> {equipment.lastBorrow.otherEquipment}</span>
-                                )}
-                                {equipment.lastBorrow.otherUtility && (
-                                  <span><strong>Other utility:</strong> {equipment.lastBorrow.otherUtility}</span>
-                                )}
-                                {equipment.lastBorrow.specificRoom && (
-                                  <span><strong>Specific room number/name:</strong> {equipment.lastBorrow.specificRoom}</span>
-                                )}
-                              </div>
-                            )}
-                          </div>
-                        ) : (
-                          <div className="equipment-history-borrow no-history">
-                            <strong>No recent booking</strong>
-                            <span>Nothing approved in this date range</span>
-                          </div>
-                        )}
-                      </Row>
-                    );
-                  })}
+                <div className="recent-resource-list">
+                  {recentEquipmentActivity.map((equipment) => (
+                    <RecentResourceRow
+                      key={equipment.id}
+                      item={equipment}
+                      booking={equipment.lastBorrow}
+                      fallbackName="Unnamed equipment"
+                      formatTime={formatTime}
+                      onOpen={(reservation) => setSelectedReservation({ data: reservation, source: 'active' })}
+                    />
+                  ))}
                 </div>
               ) : (
                 <p className="panel-empty">No approved equipment requests match these filters.</p>
@@ -2941,71 +2895,20 @@ const DashboardContent = ({ currentUserRole }) => {
               <article className="dashboard-panel equipment-history-panel">
                 <div className="panel-heading">
                   <div>
-                    <h2>Recent Approved Utilities</h2>
-                    <p>Most recent approved booking for each utility and other request in range.</p>
-                  </div>
+                    <h2>Recent Approved Utilities</h2>                  </div>
                 </div>
                   {recentUtilityActivity.length ? (
-                    <div className="equipment-history-list">
-                      {recentUtilityActivity.map((utility) => {
-                        const Row = utility.lastReservation?.reservation ? 'button' : 'div';
-                        return (
-                          <Row
-                            className={`equipment-history-row${utility.lastReservation?.reservation ? ' equipment-history-row-clickable' : ''}`}
-                            key={utility.id}
-                            {...(utility.lastReservation?.reservation ? {
-                              type: 'button',
-                              'aria-label': `View reservation details for ${utility.name}, booked by ${utility.lastReservation.borrower}`,
-                              onClick: () => setSelectedReservation({
-                                data: utility.lastReservation.reservation,
-                                source: 'active'
-                              })
-                            } : {})}
-                          >
-                            <div className="equipment-initial">{(utility.name || 'U').slice(0, 1).toUpperCase()}</div>
-                            <div className="equipment-history-name">
-                              <strong>{utility.name || 'Unnamed utility'}</strong>
-                              <span className="equipment-history-sku">
-                                {utility.isOtherRequest ? 'Other request' : utility.sku || 'No SKU'}
-                              </span>
-                          </div>
-                          {utility.lastReservation ? (
-                            <div className="equipment-history-borrow">
-                              <strong>{utility.lastReservation.borrower}</strong>
-                              <div className="equipment-history-meta">
-                                <span>
-                                  {formatDate(utility.lastReservation.date)}
-                                  {utility.lastReservation.startTime ? ` · ${formatTime(utility.lastReservation.startTime)}` : ''}
-                                </span>
-                                <span className="equipment-quantity">
-                                  {utility.lastReservation.quantity} unit{utility.lastReservation.quantity === 1 ? '' : 's'}
-                                </span>
-                              </div>
-                              {(utility.lastReservation.otherEquipment
-                                || utility.lastReservation.otherUtility
-                                || utility.lastReservation.specificRoom) && (
-                                <div className="equipment-history-request-details">
-                                  {utility.lastReservation.otherEquipment && (
-                                    <span><strong>Other equipment:</strong> {utility.lastReservation.otherEquipment}</span>
-                                  )}
-                                  {utility.lastReservation.otherUtility && (
-                                    <span><strong>Other utility:</strong> {utility.lastReservation.otherUtility}</span>
-                                  )}
-                                  {utility.lastReservation.specificRoom && (
-                                    <span><strong>Specific room number/name:</strong> {utility.lastReservation.specificRoom}</span>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
-                            <div className="equipment-history-borrow no-history">
-                              <strong>No recent booking</strong>
-                              <span>Nothing approved in this date range</span>
-                            </div>
-                          )}
-                        </Row>
-                        );
-                      })}
+                    <div className="recent-resource-list">
+                      {recentUtilityActivity.map((utility) => (
+                        <RecentResourceRow
+                          key={utility.id}
+                          item={utility}
+                          booking={utility.lastReservation}
+                          fallbackName="Unnamed utility"
+                          formatTime={formatTime}
+                          onOpen={(reservation) => setSelectedReservation({ data: reservation, source: 'active' })}
+                        />
+                      ))}
                   </div>
                 ) : (
                   <p className="panel-empty">No approved utility requests match these filters.</p>

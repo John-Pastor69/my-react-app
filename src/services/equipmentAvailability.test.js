@@ -2,8 +2,26 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import {
   getEquipmentAvailability,
+  getMaxMaintenanceCount,
   isValidEquipmentMaintenanceCount
 } from './equipmentAvailability.js';
+
+test('maintenance only uses units that are not reserved', () => {
+  // LCD Projector: 19 total, 3 reserved -> at most 16 can go under maintenance.
+  assert.equal(getMaxMaintenanceCount(19, 3), 16);
+  assert.equal(isValidEquipmentMaintenanceCount(16, 19, 3), true);
+  assert.equal(isValidEquipmentMaintenanceCount(17, 19, 3), false);
+  assert.equal(isValidEquipmentMaintenanceCount(0, 19, 3), true);
+  // Every unit reserved: nothing can go under maintenance.
+  assert.equal(getMaxMaintenanceCount(10, 10), 0);
+  assert.equal(isValidEquipmentMaintenanceCount(1, 10, 10), false);
+  // More reserved than total (older data): the limit never goes below 0.
+  assert.equal(getMaxMaintenanceCount(5, 8), 0);
+  // Staying within the limit never leaves the item over-committed.
+  const inventory = getEquipmentAvailability({ totalCount: 19, underMaintenance: 16, reservedCount: 3 });
+  assert.equal(inventory.available, 0);
+  assert.equal(inventory.isOvercommitted, false);
+});
 
 test('subtracts maintenance and reserved units from total inventory', () => {
   assert.deepEqual(

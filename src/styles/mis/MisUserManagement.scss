@@ -873,6 +873,55 @@ main,
           white-space: nowrap;
         }
 
+        // "User Directory" with the total and online user counts beside it.
+        .user-directory-heading {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.5rem 0.85rem;
+          margin-bottom: 0.2667rem;
+
+          h2 {
+            margin: 0;
+          }
+        }
+
+        .user-directory-stats {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .user-directory-stat {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.3rem 0.7rem;
+          border: 1px solid $border-color;
+          border-radius: 999px;
+          background: $accent-gray-bg;
+          color: $text-muted;
+          font-size: 0.85rem;
+          white-space: nowrap;
+
+          strong {
+            color: $text-main;
+            font-weight: 700;
+          }
+
+          &.is-online {
+            border-color: color.adjust($success-color, $alpha: -0.7);
+            background: color.adjust($success-color, $alpha: -0.92);
+          }
+        }
+
+        .user-directory-online-dot {
+          width: 0.5rem;
+          height: 0.5rem;
+          border-radius: 50%;
+          background: $success-color;
+        }
+
         p {
           margin: 0;
           font-size: var(--font-body);

@@ -43,7 +43,6 @@ const ROLE_LABELS = {
   'user': 'Requestor'
 };
 
-const ADMIN_ROLES = ['mis', 'mis admin'];
 const SIGNUP_FIELD_TYPES = ['text', 'number', 'email', 'tel'];
 
 const isValidCustomFieldLimit = (value, type) => {
@@ -793,7 +792,6 @@ const MisUserManagement = ({ currentUserRole }) => {
   const directoryLoadError = isPendingProfileFilter ? pendingProfilesLoadError : loadError;
   const totalUsers = usersData.length;
   const activeUsers = usersData.filter((u) => getDynamicStatus(u) === 'Online').length;
-  const totalAdmins = usersData.filter((u) => ADMIN_ROLES.includes(u.role?.toLowerCase().trim())).length;
 
   // --- ROLE ACCESS CHECK ---
   const allowedRoles = ['mis', 'mis admin', 'building admin', 'super admin'];
@@ -1214,34 +1212,21 @@ const MisUserManagement = ({ currentUserRole }) => {
         </div>
       </div>
 
-      <div className="metrics-grid">
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Total Users</span>
-            <span className="count">{totalUsers}</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Online Users</span>
-            <span className="count">{activeUsers}</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Admins</span>
-            <span className="count">{totalAdmins}</span>
-          </div>
-        </div>
-      </div>
-
       <div className="table-container">
         <div className="table-controls">
           <div className="controls-left">
-            <h2>User Directory</h2>
-            <p>Search and manage all system users</p>
+            <div className="user-directory-heading">
+              <h2>User Directory</h2>
+              <div className="user-directory-stats" aria-label="User counts">
+                <span className="user-directory-stat">
+                  <strong>{totalUsers}</strong> Total users
+                </span>
+                <span className="user-directory-stat is-online">
+                  <span className="user-directory-online-dot" aria-hidden="true" />
+                  <strong>{activeUsers}</strong> Online
+                </span>
+              </div>
+            </div>
             <div className="table-pagination">
               <span className="pagination-text">
                 {directoryItems.length === 0

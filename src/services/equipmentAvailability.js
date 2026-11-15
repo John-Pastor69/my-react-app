@@ -3,13 +3,19 @@ const toNonNegativeInteger = (value) => {
   return Number.isFinite(numericValue) ? Math.max(0, Math.floor(numericValue)) : 0;
 };
 
-export const isValidEquipmentMaintenanceCount = (value, totalCount) => {
+// Maintenance comes out of the units that aren't reserved (available + any already in maintenance),
+// so reserved units can never be put under maintenance: max = total - reserved.
+export const getMaxMaintenanceCount = (totalCount, reservedCount = 0) => Math.max(
+  0,
+  toNonNegativeInteger(totalCount) - toNonNegativeInteger(reservedCount)
+);
+
+export const isValidEquipmentMaintenanceCount = (value, totalCount, reservedCount = 0) => {
   if (typeof value === 'string' && !value.trim()) return false;
   const maintenanceCount = Number(value);
-  const total = toNonNegativeInteger(totalCount);
   return Number.isSafeInteger(maintenanceCount)
     && maintenanceCount >= 0
-    && maintenanceCount <= total;
+    && maintenanceCount <= getMaxMaintenanceCount(totalCount, reservedCount);
 };
 
 export const getEquipmentAvailability = ({

@@ -14,12 +14,15 @@ export const sortVenuesByUtilization = (venues) => [...venues].sort((first, seco
   || compareNames(first, second)
 ));
 
-export const sortFacilityRanking = (facilities, mode = 'most') => [...facilities].sort((first, second) => (
+// Most/least ranking by a numeric field (e.g. `count`, `quantity`); ties are listed alphabetically.
+export const sortRankingByValue = (items, mode = 'most', valueKey = 'count') => [...items].sort((first, second) => (
   (mode === 'most'
-    ? (Number(second.count) || 0) - (Number(first.count) || 0)
-    : (Number(first.count) || 0) - (Number(second.count) || 0))
+    ? (Number(second[valueKey]) || 0) - (Number(first[valueKey]) || 0)
+    : (Number(first[valueKey]) || 0) - (Number(second[valueKey]) || 0))
   || compareNames(first, second)
 ));
+
+export const sortFacilityRanking = (facilities, mode = 'most') => sortRankingByValue(facilities, mode, 'count');
 
 export const getFacilityOperatingHours = (startDate, endDate) => {
   if (
