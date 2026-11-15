@@ -25,6 +25,7 @@ import {
   findSpecificRoomConflict,
   getFacilityCapacityAvailability,
   getReservationDateRange,
+  isSameSpecificRoom,
   parseDateOrdinal,
   reservationDateRangesOverlap
 } from '../services/reservationConflicts';
@@ -122,6 +123,16 @@ const getEndorserNameWithoutFacultySuffix = (name) => (
 
 const sanitizeAlphabeticName = (value) => value.replace(/[^A-Za-z ]/g, '');
 
+// The endorser field only accepts letters and spaces, so search with periods (e.g. "D."),
+// "(Faculty)" and repeated spaces ignored on both sides.
+const normalizeEndorserSearchText = (value) => getEndorserNameWithoutFacultySuffix(String(value || ''))
+  .replace(/\s+/g, ' ')
+  .trim()
+  .toLowerCase();
+
+const matchesEndorserSearch = (endorser, searchText) => normalizeEndorserSearchText(endorser.cleanName)
+  .includes(normalizeEndorserSearchText(searchText));
+
 const normalizeContactNumber = (value) => {
   const digits = String(value || '').replace(/\D/g, '');
   if (digits.startsWith('09')) return digits.slice(0, 11);
@@ -157,6 +168,19 @@ const getReservationDateErrorMessage = (role, editingReservation) => {
     : 'Must be at least 3 days from today';
 };
 
+// Returns the error to show for a typed, picked, loaded, or restored reservation date ('' when valid).
+const getReservationDateInputError = (value, role, editingReservation) => {
+  if (!value) return '';
+  const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(value)
+    && parseDateOrdinal(value) !== null;
+  if (!isValidFormat) return 'Invalid format. Use MM/DD/YYYY';
+  const [month, day, year] = value.split('/').map(Number);
+  const minDate = getReservationDateMinimum(role, Boolean(editingReservation));
+  return new Date(year, month - 1, day) < minDate
+    ? getReservationDateErrorMessage(role, editingReservation)
+    : '';
+};
+
 const getFacilityCapacityLimits = (facility) => ({
   min: parseOptionalCapacity(facility.minCapacity),
   max: Object.prototype.hasOwnProperty.call(facility, 'maxCapacity')
@@ -174,29 +198,18 @@ const getFacilityCapacityLabel = (facility) => {
 
 const getFacilityParticipantFieldKey = (facilityId) => `participants-${facilityId}`;
 
+// Excludes look-alike characters (0/O, 1/I/L) so reference numbers are easy to read aloud and type.
+const REF_NO_ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
+
+const generateReservationRefNo = () => {
+  const randomValues = crypto.getRandomValues(new Uint32Array(8));
+  const code = Array.from(randomValues, (value) => REF_NO_ALPHABET[value % REF_NO_ALPHABET.length]).join('');
+  return `RES-${new Date().getFullYear()}-${code}`;
+};
+
 const normalizeLocationMatchValue = (value) => String(value || '')
   .toLowerCase()
   .replace(/[^a-z0-9]/g, '');
-
-const matchesSpecificRoom = (requestedRoom, reservedRoom) => {
-  const requested = normalizeLocationMatchValue(requestedRoom);
-  const reserved = normalizeLocationMatchValue(reservedRoom);
-  if (!requested || !reserved) return false;
-  if (requested === reserved) return true;
-
-  const requestedRoomNumbers = String(requestedRoom || '').match(/\d{3}/g) || [];
-  const reservedRoomNumbers = String(reservedRoom || '').match(/\d{3}/g) || [];
-  if (requestedRoomNumbers.some((number) => reservedRoomNumbers.includes(number))) return true;
-
-  return Math.min(requested.length, reserved.length) >= 3
-    && (requested.includes(reserved) || reserved.includes(requested));
-};
-
-// Helper function extracted outside component
-const parseTimeToDecimal = (timeStr) => {
-  const minutes = parseTimeToMinutes(timeStr);
-  return minutes === null ? null : minutes / 60;
-};
 
 const parseTimeToMinutes = (timeStr) => {
   if (!timeStr) return null;
@@ -216,6 +229,33 @@ const parseTimeToMinutes = (timeStr) => {
   }
 
   return hours * 60 + minutes;
+};
+
+// Total reserved hours, counting each date's time once: when facilities use different or overlapping
+// times on the same date, their time ranges are merged instead of added together.
+const getTotalScheduledHours = (schedule) => {
+  const rangesByDate = schedule.reduce((ranges, entry) => {
+    const start = parseTimeToMinutes(entry.startTime);
+    const end = parseTimeToMinutes(entry.endTime);
+    if (start === null || end === null || end <= start) return ranges;
+    (ranges[entry.date] ||= []).push([start, end]);
+    return ranges;
+  }, {});
+  const totalMinutes = Object.values(rangesByDate).reduce((total, ranges) => {
+    const sortedRanges = [...ranges].sort((first, second) => first[0] - second[0]);
+    let coveredMinutes = 0;
+    let [currentStart, currentEnd] = sortedRanges[0];
+    sortedRanges.slice(1).forEach(([start, end]) => {
+      if (start <= currentEnd) {
+        currentEnd = Math.max(currentEnd, end);
+      } else {
+        coveredMinutes += currentEnd - currentStart;
+        [currentStart, currentEnd] = [start, end];
+      }
+    });
+    return total + coveredMinutes + (currentEnd - currentStart);
+  }, 0);
+  return Math.round(totalMinutes / 60 * 10) / 10;
 };
 
 const isWithinReservationHours = (time) => {
@@ -619,6 +659,8 @@ const Reservation = ({ currentUserRole }) => {
   // --- AUTH & USER STATE ---
   const [currentUser, setCurrentUser] = useState(null);
   const [currentUserDisplayName, setCurrentUserDisplayName] = useState('');
+  // Phone number from the user's profile, restored when the form is discarded.
+  const [profileContactNumber, setProfileContactNumber] = useState(initialFormState.contactNumber);
   const [userRole, setUserRole] = useState(currentUserRole || 'requestor');
   const [signupConfiguration, setSignupConfiguration] = useState(() => getSignupConfiguration());
   const [isLoadingEdit, setIsLoadingEdit] = useState(Boolean(editReservationId));
@@ -638,7 +680,6 @@ const Reservation = ({ currentUserRole }) => {
   const [expandedFacilitySchedules, setExpandedFacilitySchedules] = useState({});
   const [removedScheduleDates, setRemovedScheduleDates] = useState([]);
   const [isDailyScheduleExpanded, setIsDailyScheduleExpanded] = useState(false);
-  const [durationHours, setDurationHours] = useState(0);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resubmissionRemark, setResubmissionRemark] = useState('');
   
@@ -677,6 +718,7 @@ const Reservation = ({ currentUserRole }) => {
   const [daysCalendarView, setDaysCalendarView] = useState(new Date());
   const [missingFields, setMissingFields] = useState({});
   const fieldRefs = useRef({});
+  const conflictNoticeRef = useRef(null);
 
   useEffect(() => {
     if (!participantPromptFacilityId) return;
@@ -749,6 +791,12 @@ const Reservation = ({ currentUserRole }) => {
             const cleanName = getProfileDisplayName(userData, user.displayName)
               || (normalizedRole === 'super admin' ? 'Super Admin' : '');
             setCurrentUserDisplayName(cleanName);
+            const profilePhone = normalizeContactNumber(userData.phone);
+            setProfileContactNumber(profilePhone);
+
+            // When editing, the edit loader fills the form from the saved reservation; autofilling the
+            // signed-in user's profile here could overwrite the requestor's details (e.g. an admin's edit).
+            if (editReservationId) return;
 
             setFormData(prev => ({
               ...prev,
@@ -762,7 +810,7 @@ const Reservation = ({ currentUserRole }) => {
               department: profileDepartment || prev.department,
               contactNumber: prev.contactNumber !== '09'
                 ? prev.contactNumber
-                : normalizeContactNumber(userData.phone),
+                : profilePhone,
               emailAddress: normalizedRole === 'super admin'
                 ? 'null@gmail.com'
                 : prev.emailAddress || userData.email || user.email || '',
@@ -776,7 +824,7 @@ const Reservation = ({ currentUserRole }) => {
       }
     });
     return () => unsubscribeAuth();
-  }, [currentUserRole]);
+  }, [currentUserRole, editReservationId]);
 
   useEffect(() => {
     if (!editReservationId) {
@@ -843,24 +891,37 @@ const Reservation = ({ currentUserRole }) => {
           })
           : null;
         setEditingReservation(reservation);
+        // An admin edits someone else's reservation, so the requestor details must come only from the
+        // saved reservation. The owner resubmitting their own reservation also gets their latest profile.
+        const savedRequestorTypes = Array.isArray(reservation.requestorTypes) && reservation.requestorTypes.length
+          ? reservation.requestorTypes.slice(0, 1)
+          : reservation.requestorInfo?.accountType ? [reservation.requestorInfo.accountType] : [];
+        const savedRequestorAttributes = {
+          ...(reservation.requestorInfo?.customAttributes || {}),
+          ...(reservation.requestorAttributes || {})
+        };
+        const savedDepartment = savedRequestorAttributes['dropdown:departments']
+          || reservation.requestorInfo?.department
+          || reservation.department
+          || '';
+        const profileRequestorAttributes = getRequestorAttributes(userData, configuredAccountType);
         setFormData({
           fullName: reservation.fullName || '',
-          requestorTypes: userData.accountType
-            ? [userData.accountType]
-            : Array.isArray(reservation.requestorTypes)
-              ? reservation.requestorTypes.slice(0, 1)
-              : [],
-          requestorAttributes: {
-            ...getRequestorAttributes(userData, configuredAccountType),
-            ...(reservation.requestorAttributes || {})
-          },
-          studentNumber: reservation.studentNumber || userData.studentNumber || '',
-          department: getRequestorAttributes(userData, configuredAccountType)['dropdown:departments']
-            || (userData.signupDropdown?.id === 'departments' ? userData.signupDropdown.value : '')
-            || userData.department
-            || reservation.requestorAttributes?.['dropdown:departments']
-            || reservation.department
-            || '',
+          requestorTypes: isAdminEditMode
+            ? savedRequestorTypes
+            : userData.accountType ? [userData.accountType] : savedRequestorTypes,
+          requestorAttributes: isAdminEditMode
+            ? savedRequestorAttributes
+            : { ...profileRequestorAttributes, ...savedRequestorAttributes },
+          studentNumber: isAdminEditMode
+            ? reservation.studentNumber || reservation.requestorInfo?.studentNumber || ''
+            : reservation.studentNumber || userData.studentNumber || '',
+          department: isAdminEditMode
+            ? savedDepartment
+            : profileRequestorAttributes['dropdown:departments']
+              || (userData.signupDropdown?.id === 'departments' ? userData.signupDropdown.value : '')
+              || userData.department
+              || savedDepartment,
           contactNumber: normalizeContactNumber(reservation.contactNumber),
           emailAddress: reservation.emailAddress || '',
           eventName: sanitizeEventName(reservation.eventName).slice(0, 40),
@@ -1064,6 +1125,35 @@ const Reservation = ({ currentUserRole }) => {
     if (isDraftSaved) setIsDraftSaved(false);
   }, [formData, days, endDateInput, aircon, eventDate, startTime, endTime, dailyScheduleOverrides, dailyAirconOverrides, facilityScheduleOverrides, facilityAirconEnabled, removedScheduleDates, selectedEquip, selectedUtilities, selectedUtilityUnits, facilityParticipants]);
 
+  // Re-check the date rules whenever a date is typed, picked, or loaded from a draft, an edit,
+  // or "Submit Again", and when the role or edit mode that decides the minimum date changes.
+  // Admins may edit an approved reservation that is already under way, so its original dates stay allowed.
+  const isOriginalAdminEditDate = (value, originalValue) => Boolean(
+    isAdminEditMode && editingReservation && value && value === originalValue
+  );
+
+  useEffect(() => {
+    const error = isOriginalAdminEditDate(eventDate, editingReservation?.eventDate || editingReservation?.date)
+      ? ''
+      : getReservationDateInputError(eventDate, userRole, editingReservation);
+    setDateError(error);
+    if (eventDate && !error) clearMissingField('eventDate');
+  }, [eventDate, userRole, editingReservation, isAdminEditMode]);
+
+  useEffect(() => {
+    const error = isOriginalAdminEditDate(
+      endDateInput,
+      editingReservation?.endDate || calculateEndDate(
+        editingReservation?.eventDate || editingReservation?.date || '',
+        editingReservation?.days || 1
+      )
+    )
+      ? ''
+      : getReservationDateInputError(endDateInput, userRole, editingReservation);
+    setDaysDateError(error);
+    if (endDateInput && !error) clearMissingField('endDateInput');
+  }, [endDateInput, userRole, editingReservation, isAdminEditMode]);
+
   // Automatically calculate `days` from `eventDate` and `endDateInput`
   useEffect(() => {
     const dateRegex = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/;
@@ -1192,6 +1282,12 @@ const Reservation = ({ currentUserRole }) => {
       computedAvailable: availableCount
     };
   });
+  // Equipment availability depends on the reservation dates, so it can't be shown until they're known.
+  const hasEquipmentDates = Boolean(selectedReservationRange);
+  const equipmentOverAllocations = hasEquipmentDates
+    ? mappedEquipmentList.filter((item) => (Number(selectedEquip[item.id]) || 0) > item.computedAvailable)
+    : [];
+  const getEquipmentFieldKey = (equipmentId) => `equipment:${equipmentId}`;
   const hasFacility = formData.facilities.length > 0 || Boolean(formData.specificRoom.trim());
   const otherEquipmentUnitsInvalid = Boolean(formData.otherEquipment.trim())
     && (!/^\d+$/.test(formData.otherEquipmentUnits) || Number(formData.otherEquipmentUnits) <= 0);
@@ -1220,15 +1316,18 @@ const Reservation = ({ currentUserRole }) => {
     endDateInput,
     unavailableDates
   ));
-  const dailySchedule = getScheduleDates(eventDate, endDateInput)
+  const scheduleDates = getScheduleDates(eventDate, endDateInput)
     .filter((date) => availableDateIds.has(date))
-    .filter((date) => !removedScheduleDates.includes(date))
-    .map((date) => ({
-      date,
-      startTime: dailyScheduleOverrides[date]?.startTime || startTime,
-      endTime: dailyScheduleOverrides[date]?.endTime || endTime,
-      aircon: aircon && (dailyAirconOverrides[date] ?? true)
-    }));
+    .filter((date) => !removedScheduleDates.includes(date));
+  // Per-day and per-facility times and aircon choices can only be edited when 2+ dates are shown,
+  // so a single-day reservation always follows the visible default times and aircon toggles.
+  const usesCustomDayTimes = scheduleDates.length > 1;
+  const dailySchedule = scheduleDates.map((date) => ({
+    date,
+    startTime: (usesCustomDayTimes && dailyScheduleOverrides[date]?.startTime) || startTime,
+    endTime: (usesCustomDayTimes && dailyScheduleOverrides[date]?.endTime) || endTime,
+    aircon: aircon && (!usesCustomDayTimes || (dailyAirconOverrides[date] ?? true))
+  }));
   const confirmRemoveScheduleDate = (date) => {
     const dateIndex = dailySchedule.findIndex((entry) => entry.date === date);
     const isFirstDate = dateIndex === 0;
@@ -1255,11 +1354,13 @@ const Reservation = ({ currentUserRole }) => {
       facilityId,
       dailySchedule.map((entry) => ({
         ...entry,
-        startTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.startTime || entry.startTime,
-        endTime: facilityScheduleOverrides[facilityId]?.[entry.date]?.endTime || entry.endTime,
+        startTime: (usesCustomDayTimes && facilityScheduleOverrides[facilityId]?.[entry.date]?.startTime)
+          || entry.startTime,
+        endTime: (usesCustomDayTimes && facilityScheduleOverrides[facilityId]?.[entry.date]?.endTime)
+          || entry.endTime,
         aircon: entry.aircon
           && (facilityAirconEnabled[facilityId] ?? true)
-          && (facilityScheduleOverrides[facilityId]?.[entry.date]?.aircon ?? true)
+          && (!usesCustomDayTimes || (facilityScheduleOverrides[facilityId]?.[entry.date]?.aircon ?? true))
       }))
     ])
   );
@@ -1333,12 +1434,7 @@ const Reservation = ({ currentUserRole }) => {
   const isStartTimeValid = isWithinReservationHours(startTime);
   const isEndTimeValid = isWithinReservationHours(endTime)
     && (!startTime || (parseTimeToMinutes(endTime) ?? 0) > (parseTimeToMinutes(startTime) ?? 0));
-  const totalScheduledHours = Math.round(reservationSchedule.reduce((total, entry) => {
-    const start = parseTimeToMinutes(entry.startTime);
-    const end = parseTimeToMinutes(entry.endTime);
-    if (start === null || end === null || end <= start) return total;
-    return total + (end - start) / 60;
-  }, 0) * 10) / 10;
+  const totalScheduledHours = getTotalScheduledHours(reservationSchedule);
   const liveConflict = reservationsLoaded
     && !dateError
     && !daysDateError
@@ -1347,6 +1443,21 @@ const Reservation = ({ currentUserRole }) => {
     ? findSpecificRoomConflict(reservationsData, conflictRequest)
       || findFacilityConflict(reservationsData, conflictRequest, inventoryFacilities)
     : null;
+  // Scroll to the conflict warning whenever a new or different conflict appears.
+  const liveConflictKey = liveConflict
+    ? [
+      liveConflict.conflictType,
+      liveConflict.conflictFacilityName,
+      liveConflict.conflictRoomName,
+      liveConflict.conflictDate,
+      liveConflict.conflictStartTime,
+      liveConflict.conflictEndTime
+    ].join('|')
+    : '';
+  useEffect(() => {
+    if (!liveConflictKey) return;
+    conflictNoticeRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }, [liveConflictKey]);
   const selectedSchedule = reservationsData.find(
     (reservation) => reservation.id === selectedScheduleId
   );
@@ -1365,6 +1476,8 @@ const Reservation = ({ currentUserRole }) => {
         || (approval && typeof approval.status === 'string' && approval.status.toLowerCase() === 'rejected')
     );
     if (!['pending', 'approved'].includes(statusLower) || hasRejectedApproval) return false;
+    // Only upcoming or ongoing schedules matter for planning; skip finished ones and the reservation being edited.
+    if (reservation.id === editReservationId || isReservationEndReached(reservation)) return false;
 
     const reservationFacilityReferences = (reservation.facilities || []).flatMap((facilityId) => {
       const facility = inventoryFacilities.find((item) => item.id === facilityId);
@@ -1375,7 +1488,7 @@ const Reservation = ({ currentUserRole }) => {
     const sharesSelectedFacility = reservationFacilityReferences.some(
       (reference) => selectedFacilityReferences.has(reference)
     );
-    const matchesRoom = matchesSpecificRoom(formData.specificRoom, reservation.specificRoom);
+    const matchesRoom = isSameSpecificRoom(formData.specificRoom, reservation.specificRoom);
     return sharesSelectedFacility || matchesRoom;
   });
   const normalizedCurrentRole = userRole.replace(/_/g, ' ').trim().toLowerCase();
@@ -1421,24 +1534,13 @@ const Reservation = ({ currentUserRole }) => {
   const canViewSelectedScheduleIdentity = !['requestor', 'user'].includes(normalizedCurrentRole)
     || isSelectedScheduleOwner;
 
-  // --- CALCULATE DURATION ---
-  useEffect(() => {
-    const startDecimal = parseTimeToDecimal(startTime);
-    const endDecimal = parseTimeToDecimal(endTime);
-
-    if (startDecimal !== null && endDecimal !== null) {
-      let diff = endDecimal - startDecimal;
-      if (diff < 0) diff += 24; 
-      setDurationHours(Math.round(diff * 10) / 10);
-    } else {
-      setDurationHours(0);
-    }
-  }, [startTime, endTime]);
 
   // --- HANDLERS ---
   const handleInputChange = (field, value) => {
     const inputValue = field === 'eventName' ? sanitizeEventName(value).slice(0, 40)
       : field === 'purpose' ? value.slice(0, 600)
+      : ['specificRoom', 'otherEquipment', 'otherUtility'].includes(field) ? value.slice(0, 20)
+      : field === 'specificRoomParticipants' ? value.slice(0, 3)
       : field === 'endorserName' ? sanitizeAlphabeticName(value) : value;
     if (field === 'specificRoom') setSelectedScheduleId('');
 
@@ -1480,7 +1582,7 @@ const Reservation = ({ currentUserRole }) => {
 
   const handleResourceUnitsChange = (field, value) => {
     if (!/^\d*$/.test(value)) return;
-    handleInputChange(field, value);
+    handleInputChange(field, value.slice(0, 3));
   };
 
   const handleRequestorAttributeChange = (key, value, field) => {
@@ -1569,29 +1671,37 @@ const Reservation = ({ currentUserRole }) => {
   };
 
   const updateEquip = (item, delta) => {
-    if (item.status === 'Unavailable') return;
     const currentSelected = selectedEquip[item.id] || 0;
     const newSelected = currentSelected + delta;
-    if (newSelected < 0 || newSelected > item.computedAvailable) return;
+    // Lowering is always allowed so an over-allocated quantity can be fixed.
+    if (newSelected < 0 || (delta > 0 && (item.status === 'Unavailable' || newSelected > item.computedAvailable))) return;
     setSelectedEquip(prev => ({ ...prev, [item.id]: newSelected }));
+    if (newSelected <= item.computedAvailable) clearMissingField(getEquipmentFieldKey(item.id));
   };
 
   const handleEquipInputChange = (item, val) => {
-    if (item.status === 'Unavailable') return;
     if (val === '') {
       setSelectedEquip(prev => ({ ...prev, [item.id]: 0 }));
+      clearMissingField(getEquipmentFieldKey(item.id));
       return;
     }
     const num = parseInt(val, 10);
     if (isNaN(num) || num < 0) return;
+    const canIncrease = hasFacility && hasEquipmentDates && item.status !== 'Unavailable';
+    // While the item is locked, typing may only lower the quantity.
+    if (!canIncrease && num > (selectedEquip[item.id] || 0)) return;
     const capped = Math.min(num, item.computedAvailable);
     setSelectedEquip(prev => ({ ...prev, [item.id]: capped }));
+    clearMissingField(getEquipmentFieldKey(item.id));
   };
 
   const handleUtilityUnitsChange = (item, value) => {
-    if (!hasFacility || (item.status || '').toLowerCase() === 'unavailable' || !/^\d*$/.test(value)) return;
+    if (!/^\d*$/.test(value)) return;
     const quantity = value === '' ? 0 : Number(value);
     if (!Number.isSafeInteger(quantity)) return;
+    // Without a facility (or for an unavailable utility) a selection can only be lowered or removed.
+    const isLocked = !hasFacility || (item.status || '').toLowerCase() === 'unavailable';
+    if (isLocked && quantity > (selectedUtilityUnits[item.id] || 0)) return;
 
     setSelectedUtilityUnits(prev => {
       const updated = { ...prev };
@@ -1611,30 +1721,9 @@ const Reservation = ({ currentUserRole }) => {
     if (val.length >= 3 && val.length <= 4) val = val.slice(0, 2) + '/' + val.slice(2);
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
+    // The date rules are applied by the effect that watches eventDate.
     setEventDate(val);
     setRemovedScheduleDates([]);
-    
-    if (val.length > 0) {
-      const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val)
-        && parseDateOrdinal(val) !== null;
-      if (!isValidFormat) {
-        setDateError('Invalid format. Use MM/DD/YYYY');
-      } else {
-        const [m, d, y] = val.split('/').map(Number);
-        const inputDate = new Date(y, m - 1, d);
-        
-        const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
-        
-        if (inputDate < minDate) {
-          setDateError(getReservationDateErrorMessage(userRole, editingReservation));
-        } else {
-          setDateError('');
-          clearMissingField('eventDate');
-        }
-      }
-    } else {
-      setDateError('');
-    }
   };
 
   const handleDaysDateChange = (e) => {
@@ -1642,30 +1731,9 @@ const Reservation = ({ currentUserRole }) => {
     if (val.length >= 3 && val.length <= 4) val = val.slice(0, 2) + '/' + val.slice(2);
     else if (val.length > 4) val = val.slice(0, 2) + '/' + val.slice(2, 4) + '/' + val.slice(4, 8);
     
+    // The date rules are applied by the effect that watches endDateInput.
     setEndDateInput(val);
     setRemovedScheduleDates([]);
-    
-    if (val.length > 0) {
-      const isValidFormat = /^(0[1-9]|1[0-2])\/(0[1-9]|[12]\d|3[01])\/\d{4}$/.test(val)
-        && parseDateOrdinal(val) !== null;
-      if (!isValidFormat) {
-        setDaysDateError('Invalid format. Use MM/DD/YYYY');
-      } else {
-        const [m, d, y] = val.split('/').map(Number);
-        const inputDate = new Date(y, m - 1, d);
-        
-        const minDate = getReservationDateMinimum(userRole, Boolean(editingReservation));
-        
-        if (inputDate < minDate) {
-          setDaysDateError(getReservationDateErrorMessage(userRole, editingReservation));
-        } else {
-          setDaysDateError('');
-          clearMissingField('endDateInput');
-        }
-      }
-    } else {
-      setDaysDateError('');
-    }
   };
 
   const handlePrevMonth = () => setCalendarView(new Date(calendarView.getFullYear(), calendarView.getMonth() - 1, 1));
@@ -1791,6 +1859,7 @@ const Reservation = ({ currentUserRole }) => {
     setFormData({
         ...initialFormState,
         fullName: retainedFullName,
+        contactNumber: profileContactNumber,
         emailAddress: retainedEmail,
         requestorTypes: retainedRequestorTypes,
         requestorAttributes: retainedRequestorAttributes,
@@ -1930,6 +1999,10 @@ const Reservation = ({ currentUserRole }) => {
         missing: !Number.isInteger(Number(formData.specificRoomParticipants))
           || Number(formData.specificRoomParticipants) <= 0
       }] : []),
+      ...equipmentOverAllocations.map((item) => ({
+        key: getEquipmentFieldKey(item.id),
+        missing: true
+      })),
       ...(formData.otherEquipment.trim() ? [{
         key: 'otherEquipmentUnits',
         missing: otherEquipmentUnitsInvalid
@@ -2007,10 +2080,12 @@ const Reservation = ({ currentUserRole }) => {
       }
     }
 
-    if (!hasFacility && !hasEquipment) {
+    if (!hasFacility) {
       setCustomAlert({
         title: 'Selection Required',
-        message: 'Please select at least one facility or equipment to reserve.',
+        message: hasEquipment
+          ? 'Equipment and utilities are reserved together with a facility. Please select a facility or enter a specific room.'
+          : 'Please select at least one facility or enter a specific room to reserve.',
         isSuccess: false
       });
       return;
@@ -2128,7 +2203,7 @@ const Reservation = ({ currentUserRole }) => {
       const calculatedEndDate = endDateInput || calculateEndDate(eventDate, days);
       const generatedRefNo = editingReservation
         ? editingReservation.refNo
-        : `RES-${new Date().getFullYear()}-${Date.now().toString().slice(-5)}`;
+        : generateReservationRefNo();
 
       const {
         endorserDesignation: _endorserDesignation,
@@ -2205,7 +2280,10 @@ const Reservation = ({ currentUserRole }) => {
             }))
           ])
         ),
-        durationHours,
+        // Total reserved hours across every scheduled date, matching the form's Total Duration.
+        durationHours: getTotalScheduledHours(formData.facilities.length > 0
+          ? combineFacilitySchedules(latestFacilitySchedules)
+          : latestDailySchedule),
         days,
         aircon,
         airconOnTime: aircon ? formatTimeForStorage(startTime) : '',
@@ -2647,10 +2725,10 @@ const Reservation = ({ currentUserRole }) => {
                     autoComplete="off"
                     className={missingFields.endorserName ? 'input-error' : ''}
                   />
-                  {showEndorserDropdown && endorsersList.filter(e => e.cleanName.toLowerCase().includes(formData.endorserName.toLowerCase())).length > 0 && (
+                  {showEndorserDropdown && endorsersList.some((endorser) => matchesEndorserSearch(endorser, formData.endorserName)) && (
                     <div className="autocomplete-dropdown">
                       {endorsersList
-                        .filter(e => e.cleanName.toLowerCase().includes(formData.endorserName.toLowerCase()))
+                        .filter((endorser) => matchesEndorserSearch(endorser, formData.endorserName))
                         .map(endorser => (
                           <div 
                             key={endorser.id} 
@@ -2729,6 +2807,7 @@ const Reservation = ({ currentUserRole }) => {
                 const maxCapacity = limits.max;
                 const availability = facilityCapacityAvailabilities[item.id];
                 const isCapacityUnavailable = availability.scheduleAvailable
+                  && !availability.hasUnknownCapacity
                   && availability.availableCapacity === 0;
                 const status = isCapacityUnavailable ? 'Unavailable' : item.status;
                 const isMaintenance = item.status?.trim().toLowerCase() === 'maintenance';
@@ -2852,8 +2931,8 @@ const Reservation = ({ currentUserRole }) => {
                                                   [item.id]: {
                                                     ...previous[item.id],
                                                     [entry.date]: {
-                                                      startTime: value,
-                                                      endTime: previous[item.id]?.[entry.date]?.endTime ?? entry.endTime
+                                                      ...previous[item.id]?.[entry.date],
+                                                      startTime: value
                                                     }
                                                   }
                                                 }));
@@ -2876,7 +2955,7 @@ const Reservation = ({ currentUserRole }) => {
                                                   [item.id]: {
                                                     ...previous[item.id],
                                                     [entry.date]: {
-                                                      startTime: previous[item.id]?.[entry.date]?.startTime ?? entry.startTime,
+                                                      ...previous[item.id]?.[entry.date],
                                                       endTime: value
                                                     }
                                                   }
@@ -2979,6 +3058,7 @@ const Reservation = ({ currentUserRole }) => {
               <i className="ph ph-door"></i>
               <input
                 type="text"
+                maxLength={20}
                 value={formData.specificRoom}
                 onChange={(e) => handleInputChange('specificRoom', e.target.value)}
                 placeholder="e.g. Room 301, Annex B"
@@ -2998,6 +3078,7 @@ const Reservation = ({ currentUserRole }) => {
                 id="specific-room-participants"
                 type="text"
                 inputMode="numeric"
+                maxLength={3}
                 value={formData.specificRoomParticipants}
                 onKeyDown={(event) => {
                   if (event.key.length === 1 && !/[0-9]/.test(event.key)) event.preventDefault();
@@ -3025,44 +3106,68 @@ const Reservation = ({ currentUserRole }) => {
             ) : (
               mappedEquipmentList.map((item) => {
                 const count = selectedEquip[item.id] || 0;
-                const isLocked = item.status === 'Unavailable' || !hasFacility;
+                const isLocked = item.status === 'Unavailable' || !hasFacility || !hasEquipmentDates;
                 const isAvailable = !isLocked && item.computedAvailable > 0;
+                // A selected item stays editable so its quantity can be lowered or cleared.
+                const canReduce = count > 0;
+                const fieldKey = getEquipmentFieldKey(item.id);
+                const isOverAllocated = hasEquipmentDates && count > item.computedAvailable;
 
                 return (
-                  <div className={`equip-item ${isLocked ? 'is-locked' : ''}`} key={item.id}>
+                  <div
+                    className={`equip-item ${isLocked ? 'is-locked' : ''} ${isOverAllocated || missingFields[fieldKey] ? 'field-missing' : ''}`}
+                    key={item.id}
+                    ref={(element) => { fieldRefs.current[fieldKey] = element; }}
+                  >
                     <input
                       type="checkbox"
                       className="equipment-checkbox"
                       aria-label={`Select ${item.name || 'equipment'}`}
                       checked={count > 0}
-                      onChange={(e) => setSelectedEquip((previous) => ({
-                        ...previous,
-                        [item.id]: e.target.checked ? 1 : 0
-                      }))}
-                      disabled={isLocked || (!count && !isAvailable)}
+                      onChange={(e) => {
+                        setSelectedEquip((previous) => ({
+                          ...previous,
+                          [item.id]: e.target.checked ? 1 : 0
+                        }));
+                        if (!e.target.checked) clearMissingField(fieldKey);
+                      }}
+                      disabled={count > 0 ? !canReduce : !isAvailable}
                     />
                     <div className="equip-info">
                       <div>
                         <strong>{item.name}</strong>
                         <span>{item.sku}</span>
-                        <span className={`equip-status ${item.status?.toLowerCase() || ''}`}>
-                          ● {item.status} ({item.computedAvailable} / {item.computedTotal} units)
-                          {' · '}{item.computedUnderMaintenance} under maintenance
-                        </span>
+                        {hasEquipmentDates ? (
+                          <span className={`equip-status ${item.status?.toLowerCase() || ''}`}>
+                            ● {item.status} ({item.computedAvailable} / {item.computedTotal} units)
+                            {' · '}{item.computedUnderMaintenance} under maintenance
+                          </span>
+                        ) : (
+                          <span className="equip-status schedule-needed">
+                            ● Select a date to check availability
+                          </span>
+                        )}
+                        {isOverAllocated && (
+                          <span className="field-error">
+                            {item.computedAvailable === 0
+                              ? 'No units are available for these dates. Remove this item or change the dates.'
+                              : `Only ${item.computedAvailable} ${item.computedAvailable === 1 ? 'unit is' : 'units are'} available for these dates.`}
+                          </span>
+                        )}
                       </div>
                     </div>
                     <div className="counter">
                       <button
                         type="button"
                         onClick={() => updateEquip(item, -1)}
-                        disabled={count <= 0 || isLocked}
+                        disabled={!canReduce}
                       >-</button>
                       <input
                         type="text"
                         inputMode="numeric"
                         value={count}
                         onChange={(e) => handleEquipInputChange(item, e.target.value)}
-                        disabled={isLocked}
+                        disabled={isLocked && !canReduce}
                       />
                       <button
                         type="button"
@@ -3082,9 +3187,12 @@ const Reservation = ({ currentUserRole }) => {
               <i className="ph ph-package"></i>
               <input
                 type="text"
+                maxLength={20}
+                disabled={!hasFacility && !formData.otherEquipment}
+                title={!hasFacility ? 'Select a facility first.' : undefined}
                 value={formData.otherEquipment}
                 onChange={(e) => handleInputChange('otherEquipment', e.target.value)}
-                placeholder="e.g. Speaker - 20 units"
+                placeholder="e.g. Speaker"
               />
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
@@ -3099,6 +3207,7 @@ const Reservation = ({ currentUserRole }) => {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
+                maxLength={3}
                 value={formData.otherEquipmentUnits}
                 onChange={(event) => handleResourceUnitsChange('otherEquipmentUnits', event.target.value)}
                 placeholder="Enter whole number"
@@ -3139,7 +3248,7 @@ const Reservation = ({ currentUserRole }) => {
                       className="utility-checkbox"
                       checked={isSelected}
                       onChange={(e) => handleUtilityUnitsChange(item, e.target.checked ? String(quantity || 1) : '')}
-                      disabled={isLocked}
+                      disabled={isLocked && !isSelected}
                     />
                     <div className="utility-info">
                       <strong>{item.name || 'Untitled Utility'}</strong>
@@ -3156,7 +3265,7 @@ const Reservation = ({ currentUserRole }) => {
                           type="button"
                           aria-label={`Decrease ${item.name || 'utility'} units`}
                           onClick={() => handleUtilityUnitsChange(item, String(Math.max(0, quantity - 1)))}
-                          disabled={isLocked || quantity === 0}
+                          disabled={quantity === 0}
                         >-</button>
                         <input
                           type="text"
@@ -3165,7 +3274,7 @@ const Reservation = ({ currentUserRole }) => {
                           aria-label={`${item.name || 'Utility'} units`}
                           value={quantity}
                           onChange={(e) => handleUtilityUnitsChange(item, e.target.value)}
-                          disabled={isLocked}
+                          disabled={isLocked && !isSelected}
                         />
                         <button
                           type="button"
@@ -3188,9 +3297,12 @@ const Reservation = ({ currentUserRole }) => {
               <i className="ph ph-lightning"></i>
               <input
                 type="text"
+                maxLength={20}
+                disabled={!hasFacility && !formData.otherUtility}
+                title={!hasFacility ? 'Select a facility first.' : undefined}
                 value={formData.otherUtility}
                 onChange={(e) => handleInputChange('otherUtility', e.target.value)}
-                placeholder="e.g. Blackboard - 5 units"
+                placeholder="e.g. Blackboard"
               />
             </div>
             <span className="helper-text">Leave blank if not applicable</span>
@@ -3205,6 +3317,7 @@ const Reservation = ({ currentUserRole }) => {
                 type="text"
                 inputMode="numeric"
                 pattern="[0-9]*"
+                maxLength={3}
                 value={formData.otherUtilityUnits}
                 onChange={(event) => handleResourceUnitsChange('otherUtilityUnits', event.target.value)}
                 placeholder="Enter whole number"
@@ -3512,8 +3625,8 @@ const Reservation = ({ currentUserRole }) => {
                               setDailyScheduleOverrides((overrides) => ({
                                 ...overrides,
                                 [entry.date]: {
-                                  startTime: value,
-                                  endTime: overrides[entry.date]?.endTime ?? entry.endTime
+                                  ...overrides[entry.date],
+                                  startTime: value
                                 }
                               }));
                               clearMissingField('schedule');
@@ -3534,7 +3647,7 @@ const Reservation = ({ currentUserRole }) => {
                               setDailyScheduleOverrides((overrides) => ({
                                 ...overrides,
                                 [entry.date]: {
-                                  startTime: overrides[entry.date]?.startTime ?? entry.startTime,
+                                  ...overrides[entry.date],
                                   endTime: value
                                 }
                               }));
@@ -3577,7 +3690,12 @@ const Reservation = ({ currentUserRole }) => {
           )}
 
           {liveConflict && (
-            <div className="schedule-conflict-notice full-width" role="alert" aria-live="assertive">
+            <div
+              className="schedule-conflict-notice full-width"
+              role="alert"
+              aria-live="assertive"
+              ref={conflictNoticeRef}
+            >
               <strong>
                 {liveConflict.conflictType === 'capacity'
                   ? 'Facility capacity exceeded — this reservation cannot be submitted.'
@@ -3787,7 +3905,15 @@ const Reservation = ({ currentUserRole }) => {
       {showOverlapWarning && (
         <div className="modal-overlay"> 
           <div className="modal-card reservation-alert-modal">
-            <h3 className="modal-title error">Schedule Conflict</h3>
+            <h3 className="modal-title error">
+              {conflictEvent?.conflictType === 'capacity'
+                ? 'Facility Capacity Exceeded'
+                : conflictEvent?.conflictType === 'specific-room'
+                  ? 'Specific Room Already Reserved'
+                  : conflictEvent?.conflictType === 'unknown-capacity'
+                    ? 'Capacity Cannot Be Verified'
+                    : 'Schedule Conflict'}
+            </h3>
             <p className="modal-message">
               {conflictEvent?.conflictType === 'capacity'
                 ? <>
@@ -3799,9 +3925,14 @@ const Reservation = ({ currentUserRole }) => {
                       Specific room <strong>{conflictEvent.roomName}</strong> is already reserved
                       {' '}by <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time}).
                     </>
+                : conflictEvent?.conflictType === 'unknown-capacity'
+                  ? <>
+                      <strong>{conflictEvent.facilityName || 'The selected facility'}</strong>’s remaining capacity
+                      {' '}can’t be checked because <strong>{conflictEvent.eventName}</strong>
+                      {' '}({conflictEvent.date}, {conflictEvent.time}) has no valid participant count.
+                    </>
                 : <>
-                    The conflict is with <strong>{conflictEvent?.facilityName || 'the selected facility'}</strong>,
-                    {' '}which is already reserved during the selected multi-day time window
+                    <strong>{conflictEvent?.facilityName || 'The selected facility'}</strong> is already reserved
                     {conflictEvent && (
                       <> by <strong>{conflictEvent.eventName}</strong> ({conflictEvent.date}, {conflictEvent.time})</>
                     )}.

@@ -87,7 +87,9 @@ const getDefaultDashboardFilters = () => {
     endDate: toDateInputValue(endDate),
     startTime: '',
     endTime: '',
-    status: 'all'
+    status: 'all',
+    // Facility IDs to include; an empty list means all facilities.
+    facilities: []
   };
 };
 
@@ -388,7 +390,7 @@ const DashboardTimePicker = ({ value, onChange, label }) => {
 };
 
 // Date, time, status, and quick-range filters for analytics dashboards.
-const DashboardFilters = ({ filters, setFilters, setDatePreset, resultCount }) => (
+const DashboardFilters = ({ filters, setFilters, setDatePreset, resultCount, facilityOptions }) => (
   <section className="dashboard-filters" aria-label="Dashboard filters">
     <div className="filter-heading">
       <div>
@@ -457,6 +459,40 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset, resultCount }) =
         </select>
       </label>
     </div>
+    {facilityOptions && (
+      <fieldset className="dashboard-facility-filter">
+        <legend>Facilities</legend>
+        <div className="dashboard-facility-filter-options">
+          <label className="dashboard-facility-filter-option">
+            <input
+              type="checkbox"
+              checked={filters.facilities.length === 0}
+              onChange={() => setFilters((current) => ({ ...current, facilities: [] }))}
+            />
+            <span>All facilities</span>
+          </label>
+          {facilityOptions.map((facility) => {
+            const facilityId = String(facility.id);
+            const isChecked = filters.facilities.includes(facilityId);
+            return (
+              <label className="dashboard-facility-filter-option" key={facilityId}>
+                <input
+                  type="checkbox"
+                  checked={isChecked}
+                  onChange={() => setFilters((current) => ({
+                    ...current,
+                    facilities: isChecked
+                      ? current.facilities.filter((id) => id !== facilityId)
+                      : [...current.facilities, facilityId]
+                  }))}
+                />
+                <span>{facility.name}</span>
+              </label>
+            );
+          })}
+        </div>
+      </fieldset>
+    )}
     <label className="date-presets">
       <span className="date-presets-label">Quick range</span>
       <select
@@ -804,6 +840,41 @@ const DashboardContent = ({ currentUserRole }) => {
     weekAhead.setHours(23, 59, 59, 999);
   }
 
+  // Facility filter (building admin): options come from the live facilities list, so new facilities appear
+  // automatically. Every facility-based panel uses `reportFacilities` instead of the full list.
+  const facilityFilterOptions = useMemo(
+    () => [...facilitiesData]
+      .map((facility) => ({ id: facility.id, name: facility.name || 'Facility' }))
+      .sort((first, second) => first.name.localeCompare(second.name, undefined, { sensitivity: 'base' })),
+    [facilitiesData]
+  );
+  // Ticked facilities that still exist; none ticked means every facility.
+  const selectedFilterFacilities = useMemo(
+    () => facilitiesData.filter((facility) => filters.facilities.includes(String(facility.id))),
+    [facilitiesData, filters.facilities]
+  );
+  const selectedFilterFacilityIds = useMemo(
+    () => (selectedFilterFacilities.length
+      ? new Set(selectedFilterFacilities.map((facility) => String(facility.id)))
+      : null),
+    [selectedFilterFacilities]
+  );
+  const reportFacilities = selectedFilterFacilities.length ? selectedFilterFacilities : facilitiesData;
+  const selectedFilterFacilityLabel = selectedFilterFacilities.length
+    ? selectedFilterFacilities.map((facility) => facility.name || 'Facility').sort().join(', ')
+    : 'All facilities';
+  // Drop ticked facilities that have been deleted, so the filter never points at a missing facility.
+  useEffect(() => {
+    if (!facilitiesData.length) return;
+    const existingIds = new Set(facilitiesData.map((facility) => String(facility.id)));
+    if (filters.facilities.some((id) => !existingIds.has(id))) {
+      setFilters((current) => ({
+        ...current,
+        facilities: current.facilities.filter((id) => existingIds.has(id))
+      }));
+    }
+  }, [facilitiesData, filters.facilities]);
+
   const dashboardReservations = useMemo(() => {
     const activeReservationIds = new Set(reservationsData.map(({ id }) => id));
     const approvedArchivedReservations = historyData.filter((reservation) => (
@@ -880,7 +951,7 @@ const DashboardContent = ({ currentUserRole }) => {
     }
     const operatingHours = getFacilityOperatingHours(rangeStart, rangeEnd);
 
-    return facilitiesData.map((facility) => {
+    return reportFacilities.map((facility) => {
       const bookedMinutes = dashboardReservations.reduce((reservationTotal, reservation) => {
         if (
           (reservation.status || '').toLowerCase().trim() !== 'approved'
@@ -918,7 +989,7 @@ const DashboardContent = ({ currentUserRole }) => {
     });
   }, [
     isBuildingAdminDashboard,
-    facilitiesData,
+    reportFacilities,
     dashboardReservations,
     startDate,
     endDate,
@@ -936,7 +1007,7 @@ const DashboardContent = ({ currentUserRole }) => {
       }
     });
 
-    return facilitiesData.map((facility) => {
+    return reportFacilities.map((facility) => {
       const cells = Array.from({ length: 7 }, () => (
         Array.from({ length: HEATMAP_HOURS.length }, () => 0)
       ));
@@ -1004,7 +1075,7 @@ const DashboardContent = ({ currentUserRole }) => {
     });
   }, [
     isBuildingAdminDashboard,
-    facilitiesData,
+    reportFacilities,
     reservationsData,
     historyData,
     heatmapStartValue,
@@ -1014,6 +1085,10 @@ const DashboardContent = ({ currentUserRole }) => {
 
   const filteredReservations = useMemo(() => dashboardReservations.filter((reservation) => {
     if (!matchesDashboardReservationScope(reservation, dashboardRole)) return false;
+    if (
+      selectedFilterFacilityIds
+      && !(reservation.facilities || []).some((facilityId) => selectedFilterFacilityIds.has(String(facilityId)))
+    ) return false;
 
     const reservationDate = parseDate(reservation.eventDate || reservation.date);
     const scheduledDates = getReservationScheduleForFacility(reservation)
@@ -1050,6 +1125,7 @@ const DashboardContent = ({ currentUserRole }) => {
     filters.startDate,
     filters.endDate,
     filters.status,
+    selectedFilterFacilityIds,
     startMinutes,
     endMinutes
   ]);
@@ -1646,8 +1722,11 @@ const DashboardContent = ({ currentUserRole }) => {
       return rankingModes.facilities === 'most' ? facility.count > 0 : true;
     });
   const buildingAdminFacilityUsage = useMemo(
-    () => facilityUsage.filter((facility) => !String(facility.id).startsWith('specific-room-')),
-    [facilityUsage]
+    () => facilityUsage.filter((facility) => (
+      !String(facility.id).startsWith('specific-room-')
+      && (!selectedFilterFacilityIds || selectedFilterFacilityIds.has(String(facility.id)))
+    )),
+    [facilityUsage, selectedFilterFacilityIds]
   );
   const equipmentMaximum = Math.max(1, ...equipmentRanking.map((equipment) => equipment.quantity));
   const utilityMaximum = Math.max(1, ...utilitiesRanking.map((utility) => utility.quantity));
@@ -1844,7 +1923,8 @@ const DashboardContent = ({ currentUserRole }) => {
             : 'All times',
           status: filters.status === 'all'
             ? 'Approved and pending'
-            : filters.status[0].toUpperCase() + filters.status.slice(1)
+            : filters.status[0].toUpperCase() + filters.status.slice(1),
+          facility: selectedFilterFacilityLabel
         },
         summary: metrics,
         trend: trendData,
@@ -2153,7 +2233,11 @@ const DashboardContent = ({ currentUserRole }) => {
             isExporting={isExportingDashboardPdf}
             error={dashboardPdfExportError}
             onExport={exportDashboardPdf}
-            dateRangeLabel={heatmapDateRangeLabel}
+            dateRangeLabel={selectedFilterFacilities.length
+              ? `${heatmapDateRangeLabel} · ${selectedFilterFacilities.length === 1
+                ? selectedFilterFacilityLabel
+                : `${selectedFilterFacilities.length} facilities`}`
+              : heatmapDateRangeLabel}
             resultCount={metrics.total}
             rankingMode={rankingModes.facilities}
             heatmapFacilities={venueTrafficHeatmaps}
@@ -2553,6 +2637,7 @@ const DashboardContent = ({ currentUserRole }) => {
             setDatePreset={setDatePreset}
             isAdminDashboard={isAdminDashboard}
             resultCount={isBuildingAdminDashboard ? metrics.total : undefined}
+            facilityOptions={isBuildingAdminDashboard ? facilityFilterOptions : undefined}
           />
           {!isBuildingAdminDashboard && dashboardKpis}
           {/* Summarize reservation trends. */}

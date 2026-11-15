@@ -1565,8 +1565,14 @@ $orange-main: #F59E0B;
         }
       }
 
-      &.is-locked { 
-        opacity: .6; 
+      &.is-locked {
+        opacity: .6;
+      }
+
+      &.field-missing {
+        border-color: $red-main;
+        background: #FEF2F2;
+        opacity: 1;
       }
     }
 
@@ -1599,9 +1605,16 @@ $orange-main: #F59E0B;
         font-size: var(--font-body); 
         font-weight: 600; 
 
-        &.available { color: $green-main; } 
-        &.maintenance { color: $orange-main; } 
-        &.unavailable { color: $red-main; } 
+        &.available { color: $green-main; }
+        &.maintenance { color: $orange-main; }
+        &.unavailable { color: $red-main; }
+        &.schedule-needed { color: $text-muted; }
+      }
+
+      .field-error {
+        margin-top: 0.25rem;
+        color: $red-main;
+        font-weight: 600;
       }
     }
 

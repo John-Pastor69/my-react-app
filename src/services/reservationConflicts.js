@@ -192,6 +192,24 @@ const normalizeSpecificRoom = (room) => String(room || '')
   .toLowerCase()
   .replace(/[^a-z0-9]/g, '');
 
+// Standalone 3-digit room numbers in a name ("Rm. 301" -> ["301"]); 4+ digit runs like "1201" are ignored.
+const getRoomNumbers = (room) => String(room || '').match(/(?<!\d)\d{3}(?!\d)/g) || [];
+
+// Every room has a unique 3-digit number, so names that share one ("Room 301", "Rm 301", "301") are the
+// same room. Names without a 3-digit number ("AVR", "Annex B") must match ignoring spaces and punctuation.
+export const isSameSpecificRoom = (firstRoom, secondRoom) => {
+  const first = normalizeSpecificRoom(firstRoom);
+  const second = normalizeSpecificRoom(secondRoom);
+  if (!first || !second) return false;
+
+  const firstNumbers = getRoomNumbers(firstRoom);
+  const secondNumbers = getRoomNumbers(secondRoom);
+  if (firstNumbers.length && secondNumbers.length) {
+    return firstNumbers.some((number) => secondNumbers.includes(number));
+  }
+  return first === second;
+};
+
 export const findSpecificRoomConflict = (reservations, request) => {
   const requestedRoom = normalizeSpecificRoom(request.specificRoom);
   if (!requestedRoom) return null;
@@ -204,7 +222,7 @@ export const findSpecificRoomConflict = (reservations, request) => {
       reservation.id === request.excludeReservationId
       || !isReservationActive(reservation)
       || hasRejectedApproval(reservation)
-      || normalizeSpecificRoom(reservation.specificRoom) !== requestedRoom
+      || !isSameSpecificRoom(request.specificRoom, reservation.specificRoom)
     ) continue;
 
     const reservationSchedule = getReservationSchedule(reservation);

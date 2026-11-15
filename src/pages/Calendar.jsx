@@ -740,7 +740,6 @@ const Calendar = ({ currentUserRole }) => {
                 <div className="sidebar-header">
                   <div>
                     <h3>{displayDate}</h3>
-                    <p>{isArchiveVisible ? "Archived reservations for selected date" : "All reservations for selected date"}</p>
                   </div>
                   <span className="event-count">{sidebarEvents.length} events</span>
                 </div>

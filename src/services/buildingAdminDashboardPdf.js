@@ -402,11 +402,12 @@ export const exportBuildingAdminDashboardPdf = (report) => {
   let y = addSectionHeading(doc, 'Filtered analytics', 29);
   y = addTable(doc, {
     title: 'Filter by date',
-    headers: ['Date range', 'Start-time range', 'Status', 'Reservations found'],
+    headers: ['Date range', 'Start-time range', 'Status', 'Facility', 'Reservations found'],
     rows: [[
       report.filters.dates,
       report.filters.times,
       report.filters.status,
+      report.filters.facility || 'All facilities',
       report.summary.total
     ]],
     y,

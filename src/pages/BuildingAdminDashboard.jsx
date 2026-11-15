@@ -304,13 +304,16 @@ export const BuildingAdminVenueUtilization = ({
           ) : (
             <p className="panel-empty">No facilities have booked operating hours in the selected date range.</p>
           )}
-          <button
-            className="venue-utilization-view-all"
-            type="button"
-            onClick={() => setIsAllOpen(true)}
-          >
-            View All ({sortedVenues.length})
-          </button>
+          {/* With a single facility (e.g. one facility filtered), the panel already shows everything. */}
+          {sortedVenues.length > 1 && (
+            <button
+              className="venue-utilization-view-all"
+              type="button"
+              onClick={() => setIsAllOpen(true)}
+            >
+              View All ({sortedVenues.length})
+            </button>
+          )}
         </>
       ) : (
         <p className="panel-empty">No facilities have booked operating hours in the selected date range.</p>
@@ -418,13 +421,15 @@ export const BuildingAdminVenueTraffic = ({
               dateRangeLabel={dateRangeLabel}
             />
           </div>
-          <button
-            className="venue-utilization-view-all"
-            type="button"
-            onClick={() => setIsAllOpen(true)}
-          >
-            View More ({sortedVenues.length})
-          </button>
+          {sortedVenues.length > 1 && (
+            <button
+              className="venue-utilization-view-all"
+              type="button"
+              onClick={() => setIsAllOpen(true)}
+            >
+              View More ({sortedVenues.length})
+            </button>
+          )}
         </>
       ) : (
         <p className="panel-empty">No facilities are available to calculate venue booking traffic.</p>
@@ -627,7 +632,7 @@ export const BuildingAdminFacilityInsights = ({
         ) : (
           <p className="panel-empty">No approved facility bookings match these filters.</p>
         )}
-        {rankedFacilities.length > 0 && (
+        {rankedFacilities.length > 1 && (
           <button
             className="venue-utilization-view-all"
             type="button"

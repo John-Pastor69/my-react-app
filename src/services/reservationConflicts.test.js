@@ -3,6 +3,7 @@ import test from 'node:test';
 import {
   findFacilityConflict,
   findSpecificRoomConflict,
+  isSameSpecificRoom,
   getActiveFacilityReservations,
   getFacilityCapacityAvailability,
   getOverlappingFacilityReservations,
@@ -98,6 +99,32 @@ test('specific room reservations allow different rooms, separate times, and excl
     schedule: [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }],
     excludeReservationId: 'existing'
   }), null);
+});
+
+test('specific rooms with the same 3-digit number conflict even when written differently', () => {
+  const existing = reservation('existing', {
+    specificRoom: 'Room 301',
+    schedule: [{ date: '2026-10-03', startTime: '08:00', endTime: '10:00' }]
+  });
+  const overlapping = [{ date: '2026-10-03', startTime: '09:00', endTime: '11:00' }];
+
+  ['301', 'Rm 301', 'rm. 301', 'RM301'].forEach((specificRoom) => {
+    assert.equal(
+      findSpecificRoomConflict([existing], { specificRoom, schedule: overlapping })?.conflictType,
+      'specific-room',
+      `${specificRoom} should be treated as Room 301`
+    );
+  });
+});
+
+test('specific room matching uses only standalone 3-digit numbers and exact names otherwise', () => {
+  assert.equal(isSameSpecificRoom('Room 301', 'Rm. 301'), true);
+  assert.equal(isSameSpecificRoom('Room 301', 'Room 302'), false);
+  assert.equal(isSameSpecificRoom('Room 1201', 'Room 120'), false);
+  assert.equal(isSameSpecificRoom('Rooms 301/302', 'Room 302'), true);
+  assert.equal(isSameSpecificRoom('AVR', 'avr'), true);
+  assert.equal(isSameSpecificRoom('Annex B', 'Annex B2'), false);
+  assert.equal(isSameSpecificRoom('Room 301', ''), false);
 });
 
 test('specific room conflicts ignore released and rejected reservations', () => {
