@@ -1,6 +1,11 @@
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { getDashboardPdfDateRange } from './dashboardPdfDateRange.js';
+import {
+  sortFacilitiesByName,
+  sortFacilityRanking,
+  sortVenuesByUtilization
+} from './facilityUtilization.js';
 
 const PAGE_MARGIN = 12;
 const FOOTER_MARGIN = 18;
@@ -12,6 +17,12 @@ const HEATMAP_COLORS = [
   [59, 130, 246],
   [30, 64, 175]
 ];
+const HEATMAP_HOUR_HEADERS = Array.from({ length: 15 }, (_, index) => {
+  const hour = index + 7;
+  return `${hour % 12 || 12}${hour < 12 ? 'a' : 'p'}`;
+});
+
+export const BUILDING_ADMIN_PDF_SECTIONS = ['activity', 'utilization', 'heatmap', 'ranking', 'matched'];
 
 const toText = (value) => (value === null || value === undefined ? '' : String(value));
 
@@ -105,7 +116,7 @@ const drawTrendChart = (doc, trend, y) => {
 };
 
 const drawUtilizationChart = (doc, utilization, y) => {
-  y = addSectionHeading(doc, 'Venue utilization chart', y);
+  y = addSectionHeading(doc, 'Facility usage rate chart', y);
   if (!utilization.length) {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8);
@@ -268,111 +279,13 @@ const addFooter = (doc) => {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(113, 128, 154);
-    doc.text('Building Admin Dashboard Report', PAGE_MARGIN, pageHeight - 7);
+    doc.text('Building Admin Filtered Analytics', PAGE_MARGIN, pageHeight - 7);
     doc.text(`Page ${page} of ${pageCount}`, pageWidth - PAGE_MARGIN, pageHeight - 7, { align: 'right' });
   }
 };
 
-export const exportBuildingAdminDashboardPdf = (report) => {
-  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(19);
-  doc.setTextColor(23, 36, 59);
-  doc.text('Building Admin Dashboard Report', PAGE_MARGIN, 17);
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(8);
-  doc.setTextColor(113, 128, 154);
-  doc.text(`Generated ${toText(report.generatedAt)}`, PAGE_MARGIN, 23);
-
-  let y = addSectionHeading(doc, 'Live operation', 29);
-  y = addTable(doc, {
-    title: 'Reservations awaiting your approval',
-    headers: ['Reference', 'Event', 'Requestor', 'Event date', 'Start time'],
-    rows: report.approvals.map((reservation) => [
-      reservation.reference,
-      reservation.event,
-      reservation.requestor,
-      reservation.date,
-      reservation.time
-    ]),
-    y,
-    fontSize: 6.5
-  });
-  y = addTable(doc, {
-    title: 'Upcoming approved reservations',
-    headers: ['Reference', 'Event', 'Requestor', 'Event date', 'Start time', 'Facilities'],
-    rows: report.upcomingReservations.map((reservation) => [
-      reservation.reference,
-      reservation.event,
-      reservation.requestor,
-      reservation.date,
-      reservation.time,
-      reservation.facilities
-    ]),
-    y,
-    fontSize: 6.5
-  });
-  y = addTable(doc, {
-    title: 'Resource alerts',
-    headers: ['Category', 'Item', 'Details'],
-    rows: report.alerts.map((alert) => [alert.category, alert.title, alert.detail]),
-    y,
-    fontSize: 7
-  });
-  y = addTable(doc, {
-    title: 'Facility snapshot',
-    headers: ['Facilities in directory', 'Available', 'Maintenance', 'Unavailable'],
-    rows: [[
-      report.snapshot.facilities,
-      report.snapshot.available,
-      report.snapshot.maintenance,
-      report.snapshot.unavailable
-    ]],
-    y,
-    fontSize: 8
-  });
-  y = drawUtilizationChart(doc, report.utilization, y);
-  y = addTable(doc, {
-    title: 'Venue utilization details',
-    headers: ['Facility', 'Booked hours', 'Operating hours', 'Utilization', 'Date range'],
-    rows: report.utilization.map((venue) => [
-      venue.name,
-      Number(venue.bookedHours || 0).toFixed(1),
-      Number(venue.operatingHours) || 0,
-      `${Number(venue.utilizationPercent || 0).toFixed(1)}%`,
-      venue.dateRange || ''
-    ]),
-    y,
-    fontSize: 7
-  });
-
-  y = addSectionHeading(doc, 'Filtered analytics', y);
-  y = addTable(doc, {
-    title: 'Current dashboard selections',
-    headers: ['Date range', 'Start-time range', 'Status', 'Upcoming window', 'Alert category', 'Heatmap facility'],
-    rows: [[
-      report.filters.dates,
-      report.filters.times,
-      report.filters.status,
-      report.filters.upcomingWindow,
-      report.filters.alertCategory,
-      report.filters.heatmapFacility
-    ]],
-    y,
-    fontSize: 7
-  });
-  y = addTable(doc, {
-    title: 'Filtered reservation summary',
-    headers: ['Matching reservations', 'Approved', 'Pending', 'Approved equipment units'],
-    rows: [[
-      report.summary.total,
-      report.summary.approved,
-      report.summary.pending,
-      report.summary.reservedUnits
-    ]],
-    y,
-    fontSize: 8
-  });
+const addActivitySection = (doc, report, y) => {
+  y = addSectionHeading(doc, 'Reservation activity', y);
   y = drawTrendChart(doc, report.trend, y);
   y = addTable(doc, {
     title: 'Reservation activity data',
@@ -381,68 +294,131 @@ export const exportBuildingAdminDashboardPdf = (report) => {
     y,
     fontSize: 7
   });
-  y = addTable(doc, {
-    title: 'Facility ranking',
-    headers: ['Facility', 'Approved reservations'],
-    rows: report.facilityRanking.map((facility) => [facility.name, facility.count]),
+  return addTable(doc, {
+    title: 'Reservation status breakdown',
+    headers: ['Matching reservations', 'Approved', 'Pending'],
+    rows: [[report.summary.total, report.summary.approved, report.summary.pending]],
+    y,
+    fontSize: 8
+  });
+};
+
+const addUtilizationSection = (doc, report, y) => {
+  const venues = sortVenuesByUtilization(report.utilization);
+  y = addSectionHeading(doc, 'Facility Usage Rate', y);
+  y = drawUtilizationChart(doc, venues, y);
+  return addTable(doc, {
+    title: 'Facility usage rate details',
+    headers: ['Rank', 'Facility', 'Booked hours', 'Operating hours', 'Usage rate'],
+    rows: venues.map((venue, index) => [
+      index + 1,
+      venue.name,
+      Number(venue.bookedHours || 0).toFixed(1),
+      Number(venue.operatingHours) || 0,
+      `${Number(venue.utilizationPercent || 0).toFixed(1)}%`
+    ]),
     y,
     fontSize: 7
   });
+};
 
-  report.heatmaps.forEach((venue) => {
-    y = drawHeatmap(
-      doc,
-      venue,
-      report.heatmapDateRangeLabel,
-      report.heatmapStatusLabel,
-      y
-    );
-    const hourHeaders = Array.from({ length: 15 }, (_, index) => {
-      const hour = index + 7;
-      return `${hour % 12 || 12}${hour < 12 ? 'a' : 'p'}`;
-    });
+const addHeatmapSection = (doc, report, y) => {
+  y = addSectionHeading(doc, 'Busiest Hours Map', y);
+  const venues = sortFacilitiesByName(report.heatmaps);
+  if (!venues.length) {
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8);
+    doc.setTextColor(23, 36, 59);
+    doc.text('No facilities were selected for the busiest hours map.', PAGE_MARGIN, y + 5);
+    return y + 14;
+  }
+  venues.forEach((venue) => {
+    y = drawHeatmap(doc, venue, report.heatmapDateRangeLabel, report.heatmapStatusLabel, y);
     y = addTable(doc, {
-      title: `${venue.name} heatmap values (${report.heatmapStatusLabel.toLowerCase()}, ${report.heatmapDateRangeLabel})`,
-      headers: ['Weekday', ...hourHeaders],
+      title: `${venue.name} booked hours by weekday and hour`,
+      headers: ['Weekday', ...HEATMAP_HOUR_HEADERS],
       rows: WEEKDAYS.map((day, weekday) => [
         day,
-        ...venue.cells[weekday].map((minutes) => (Number(minutes || 0) / 60).toFixed(1))
+        ...(venue.cells?.[weekday] || []).map((minutes) => (Number(minutes || 0) / 60).toFixed(1))
       ]),
       y,
       fontSize: 5.5,
       columnStyles: { 0: { halign: 'left', cellWidth: 22 } }
     });
   });
+  return y;
+};
 
-  y = addTable(doc, {
-    title: 'All matching reservations - event details',
-    headers: ['Reference', 'Event', 'Requestor', 'Dates', 'Times', 'Status', 'Source'],
-    rows: report.reservations.map((reservation) => [
-      reservation.reference,
-      reservation.event,
-      reservation.requestor,
-      reservation.dates,
-      reservation.times,
-      reservation.status,
-      reservation.source
-    ]),
+const addRankingSection = (doc, report, y) => {
+  const mode = report.rankingMode === 'least' ? 'least' : 'most';
+  return addTable(doc, {
+    title: mode === 'least' ? 'Least Requested Facilities' : 'Most Requested Facilities',
+    headers: ['Rank', 'Facility', 'Approved reservations'],
+    rows: sortFacilityRanking(report.facilityRanking, mode)
+      .map((facility, index) => [index + 1, facility.name, facility.count]),
     y,
-    fontSize: 6
+    fontSize: 7
   });
-  addTable(doc, {
-    title: 'All matching reservations - facilities and requested resources',
-    headers: ['Reference', 'Facilities', 'Requested resources'],
-    rows: report.reservations.map((reservation) => [
-      reservation.reference,
-      reservation.facilities,
-      reservation.resources
-    ]),
+};
+
+const addMatchedSection = (doc, report, y) => addTable(doc, {
+  title: 'Matched reservations',
+  headers: ['Event', 'Requestor', 'Date and time', 'Facilities', 'Participants', 'Status'],
+  rows: report.matchedReservations.map((reservation) => [
+    reservation.event,
+    reservation.requestor,
+    reservation.dateTime,
+    reservation.facilities,
+    reservation.participants,
+    reservation.status
+  ]),
+  y,
+  fontSize: 6.5
+});
+
+const SECTION_RENDERERS = {
+  activity: addActivitySection,
+  utilization: addUtilizationSection,
+  heatmap: addHeatmapSection,
+  ranking: addRankingSection,
+  matched: addMatchedSection
+};
+
+export const exportBuildingAdminDashboardPdf = (report) => {
+  const requestedSections = new Set(report.sections || BUILDING_ADMIN_PDF_SECTIONS);
+  const sections = BUILDING_ADMIN_PDF_SECTIONS.filter((key) => requestedSections.has(key));
+  if (!sections.length) throw new Error('Choose at least one section to export.');
+
+  const doc = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(19);
+  doc.setTextColor(23, 36, 59);
+  doc.text('Building Admin Filtered Analytics', PAGE_MARGIN, 17);
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(8);
+  doc.setTextColor(113, 128, 154);
+  doc.text(`Generated ${toText(report.generatedAt)}`, PAGE_MARGIN, 23);
+
+  let y = addSectionHeading(doc, 'Filtered analytics', 29);
+  y = addTable(doc, {
+    title: 'Filter by date',
+    headers: ['Date range', 'Start-time range', 'Status', 'Reservations found'],
+    rows: [[
+      report.filters.dates,
+      report.filters.times,
+      report.filters.status,
+      report.summary.total
+    ]],
     y,
-    fontSize: 6
+    fontSize: 7
+  });
+
+  sections.forEach((key) => {
+    y = SECTION_RENDERERS[key](doc, report, y);
   });
 
   addFooter(doc);
   const dateRange = getDashboardPdfDateRange(report.filters);
-  doc.save(`Building Admin Dashboard - ${dateRange}.pdf`);
+  doc.save(`Building Admin Filtered Analytics - ${dateRange}.pdf`);
   return doc;
 };

@@ -87,47 +87,87 @@ test('MIS PDF puts live operation before filtered analytics and groups related d
   ]);
 });
 
-test('Building Admin PDF puts live operation before filtered analytics and groups related data', () => {
-  const pdf = createPdfOutput(exportBuildingAdminDashboardPdf, {
-    generatedAt: 'test',
-    filters: {
-      dates: 'All dates',
-      times: 'All times',
-      status: 'All statuses',
-      upcomingWindow: '7 days',
-      alertCategory: 'All categories',
-      heatmapFacility: 'All facilities'
-    },
-    summary: { total: 0, approved: 0, pending: 0, reservedUnits: 0 },
-    approvals: [],
-    upcomingReservations: [],
-    alerts: [],
-    snapshot: { facilities: 0, available: 0, maintenance: 0, unavailable: 0 },
-    utilization: [{
-      name: 'Sample facility',
-      bookedHours: 50,
-      operatingHours: 450,
-      utilizationPercent: 11.1,
-      dateRange: 'Jan 1, 2026 - Jan 30, 2026'
-    }],
-    trend: [],
-    facilityRanking: [],
-    heatmapDateRangeLabel: 'All dates',
-    heatmapStatusLabel: 'Approved',
-    heatmaps: [],
-    reservations: []
-  });
+const buildingAdminReport = (overrides = {}) => ({
+  generatedAt: 'test',
+  filters: {
+    startDate: '2026-11-15',
+    endDate: '2026-11-21',
+    dates: 'Nov 15, 2026 - Nov 21, 2026',
+    times: 'All times',
+    status: 'Approved and pending'
+  },
+  summary: { total: 2, approved: 1, pending: 1 },
+  trend: [{ label: 'Sun', count: 1 }],
+  utilization: [
+    { name: 'Gymnasium', bookedHours: 15, operatingHours: 105, utilizationPercent: 14.3 },
+    { name: 'Dance Studio', bookedHours: 50, operatingHours: 105, utilizationPercent: 47.6 },
+    { name: 'Auditorium', bookedHours: 15, operatingHours: 105, utilizationPercent: 14.3 }
+  ],
+  heatmapDateRangeLabel: 'Nov 15, 2026 - Nov 21, 2026',
+  heatmapStatusLabel: 'Approved',
+  heatmaps: [
+    { id: 'gym', name: 'Gymnasium', cells: Array.from({ length: 7 }, () => Array(15).fill(0)), peakMinutes: 0, busiestCellsByWeekday: [] },
+    { id: 'aud', name: 'Auditorium', cells: Array.from({ length: 7 }, () => Array(15).fill(0)), peakMinutes: 0, busiestCellsByWeekday: [] }
+  ],
+  rankingMode: 'most',
+  facilityRanking: [
+    { name: 'Gymnasium', count: 1 },
+    { name: 'Auditorium', count: 0 },
+    { name: 'Dance Studio', count: 1 }
+  ],
+  matchedReservations: [{
+    event: 'STI Celebration',
+    requestor: 'Requestor',
+    dateTime: 'Nov 17, 2026 · 9:00 AM',
+    facilities: 'Gymnasium',
+    participants: '600',
+    status: 'Pending'
+  }],
+  ...overrides
+});
+
+test('Building Admin PDF exports only filtered analytics, in dashboard order', () => {
+  const pdf = createPdfOutput(exportBuildingAdminDashboardPdf, buildingAdminReport());
 
   assertPdfSectionOrder(pdf, [
-    'Live operation',
-    'Reservations awaiting your approval',
-    'Resource alerts',
-    'Venue utilization details',
     'Filtered analytics',
-    'Current dashboard selections',
-    'Filtered reservation summary',
-    'Reservation activity chart'
+    'Filter by date',
+    'Reservation activity chart',
+    'Facility Usage Rate',
+    'Busiest Hours Map',
+    'Auditorium booking heatmap',
+    'Gymnasium booking heatmap',
+    'Most Requested Facilities',
+    'Matched reservations'
   ]);
+  assert.equal(pdf.indexOf('Live operation'), -1);
+  assert.equal(pdf.indexOf('Resource alerts'), -1);
+});
+
+test('Building Admin PDF includes only the chosen sections and heatmap facilities', () => {
+  const pdf = createPdfOutput(exportBuildingAdminDashboardPdf, buildingAdminReport({
+    sections: ['heatmap', 'ranking'],
+    rankingMode: 'least',
+    heatmaps: [buildingAdminReport().heatmaps[0]]
+  }));
+
+  assertPdfSectionOrder(pdf, [
+    'Filter by date',
+    'Busiest Hours Map',
+    'Gymnasium booking heatmap',
+    'Least Requested Facilities'
+  ]);
+  assert.equal(pdf.indexOf('Auditorium booking heatmap'), -1);
+  assert.equal(pdf.indexOf('Reservation activity chart'), -1);
+  assert.equal(pdf.indexOf('Facility usage rate details'), -1);
+  assert.equal(pdf.indexOf('Matched reservations'), -1);
+});
+
+test('Building Admin PDF refuses an export with no sections', () => {
+  assert.throws(
+    () => createPdfOutput(exportBuildingAdminDashboardPdf, buildingAdminReport({ sections: [] })),
+    /at least one section/
+  );
 });
 
 test('Room Checker PDF puts live operation before filtered analytics and groups related data', () => {

@@ -669,6 +669,18 @@ main,
       font-size: var(--font-body);
     }
 
+    .date-presets-result {
+      padding: 0.4rem 0.75rem;
+      border-radius: 999px;
+      background: rgba($blue, 0.1);
+      color: $muted;
+      font-size: var(--font-body);
+
+      strong {
+        color: $blue;
+      }
+    }
+
     select {
       min-width: 12rem;
       padding: 0.55rem 0.7rem;
@@ -1103,7 +1115,6 @@ main,
   }
 
   .venue-utilization-panel {
-    margin-bottom: 1rem;
     padding: 1rem;
   }
 
@@ -1284,6 +1295,37 @@ main,
     font-weight: 600;
   }
 
+  .venue-utilization-view-all {
+    display: inline-block;
+    margin-top: 0.85rem;
+    padding: 0;
+    border: 0;
+    background: none;
+    color: $blue;
+    font-size: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover,
+    &:focus-visible {
+      text-decoration: underline;
+    }
+  }
+
+  .venue-utilization-modal-list {
+    display: grid;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem 1.5rem;
+  }
+
+  .venue-utilization-rank {
+    display: block;
+    margin-bottom: 0.25rem;
+    color: $muted;
+    font-size: 0.8rem;
+    font-weight: 700;
+  }
+
   .venue-traffic-panel {
     margin-bottom: 1rem;
     padding: 1rem;
@@ -1293,35 +1335,224 @@ main,
     }
   }
 
-  .venue-traffic-filter {
+  .venue-traffic-switcher {
     display: flex;
-    min-width: min(100%, 12rem);
-    flex: 0 0 12rem;
-    flex-direction: column;
-    gap: 0.35rem;
+    min-width: min(100%, 18rem);
+    flex: 0 1 20rem;
+    align-items: center;
+    gap: 0.5rem;
 
-    span {
-      color: $muted;
-      font-size: var(--font-body);
-      font-weight: 600;
-    }
-
-    select {
-      width: 100%;
+    button {
+      display: grid;
+      flex: 0 0 auto;
+      width: 2.55rem;
       height: 2.55rem;
-      padding: 0 0.65rem;
+      place-items: center;
       border: 1px solid $border;
       border-radius: 0.5rem;
-      outline: none;
       background: $surface;
       color: $ink;
-      font-size: var(--font-body);
+      font-size: 1.4rem;
+      line-height: 1;
+      cursor: pointer;
 
-      &:focus {
+      &:hover:not(:disabled) {
+        border-color: $blue;
+        color: $blue;
+      }
+
+      &:focus-visible {
+        outline: none;
         border-color: $blue;
         box-shadow: 0 0 0 0.18rem rgba($blue, 0.12);
       }
+
+      &:disabled {
+        opacity: 0.45;
+        cursor: not-allowed;
+      }
     }
+
+    span {
+      display: flex;
+      min-width: 0;
+      flex: 1 1 auto;
+      flex-direction: column;
+      align-items: center;
+      color: $ink;
+      font-size: var(--font-body);
+      font-weight: 700;
+      text-align: center;
+      overflow-wrap: anywhere;
+
+      small {
+        color: $muted;
+        font-size: 0.75rem;
+        font-weight: 600;
+      }
+    }
+  }
+
+  .dashboard-export-options {
+    padding: 1rem 1.5rem;
+
+    fieldset {
+      display: grid;
+      gap: 0.35rem;
+      margin: 0;
+      padding: 0;
+      border: 0;
+    }
+
+    legend {
+      margin-bottom: 0.5rem;
+      padding: 0;
+      color: $muted;
+      font-size: var(--font-body);
+      font-weight: 700;
+    }
+  }
+
+  .dashboard-export-option {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.55rem 0.7rem;
+    border-radius: 0.5rem;
+    color: $ink;
+    font-size: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: #f5f7fc;
+    }
+
+    input {
+      width: 1.05rem;
+      height: 1.05rem;
+      flex: 0 0 auto;
+      margin: 0;
+      accent-color: $blue;
+      cursor: pointer;
+    }
+
+    span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+  }
+
+  .dashboard-export-option-all {
+    margin-bottom: 0.25rem;
+    border-bottom: 1px solid $border;
+    border-radius: 0.5rem 0.5rem 0 0;
+  }
+
+  .dashboard-export-facilities {
+    display: grid;
+    gap: 0.35rem;
+    margin: 0 0 0.35rem 2.4rem;
+    padding: 0.65rem;
+    border: 1px solid $border;
+    border-radius: 0.6rem;
+    background: #f8faff;
+
+    .dashboard-export-option {
+      font-weight: 500;
+    }
+  }
+
+  .dashboard-export-facilities-heading {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0 0.35rem;
+    color: $muted;
+    font-size: 0.8rem;
+    font-weight: 700;
+
+    button {
+      padding: 0;
+      border: 0;
+      background: none;
+      color: $blue;
+      font-size: 0.8rem;
+      font-weight: 700;
+      cursor: pointer;
+
+      &:hover,
+      &:focus-visible {
+        text-decoration: underline;
+      }
+    }
+  }
+
+  .dashboard-export-facility-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(min(100%, 14rem), 1fr));
+    gap: 0.15rem 0.5rem;
+  }
+
+  .dashboard-export-warning {
+    padding: 0 0.35rem;
+    color: $red;
+    font-size: 0.8rem;
+    font-weight: 600;
+  }
+
+  .dashboard-export-footer {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 0.75rem;
+    padding: 1rem 1.5rem;
+    border-top: 1px solid $border;
+
+    .dashboard-export-error {
+      margin-right: auto;
+    }
+  }
+
+  .dashboard-export-cancel {
+    padding: 0.6rem 1rem;
+    border: 1px solid $border;
+    border-radius: 0.5rem;
+    background: $surface;
+    color: $ink;
+    font-size: var(--font-body);
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover:not(:disabled) {
+      border-color: $blue;
+      color: $blue;
+    }
+
+    &:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+  }
+
+  .facility-ranking-modal-list {
+    padding: 1rem 1.5rem 1.5rem;
+
+    .ranking-list {
+      max-height: none;
+      overflow: visible;
+    }
+  }
+
+  .specific-rooms-dialog.venue-traffic-dialog {
+    width: min(76rem, 100%);
+  }
+
+  .venue-traffic-modal-list {
+    padding: 1rem 1.5rem 1.5rem;
   }
 
   .venue-heatmap-facilities {
@@ -1734,8 +1965,6 @@ main,
 
     .panel-heading {
       align-items: flex-start;
-      padding-bottom: 0.9rem;
-      border-bottom: 1px solid $border;
     }
 
     .panel-heading h2 {
@@ -2508,7 +2737,7 @@ main,
 
   .equipment-history-panel .equipment-history-list,
   .recent-activity-panel .recent-reservations-list {
-    height: 12rem;
+    height: 8rem;
     overflow-y: auto;
     overscroll-behavior-y: contain;
     padding-right: 0.35rem;
