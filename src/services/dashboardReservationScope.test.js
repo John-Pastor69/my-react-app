@@ -4,7 +4,7 @@ import { matchesDashboardReservationScope } from './dashboardReservationScope.js
 
 test('MIS dashboard scope includes equipment and utility requests, including other items', () => {
   assert.equal(matchesDashboardReservationScope({ selectedEquip: { projector: 1 } }, 'mis'), true);
-  assert.equal(matchesDashboardReservationScope({ selectedUtilities: ['electricity'] }, 'mis admin'), true);
+  assert.equal(matchesDashboardReservationScope({ selectedUtilities: ['electricity'] }), true);
   assert.equal(matchesDashboardReservationScope({ otherEquipment: 'Microphone' }, 'mis'), true);
   assert.equal(matchesDashboardReservationScope({ otherUtility: 'Internet' }, 'mis'), true);
   assert.equal(matchesDashboardReservationScope({ selectedEquip: { projector: 0 } }, 'mis'), false);

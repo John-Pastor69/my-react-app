@@ -243,7 +243,7 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
 
   // --- ROLE ACCESS CHECK ---
   const normalizedCurrentUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
-  const allowedRoles = ['building admin', 'mis', 'mis admin', 'super admin'];
+  const allowedRoles = ['building admin', 'mis', 'super admin'];
   if (!normalizedCurrentUserRole || !allowedRoles.includes(normalizedCurrentUserRole)) {
     return (
       <div style={{ padding: '2rem', textAlign: 'center', color: '#64748B' }}>

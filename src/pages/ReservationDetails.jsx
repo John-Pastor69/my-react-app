@@ -549,7 +549,7 @@ const ReservationDetails = ({
   const normalizedCurrentUserRole = currentUserRole.toLowerCase().trim().replace(/_/g, ' ');
   const isMisUser = normalizedCurrentUserRole === 'mis';
   const hasRequestedResources = equipArray.length > 0 || utilityNames.length > 0;
-  const isPdfAdmin = ['building admin', 'mis', 'mis admin', 'super admin'].includes(normalizedCurrentUserRole);
+  const isPdfAdmin = ['building admin', 'mis', 'super admin'].includes(normalizedCurrentUserRole);
   const isReservationOwner = Boolean(currentUser && (
     currentData.userId === currentUser.uid
     || (currentData.userEmail || '').toLowerCase() === (currentUser.email || '').toLowerCase()

@@ -21,7 +21,7 @@ const hasSpecificRoomRequest = (reservation) => (
 );
 
 export const matchesDashboardReservationScope = (reservation, dashboardRole) => {
-  if (['mis', 'mis admin'].includes(dashboardRole)) {
+  if (['mis'].includes(dashboardRole)) {
     return hasEquipmentRequest(reservation) || hasUtilityRequest(reservation);
   }
   if (dashboardRole === 'building admin') return hasFacilityRequest(reservation);

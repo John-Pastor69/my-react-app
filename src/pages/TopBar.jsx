@@ -11,6 +11,17 @@ import '../styles/TopBar.scss';
 
 const ReservationDetails = lazy(() => import('./ReservationDetails'));
 const getDeletedNotifsStorageKey = (uid) => `facilityResDeletedNotifs_${uid}`;
+// Read notifications are saved per account, like deleted ones, so accounts sharing a browser don't
+// share read/unread state.
+const getReadNotifsStorageKey = (uid) => `facilityResReadNotifs_${uid}`;
+const readStoredIds = (key) => {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || '[]');
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+};
 
 const timeAgo = (dateInput) => {
   if (!dateInput) return 'Just now';
@@ -72,10 +83,8 @@ const TopBar = ({ toggleSidebar, userRole }) => {
   );
   const [mobileSearchContainer, setMobileSearchContainer] = useState(null);
 
-  const [readNotifs, setReadNotifs] = useState(() => {
-    const saved = localStorage.getItem('facilityResReadNotifs');
-    return saved ? JSON.parse(saved) : [];
-  });
+  // Loaded for the signed-in account in the auth effect below.
+  const [readNotifs, setReadNotifs] = useState([]);
 
   const [deletedNotifs, setDeletedNotifs] = useState([]);
 
@@ -214,8 +223,12 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           localStorage.removeItem('facilityResDeletedNotifs');
         }
         setDeletedNotifs(deletedIds);
+        // The old shared read list belonged to whichever account used this browser, so it's dropped.
+        localStorage.removeItem('facilityResReadNotifs');
+        setReadNotifs(readStoredIds(getReadNotifsStorageKey(user.uid)));
       } else {
         setDeletedNotifs([]);
+        setReadNotifs([]);
       }
       setCurrentUser(user);
     });
@@ -366,10 +379,14 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     const uid = auth.currentUser.uid;
     const email = auth.currentUser.email;
     let newNotifs = [];
+    // Emails are compared ignoring case: sign-in emails are usually lowercase, while emails copied from
+    // profiles (e.g. a reservation's endorser email) keep whatever case was typed.
+    const isSameEmail = (first, second) => Boolean(first && second)
+      && String(first).trim().toLowerCase() === String(second).trim().toLowerCase();
     const findUser = (userId, userEmail) => (
       [...usersData, ...superUsersData].find(candidate => (
         (userId && (candidate.uid === userId || candidate.id === userId))
-        || (userEmail && candidate.email === userEmail)
+        || isSameEmail(userEmail, candidate.email)
       ))
     );
     const addMiddleInitial = (name, middleInitial) => {
@@ -417,6 +434,13 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       return getProfileName(user) || resolveRecordedName(fallbackName) || 'the requestor';
     };
 
+    // The signed-in user cancelled this reservation themselves (no need to notify them about it).
+    const wasCancelledByMe = (res) => Boolean(
+      (res.cancelledBy && res.cancelledBy === uid)
+      || (res.cancelledByEmail && email
+        && res.cancelledByEmail.trim().toLowerCase() === email.trim().toLowerCase())
+    );
+
     const notificationReservations = [...new Map(
       [...historyData, ...reservationsData].map((reservation) => [reservation.id, reservation])
     ).values()];
@@ -429,10 +453,13 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       const requestor = findUser(res.userId, res.userEmail) || {};
       const requestorName = getProfileName(requestor) || resolveRecordedName(res.fullName) || 'the requestor';
       const reqRole = (requestor.role || res.userRole || 'requestor').toLowerCase().trim();
-      const isRequestor = res.userId === uid || res.userEmail === email;
+      const isRequestor = res.userId === uid || isSameEmail(res.userEmail, email);
       if (isRequestor) {
         const status = (res.status || '').toLowerCase().trim();
-        if (['approved', 'rejected', 'cancelled', 'expired'].includes(status)) {
+        if (
+          ['approved', 'rejected', 'cancelled', 'expired'].includes(status)
+          && !(status === 'cancelled' && wasCancelledByMe(res))
+        ) {
           const notificationTitle = status.charAt(0).toUpperCase() + status.slice(1);
           const latestActionLog = getLatestDecisionLog(status);
           const actionBy = resolveRecordedName(latestActionLog?.approverName);
@@ -444,11 +471,13 @@ const TopBar = ({ toggleSidebar, userRole }) => {
               : status === 'cancelled'
                 ? `Your reservation for ${res.eventName || 'an event'} was cancelled by ${resolveUserName(res.cancelledBy, res.cancelledByEmail, requestorName)}.`
                 : `Your pending reservation for ${res.eventName || 'an event'} expired and was moved to history.`;
+          // Approved/rejected use the decision's own time from the history log: "updatedAt" changes with
+          // later edits (and is stale on archived rejections), which mis-dated these notifications.
           const notificationTime = status === 'cancelled'
             ? res.cancelledAt || res.updatedAt || res.createdAt
             : status === 'expired'
               ? res.expiredAt || res.updatedAt || res.createdAt
-              : res.updatedAt || res.createdAt;
+              : latestActionLog?.timestamp || latestActionLog?.date || res.updatedAt || res.createdAt;
           newNotifs.push({
             id: `${res.id}-${status}-${latestActionLog?.id || notificationTime || res.createdAt}`,
             type: status,
@@ -520,12 +549,11 @@ const TopBar = ({ toggleSidebar, userRole }) => {
         });
       });
 
-      if (
-        !['rejected', 'approved', 'to modify'].includes(reservationStatus)
-        && !isReservationEndReached(res)
-      ) {
+      // Only pending reservations can need action. Archived cancelled/expired ones are in this list too,
+      // so checking "not rejected/approved/to modify" wrongly asked approvers to act on them.
+      if (reservationStatus === 'pending' && !isReservationEndReached(res)) {
         
-        if (myRoleKey === 'endorser' && res.endorserEmail !== email) {
+        if (myRoleKey === 'endorser' && !isSameEmail(res.endorserEmail, email)) {
           return; 
         }
 
@@ -537,13 +565,20 @@ const TopBar = ({ toggleSidebar, userRole }) => {
           const latestWorkflowEvent = [...historyLogs].reverse().find((log) => (
             log.id && ['approved', 'rejected', 'to_modify'].includes(log.state)
           ));
+          // When it became this approver's turn: the latest approval step or resubmission, else submission.
+          const latestTurnLog = [...historyLogs].reverse().find((log) => (
+            log.id
+            && (['approved', 'to_modify'].includes(log.state) || log.badge === 'Resubmitted')
+            && (log.timestamp || log.date)
+          ));
+          const turnTime = latestTurnLog?.timestamp || latestTurnLog?.date || res.createdAt;
           newNotifs.push({
             id: `${res.id}-act-${myRoleKey}-${latestWorkflowEvent?.id || res.createdAt}`,
             type: 'action',
             title: 'Action Required',
-            message: `A new reservation request (${res.eventName || 'Untitled'}) ${approvalRequirement}.`,
-            time: res.createdAt,
-            rawDate: new Date(res.createdAt || 0),
+            message: `A reservation request (${res.eventName || 'Untitled'}) ${approvalRequirement}.`,
+            time: turnTime,
+            rawDate: new Date(turnTime || 0),
             fullData: res
           });
         }
@@ -573,7 +608,7 @@ const TopBar = ({ toggleSidebar, userRole }) => {
         )))
       );
 
-      if (res.userId === uid || res.userEmail === email) {
+      if ((res.userId === uid || isSameEmail(res.userEmail, email)) && !(isCancelled && wasCancelledByMe(res))) {
         newNotifs.push({
           id: `${res.id}-${status}-${cancellationLog?.id || notificationTime || res.createdAt}`,
           type: status,
@@ -708,7 +743,9 @@ const TopBar = ({ toggleSidebar, userRole }) => {
     if (!readNotifs.includes(notif.id)) {
       const updatedReadNotifs = [...readNotifs, notif.id];
       setReadNotifs(updatedReadNotifs);
-      localStorage.setItem('facilityResReadNotifs', JSON.stringify(updatedReadNotifs));
+      if (currentUser) {
+        localStorage.setItem(getReadNotifsStorageKey(currentUser.uid), JSON.stringify(updatedReadNotifs));
+      }
     }
     
     setIsNotifOpen(false);
@@ -727,6 +764,14 @@ const TopBar = ({ toggleSidebar, userRole }) => {
       return;
     }
     if (notif.type === 'role_changed') return;
+    if (!notif.fullData) return;
+    // Decided or closed reservations (approved, rejected, cancelled, expired, including the admin
+    // "Reservation Cancelled" alert) open the read-only reservation details; "Action Required",
+    // "To Modify" and "Reservation Resubmitted" open the approval view.
+    if (['approved', 'rejected', 'cancelled', 'expired'].includes(notif.type)) {
+      setSelectedReservation(notif.fullData);
+      return;
+    }
     setSelectedRequest(notif.fullData);
   };
 

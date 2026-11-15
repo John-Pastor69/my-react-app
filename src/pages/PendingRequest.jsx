@@ -6,7 +6,7 @@ import AirconScheduleDisplay from '../components/AirconScheduleDisplay';
 import { sendReservationEmail } from '../services/emailService'; 
 import { sendApprovalRequiredEmails } from '../services/approvalNotifications';
 import { archiveReservation } from '../services/archiveReservation';
-import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
+import { getApprovalTrackerSteps, getNextApprovalStep, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import { formatTimeRange } from '../services/timeFormatting';
@@ -417,7 +417,6 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
     reservationStatus: currentData.status
   });
 
-  const isBuildingAdmin = approver.roleKey === 'building admin';
   const canOverrideApprovalWorkflow = isSuperAdmin
     || ['super admin', 'mis'].includes(approver.roleKey);
   const nextSuperAdminStep = canOverrideApprovalWorkflow
@@ -432,8 +431,9 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
     ? `${nextSuperAdminStep.label} (${approver.role})`
     : approver.role;
   const myStep = trackerSteps.find((step) => step.key === approver.roleKey);
-  const canAct = !isBuildingAdmin
-    && (currentData.status || '').toLowerCase() === 'pending'
+  // Any approver (Building Admin included) can decide when it's their role's step, even on their own
+  // reservation. MIS and super admins can act on any step.
+  const canAct = (currentData.status || '').toLowerCase() === 'pending'
     && (canOverrideApprovalWorkflow
       ? Boolean(nextSuperAdminStep)
       : !currentData.approvals?.[approver.roleKey] && myStep?.state === 'your-turn');
@@ -584,9 +584,17 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
       }
 
       // --- SEND EMAIL NOTIFICATION ---
-      const emailMessage = isApprove 
-        ? `Your reservation has been approved by the ${approvalRoleLabel}.`
-        : isReject
+      // Only the School Admin's approval fully approves a reservation; earlier approvals just move it on,
+      // so the requestor isn't told it's approved while it's still waiting on other approvers.
+      const isFinalApproval = isApprove && approvalRoleKey === 'school admin';
+      const nextApprovalStep = isApprove && !isFinalApproval
+        ? getNextApprovalStep({ ...currentData, approvals: archivedApprovals }, requestorRole)
+        : null;
+      const emailMessage = isFinalApproval
+        ? `Your reservation has been fully approved by the ${approvalRoleLabel}.`
+        : isApprove
+          ? `Your reservation was approved by the ${approvalRoleLabel} and has moved to the next approval step${nextApprovalStep ? ` (${nextApprovalStep.label})` : ''}. It is not fully approved yet.`
+          : isReject
           ? `Your reservation has been rejected by the ${approvalRoleLabel}. Remarks: ${remark}`
           : `Your reservation has been returned for modification by the ${approvalRoleLabel}. Please review the remarks: ${remark}`;
 
@@ -851,7 +859,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             <div className="card">
               <strong>Reservation is Fully Approved</strong>
             </div>
-          ) : isReservationOwner && !canOverrideApprovalWorkflow ? null : <div className="card">
+          ) : isReservationOwner && !canOverrideApprovalWorkflow && !canAct && !myApprovalStatus ? null : <div className="card">
             <div className="card-header-small">
               <h3>🛡️ {approver.role} Approval</h3>
               <p>Your administrative decision</p>
@@ -926,9 +934,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
             
             {!canAct && !myApprovalStatus && !['rejected', 'approved', 'to modify'].includes(normalizedReservationStatus) && (
               <div className="hierarchy-disabled-hint">
-                {isBuildingAdmin
-                  ? 'Building admins cannot approve reservations.'
-                  : canOverrideApprovalWorkflow
+                {canOverrideApprovalWorkflow
                   ? 'The approval tracker is complete.'
                   : 'Buttons are disabled because it is not currently your turn in the approval hierarchy.'}
               </div>

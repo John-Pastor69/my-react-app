@@ -6,7 +6,6 @@ const UserManagementRouter = ({currentUserRole}) => {
 
     const userManagementComponents = {
         'mis': <MisUserManagement currentUserRole={currentUserRole} />,
-        'mis admin': <MisUserManagement currentUserRole={currentUserRole} />,
         'super admin': <MisUserManagement currentUserRole={currentUserRole} />,
         'building admin': <MisUserManagement currentUserRole={currentUserRole} />
     };

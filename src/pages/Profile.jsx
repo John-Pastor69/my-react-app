@@ -32,7 +32,7 @@ const Profile = ({ currentUserRole }) => {
   const [searchParams] = useSearchParams();
   const requestedProfileId = searchParams.get('userId');
   const normalizedUserRole = (currentUserRole || '').toLowerCase().trim().replace(/_/g, ' ');
-  const canViewOtherProfiles = ['mis', 'mis admin', 'building admin', 'super admin'].includes(normalizedUserRole);
+  const canViewOtherProfiles = ['mis', 'building admin', 'super admin'].includes(normalizedUserRole);
   const viewedProfileId = canViewOtherProfiles ? requestedProfileId : '';
   const isViewingOtherProfile = Boolean(viewedProfileId);
   

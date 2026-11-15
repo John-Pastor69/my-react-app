@@ -296,7 +296,7 @@ const Calendar = ({ currentUserRole }) => {
     const reservationEmail = (reservation.userEmail || reservation.emailAddress || '').trim().toLowerCase();
     return Boolean(reservationEmail && reservationEmail === (currentUser.email || '').trim().toLowerCase());
   };
-  const canModifyReservations = ['mis', 'mis admin', 'super admin'].includes(normalizedRoleKey);
+  const canModifyReservations = ['mis', 'super admin'].includes(normalizedRoleKey);
   const canManageUnavailableDates = canModifyReservations;
   const selectedUnavailableDateId = getUnavailableDateId(selectedDate);
   const selectedUnavailableDate = unavailableDates.find((date) => (
@@ -312,7 +312,7 @@ const Calendar = ({ currentUserRole }) => {
     && reservationsData.some((reservation) => reservation.id === selectedRequest.id)
     && !isReservationEndReached(selectedRequest)
   );
-  const canOpenArchiveList = ['mis admin', 'super admin'].includes(
+  const canOpenArchiveList = ['super admin'].includes(
     normalizedRole.replace(/_/g, ' ')
   );
   const isArchiveListVisible = canOpenArchiveList && showArchiveList;

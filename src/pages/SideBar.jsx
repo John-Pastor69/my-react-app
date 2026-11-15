@@ -23,7 +23,6 @@ const ELEVATED_ROLES = [
   'building admin', 
   'osa', 
   'mis', 
-  'mis admin',
   'room checker',
   'academic head', 
   'school admin',
@@ -31,9 +30,9 @@ const ELEVATED_ROLES = [
 ];
 
 // Roles with the facility management tab
-const FACILITY_ADMIN_ROLES = ['building admin', 'mis admin', 'super admin'];
-const SYSTEM_ADMIN_ROLES = ['mis', 'mis admin', 'building admin', 'super admin'];
-const EQUIPMENT_ADMIN_ROLES = ['mis', 'mis admin', 'super admin'];
+const FACILITY_ADMIN_ROLES = ['building admin', 'super admin'];
+const SYSTEM_ADMIN_ROLES = ['mis', 'building admin', 'super admin'];
+const EQUIPMENT_ADMIN_ROLES = ['mis', 'super admin'];
 
 const Sidebar = ({isOpen, setIsOpen, onLogout, userRole}) => {
   const normalizedRole = (userRole || '').toLowerCase().trim().replace(/_/g, ' ');
