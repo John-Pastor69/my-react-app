@@ -104,37 +104,6 @@ const drawTrendChart = (doc, trend, y) => {
   return baseline + 12;
 };
 
-const drawDonut = (doc, centerX, centerY, radius, percentage) => {
-  const clampedPercent = Math.min(100, Math.max(0, Number(percentage) || 0));
-  doc.setFillColor(232, 237, 245);
-  doc.circle(centerX, centerY, radius, 'F');
-
-  const segmentCount = Math.round(clampedPercent / 100 * 48);
-  if (segmentCount) {
-    doc.setFillColor(49, 95, 232);
-    for (let index = 0; index < segmentCount; index += 1) {
-      const startAngle = -Math.PI / 2 + index / 48 * Math.PI * 2;
-      const endAngle = -Math.PI / 2 + (index + 1) / 48 * Math.PI * 2;
-      doc.triangle(
-        centerX,
-        centerY,
-        centerX + Math.cos(startAngle) * radius,
-        centerY + Math.sin(startAngle) * radius,
-        centerX + Math.cos(endAngle) * radius,
-        centerY + Math.sin(endAngle) * radius,
-        'F'
-      );
-    }
-  }
-
-  doc.setFillColor(255, 255, 255);
-  doc.circle(centerX, centerY, radius * 0.62, 'F');
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(7);
-  doc.setTextColor(23, 36, 59);
-  doc.text(`${(Number(percentage) || 0).toFixed(1)}%`, centerX, centerY + 1, { align: 'center' });
-};
-
 const drawUtilizationChart = (doc, utilization, y) => {
   y = addSectionHeading(doc, 'Venue utilization chart', y);
   if (!utilization.length) {
@@ -151,25 +120,37 @@ const drawUtilizationChart = (doc, utilization, y) => {
     const position = index % perPage;
     if (position === 0 && index > 0) {
       rowY += 34;
-      if (rowY + 28 > doc.internal.pageSize.getHeight() - FOOTER_MARGIN) {
+      if (rowY + 18 > doc.internal.pageSize.getHeight() - FOOTER_MARGIN) {
         doc.addPage();
         rowY = PAGE_MARGIN + 18;
       }
     }
     const x = PAGE_MARGIN + position * cardWidth;
-    drawDonut(doc, x + 12, rowY, 10, venue.utilizationPercent);
+    const percent = Math.max(0, Number(venue.utilizationPercent) || 0);
+    const barX = x + 2;
+    const barY = rowY + 9;
+    const barWidth = cardWidth - 8;
+    const barHeight = 3;
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8);
     doc.setTextColor(23, 36, 59);
-    doc.text(toText(venue.name), x + 27, rowY - 2, { maxWidth: cardWidth - 30 });
+    doc.text(toText(venue.name), barX, rowY - 2, { maxWidth: barWidth - 18 });
+    doc.text(`${percent.toFixed(1)}%`, barX + barWidth, rowY - 2, { align: 'right' });
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor(113, 128, 154);
-    doc.text(`${Number(venue.bookedHours || 0).toFixed(1)} of 105 hours booked`, x + 27, rowY + 5, {
-      maxWidth: cardWidth - 30
-    });
+    doc.text(
+      `${Number(venue.bookedHours || 0).toFixed(1)} of ${Number(venue.operatingHours) || 0} operating hours reserved`,
+      barX,
+      rowY + 5,
+      { maxWidth: barWidth }
+    );
+    doc.setFillColor(232, 237, 245);
+    doc.rect(barX, barY, barWidth, barHeight, 'F');
+    doc.setFillColor(49, 95, 232);
+    doc.rect(barX, barY, barWidth * Math.min(percent, 100) / 100, barHeight, 'F');
   });
-  return rowY + 22;
+  return rowY + 18;
 };
 
 const heatmapIntensity = (minutes, peak) => {
@@ -353,12 +334,13 @@ export const exportBuildingAdminDashboardPdf = (report) => {
   y = drawUtilizationChart(doc, report.utilization, y);
   y = addTable(doc, {
     title: 'Venue utilization details',
-    headers: ['Facility', 'Booked hours', 'Utilization', 'Week'],
+    headers: ['Facility', 'Booked hours', 'Operating hours', 'Utilization', 'Date range'],
     rows: report.utilization.map((venue) => [
       venue.name,
       Number(venue.bookedHours || 0).toFixed(1),
+      Number(venue.operatingHours) || 0,
       `${Number(venue.utilizationPercent || 0).toFixed(1)}%`,
-      `${venue.weekStart} - ${venue.weekEnd}`
+      venue.dateRange || ''
     ]),
     y,
     fontSize: 7

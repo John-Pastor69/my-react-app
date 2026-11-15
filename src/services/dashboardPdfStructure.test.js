@@ -103,7 +103,13 @@ test('Building Admin PDF puts live operation before filtered analytics and group
     upcomingReservations: [],
     alerts: [],
     snapshot: { facilities: 0, available: 0, maintenance: 0, unavailable: 0 },
-    utilization: [],
+    utilization: [{
+      name: 'Sample facility',
+      bookedHours: 50,
+      operatingHours: 450,
+      utilizationPercent: 11.1,
+      dateRange: 'Jan 1, 2026 - Jan 30, 2026'
+    }],
     trend: [],
     facilityRanking: [],
     heatmapDateRangeLabel: 'All dates',

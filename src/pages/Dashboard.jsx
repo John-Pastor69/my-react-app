@@ -6,7 +6,6 @@ import MonthYearPicker from '../components/MonthYearPicker';
 import {
   BuildingAdminExportActions,
   BuildingAdminFacilityInsights,
-  BuildingAdminResourceOverview,
   BuildingAdminVenueTraffic,
   BuildingAdminVenueUtilization
 } from './BuildingAdminDashboard';
@@ -39,6 +38,7 @@ import { matchesDashboardReservationDateRange } from '../services/dashboardReser
 import { matchesDashboardReservationScope } from '../services/dashboardReservationScope';
 import { buildDashboardReservationTrend } from '../services/dashboardReservationTrend';
 import { getEquipmentAvailability } from '../services/equipmentAvailability';
+import { getFacilityOperatingHours } from '../services/facilityUtilization';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
 import {
   getSpecificRoomReservedHours,
@@ -53,7 +53,6 @@ const ReservationDetails = lazy(() => import('./ReservationDetails'));
 
 // Shared date and time helpers normalize values from filters and stored reservations.
 const DAY_IN_MS = 24 * 60 * 60 * 1000;
-const WEEKLY_OPERATING_HOURS = 15 * 7;
 const RESOURCE_CONSUMPTION_COLORS = [
   '#315fe8',
   '#14a779',
@@ -90,13 +89,6 @@ const getDefaultDashboardFilters = () => {
     endTime: '',
     status: 'all'
   };
-};
-
-const getCurrentWeekStart = () => {
-  const date = new Date();
-  date.setHours(0, 0, 0, 0);
-  date.setDate(date.getDate() - ((date.getDay() + 6) % 7));
-  return toDateInputValue(date);
 };
 
 const parseDate = (value) => {
@@ -401,7 +393,6 @@ const DashboardFilters = ({ filters, setFilters, setDatePreset }) => (
     <div className="filter-heading">
       <div>
         <h2>Filter by Date</h2>
-        <p>Filter reservation by event date, start time, and status.</p>
       </div>
       <button
         className="filter-reset"
@@ -580,7 +571,7 @@ const DashboardContent = ({ currentUserRole }) => {
   const [currentUser, setCurrentUser] = useState(null);
   const [upcomingDays, setUpcomingDays] = useState('7');
   const [customUpcomingDays, setCustomUpcomingDays] = useState('30');
-  const [resourceAlertCategory, setResourceAlertCategory] = useState('all');
+  const resourceAlertCategory = 'all';
   const [rankingModes, setRankingModes] = useState({
     equipment: 'most',
     utilities: 'most',
@@ -698,8 +689,6 @@ const DashboardContent = ({ currentUserRole }) => {
   const isMisDashboard = ['mis', 'mis admin'].includes(dashboardRole);
   const isBuildingAdminDashboard = dashboardRole === 'building admin';
   const isRoomCheckerDashboard = dashboardRole === 'room checker';
-  const showResourceAlerts = isAdminDashboard && !isMisDashboard;
-  const canViewResourceSnapshot = isAdminDashboard;
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
@@ -851,10 +840,6 @@ const DashboardContent = ({ currentUserRole }) => {
   const endMinutes = parseTime(filters.endTime);
   const startDate = filters.startDate ? parseDate(filters.startDate) : null;
   const endDate = filters.endDate ? parseDate(filters.endDate) : null;
-  const liveWeekStart = getCurrentWeekStart();
-  const liveWeekStartDate = parseDate(liveWeekStart);
-  const liveWeekEndDate = new Date(liveWeekStartDate);
-  liveWeekEndDate.setDate(liveWeekEndDate.getDate() + 6);
   const heatmapStartValue = startDate ? toDateInputValue(startDate) : '';
   const heatmapEndValue = endDate ? toDateInputValue(endDate) : '';
   const heatmapDateRangeLabel = startDate && endDate
@@ -872,13 +857,28 @@ const DashboardContent = ({ currentUserRole }) => {
   const liveVenueUtilization = useMemo(() => {
     if (!isBuildingAdminDashboard) return [];
 
-    const weekStart = parseDate(liveWeekStart);
-    if (!weekStart) return [];
-    const weekEnd = new Date(weekStart);
-    weekEnd.setDate(weekEnd.getDate() + 7);
+    const scheduledDates = dashboardReservations
+      .flatMap((reservation) => getReservationScheduleForFacility(reservation)
+        .map((entry) => parseDate(entry.date))
+        .filter(Boolean));
+    const earliestScheduledDate = scheduledDates.length
+      ? new Date(Math.min(...scheduledDates.map((date) => date.getTime())))
+      : null;
+    const latestScheduledDate = scheduledDates.length
+      ? new Date(Math.max(...scheduledDates.map((date) => date.getTime())))
+      : null;
+    const fallbackDate = parseDate(toDateInputValue(new Date()));
+    let rangeStart = startDate || earliestScheduledDate || endDate || fallbackDate;
+    let rangeEnd = endDate || latestScheduledDate || startDate || fallbackDate;
+    if (rangeStart > rangeEnd) {
+      if (startDate && !endDate) rangeEnd = rangeStart;
+      else if (endDate && !startDate) rangeStart = rangeEnd;
+      else [rangeStart, rangeEnd] = [rangeEnd, rangeStart];
+    }
+    const operatingHours = getFacilityOperatingHours(rangeStart, rangeEnd);
 
     return facilitiesData.map((facility) => {
-      const bookedMinutes = reservationsData.reduce((reservationTotal, reservation) => {
+      const bookedMinutes = dashboardReservations.reduce((reservationTotal, reservation) => {
         if (
           (reservation.status || '').toLowerCase().trim() !== 'approved'
           || !Array.isArray(reservation.facilities)
@@ -892,8 +892,8 @@ const DashboardContent = ({ currentUserRole }) => {
             const end = parseTime(entry.endTime);
             if (
               !date
-              || date < weekStart
-              || date >= weekEnd
+              || (startDate && date < startDate)
+              || (endDate && date > endDate)
               || start === null
               || end === null
               || end <= start
@@ -906,10 +906,21 @@ const DashboardContent = ({ currentUserRole }) => {
         id: facility.id,
         name: facility.name || 'Facility',
         bookedHours: bookedMinutes / 60,
-        utilizationPercent: bookedMinutes / (WEEKLY_OPERATING_HOURS * 60) * 100
+        operatingHours,
+        dateRangeLabel: heatmapDateRangeLabel,
+        utilizationPercent: operatingHours
+          ? bookedMinutes / (operatingHours * 60) * 100
+          : 0
       };
-    });
-  }, [isBuildingAdminDashboard, facilitiesData, reservationsData, liveWeekStart]);
+    }).filter((venue) => venue.bookedHours > 0);
+  }, [
+    isBuildingAdminDashboard,
+    facilitiesData,
+    dashboardReservations,
+    startDate,
+    endDate,
+    heatmapDateRangeLabel
+  ]);
   const venueTrafficHeatmaps = useMemo(() => {
     if (!isBuildingAdminDashboard) return [];
 
@@ -1622,18 +1633,9 @@ const DashboardContent = ({ currentUserRole }) => {
 
     return alerts;
   }, [equipmentInventory, facilitiesData, unavailableDatesData, todayKey]);
-  const resourceAlertCounts = useMemo(() => resourceAlerts.reduce((counts, alert) => {
-    counts[alert.category] = (counts[alert.category] || 0) + 1;
-    return counts;
-  }, {}), [resourceAlerts]);
   const dashboardResourceAlerts = isBuildingAdminDashboard
     ? resourceAlerts.filter((alert) => alert.category !== 'low-stock')
     : resourceAlerts;
-  const dashboardResourceAlertCounts = isBuildingAdminDashboard
-    ? Object.fromEntries(
-      Object.entries(resourceAlertCounts).filter(([category]) => category !== 'low-stock')
-    )
-    : resourceAlertCounts;
   const visibleResourceAlerts = dashboardResourceAlerts.filter((alert) => (
     resourceAlertCategory === 'all' || alert.category === resourceAlertCategory
   ));
@@ -2243,6 +2245,18 @@ const DashboardContent = ({ currentUserRole }) => {
     </article>
   );
 
+  const dashboardKpis = (
+    <DashboardKpis
+      metrics={metrics}
+      pendingUsers={pendingUserCount}
+      pendingProfiles={pendingProfileCount}
+      canManagePendingProfiles={canManagePendingProfiles}
+      isAdminDashboard={isAdminDashboard}
+      isBuildingAdminDashboard={isBuildingAdminDashboard}
+      isMisDashboard={isMisDashboard}
+    />
+  );
+
   // Render dashboard operations, search, analytics, and resource summaries.
   return (
     <div className={`mis-dashboard-content ${isAdminDashboard ? 'admin-dashboard' : hasAnalyticsDashboard ? 'staff-dashboard' : 'personal-dashboard'}${isBuildingAdminDashboard ? ' building-admin-dashboard' : ''}${dashboardRole === 'room checker' ? ' room-checker-dashboard' : ''}`}>
@@ -2275,19 +2289,12 @@ const DashboardContent = ({ currentUserRole }) => {
 
       {/* Operations include date filters, key metrics, approval queues, and upcoming events. */}
       <section className="dashboard-live-section" aria-label="Live operation">
-        <div className="dashboard-section-heading">
-          <h2>Live operation</h2>
-          <p>{isBuildingAdminDashboard
-            ? 'Current approvals, upcoming events, and this week’s venue reservations.'
-            : 'Current approvals and upcoming events.'}</p>
-        </div>
         <section className="dashboard-operations" aria-label="Dashboard operations">
 
         <article className="dashboard-panel operations-panel approval-panel">
           <div className="panel-heading">
             <div>
               <h2>{hasAnalyticsDashboard ? 'Approval' : 'Requests needing your review'}</h2>
-              <p>Reservations currently waiting for your approval.</p>
             </div>
             {canReviewApprovals && (
               <Link className="panel-action-link" to="/approval">Open Approval</Link>
@@ -2325,7 +2332,6 @@ const DashboardContent = ({ currentUserRole }) => {
           <div className="panel-heading">
             <div>
               <h2>{hasAnalyticsDashboard ? 'Upcoming Events' : 'Your Upcoming Events'}</h2>
-              <p>Events scheduled within your selected date range.</p>
             </div>
             <label className="upcoming-range-control">
               <span>Show next</span>
@@ -2645,168 +2651,11 @@ const DashboardContent = ({ currentUserRole }) => {
             </div>
           )}
 
-      {isBuildingAdminDashboard ? (
-        <BuildingAdminResourceOverview
-          alerts={visibleResourceAlerts}
-          alertCounts={dashboardResourceAlertCounts}
-          totalAlertCount={dashboardResourceAlerts.length}
-          alertCategory={resourceAlertCategory}
-          onAlertCategoryChange={setResourceAlertCategory}
-          facilities={facilitiesData}
-          availableFacilities={facilitiesAvailable}
-          facilitiesUnderMaintenance={facilitiesUnderMaintenance}
-          unavailableFacilities={facilitiesUnavailable}
-        />
-      ) : (isAdminDashboard || canViewResourceSnapshot) && (
-        <section className={`dashboard-resource-panels${showResourceAlerts ? ' has-resource-alerts' : ''}`}>
-          {showResourceAlerts && (
-            <article className="dashboard-panel resource-alerts-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Resource alerts</h2>
-                  <p>{isBuildingAdminDashboard
-                    ? 'Facility status and upcoming unavailable dates.'
-                    : 'Low stock, facility status, and upcoming unavailable dates.'}</p>
-                </div>
-                <label className="resource-alert-filter">
-                  <span>Category</span>
-                  <select
-                    value={resourceAlertCategory}
-                    onChange={(event) => setResourceAlertCategory(event.target.value)}
-                  >
-                    <option value="all">All categories ({dashboardResourceAlerts.length})</option>
-                    {!isBuildingAdminDashboard && (
-                      <option value="low-stock">Low stock ({dashboardResourceAlertCounts['low-stock'] || 0})</option>
-                    )}
-                    <option value="facility-status">Facility status ({dashboardResourceAlertCounts['facility-status'] || 0})</option>
-                    <option value="unavailable-date">Unavailable dates ({dashboardResourceAlertCounts['unavailable-date'] || 0})</option>
-                  </select>
-                </label>
-              </div>
-              {visibleResourceAlerts.length ? (
-                <div className="resource-alert-list" aria-live="polite">
-                  {visibleResourceAlerts.map((alert) => (
-                    <div className="resource-alert-row" key={alert.key}>
-                      <span className="resource-alert-icon">!</span>
-                      <div>
-                        <strong>{alert.title}</strong>
-                        <span title={alert.detail}>{alert.detail}</span>
-                      </div>
-                      <div className="resource-alert-actions">
-                        <span className="resource-alert-category">
-                          {alert.category === 'low-stock' && 'Low stock'}
-                          {alert.category === 'facility-status' && 'Facility status'}
-                          {alert.category === 'unavailable-date' && 'Unavailable date'}
-                        </span>
-                        <Link to={alert.link}>View</Link>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <p className="panel-empty">
-                  {dashboardResourceAlerts.length
-                    ? 'No alerts in this category.'
-                    : isBuildingAdminDashboard
-                      ? 'No facility issues or upcoming unavailable dates were detected.'
-                      : 'No low-stock items, facility issues, or upcoming unavailable dates were detected.'}
-                </p>
-              )}
-            </article>
-          )}
-
-          {canViewResourceSnapshot && (
-            <article className="dashboard-panel resource-summary-panel">
-              <div className="panel-heading">
-                <div>
-                  <h2>Resource snapshot</h2>
-                  <p>{isBuildingAdminDashboard
-                    ? 'Current state of managed facilities.'
-                    : isMisDashboard
-                      ? 'Current state of equipment and utilities.'
-                      : 'Current state of managed facilities, equipment, and utilities.'}</p>
-                </div>
-              </div>
-              {!isBuildingAdminDashboard && (
-                <>
-                  <Link className="resource-stat resource-stat-link" to="/equipment">
-                    <div className="resource-stat-copy">
-                      <span>Equipment catalog</span>
-                      <strong>{equipmentData.length} <small>items</small></strong>
-                    </div>
-                    <span className="resource-stat-detail">{metrics.availableUnits} available units</span>
-                  </Link>
-                  <Link className="resource-stat resource-stat-link" to="/equipment#utilities">
-                    <div className="resource-stat-copy">
-                      <span>Utility catalog</span>
-                      <strong>{utilitiesData.length} <small>utilities</small></strong>
-                    </div>
-                    <span className="resource-stat-detail">Managed utility items</span>
-                  </Link>
-                </>
-              )}
-              {isBuildingAdminDashboard && (
-                <Link className="resource-stat resource-stat-link" to="/facility">
-                  <div className="resource-stat-copy">
-                    <span>Facility catalog</span>
-                    <strong>{facilitiesData.length} <small>facilities</small></strong>
-                  </div>
-                  <span className="resource-stat-detail">{facilitiesAvailable} available now</span>
-                </Link>
-              )}
-              {!isBuildingAdminDashboard && !isMisDashboard && (
-                <div className="resource-stat">
-                  <div className="resource-stat-copy">
-                    <span>Facility directory</span>
-                    <strong>{facilitiesData.length} <small>facilities</small></strong>
-                  </div>
-                  <span className="resource-stat-detail">{facilitiesAvailable} available now</span>
-                </div>
-              )}
-              {!isBuildingAdminDashboard && !isMisDashboard && (
-                <div className="resource-stat">
-                  <div className="resource-stat-copy">
-                    <span>Specific rooms</span>
-                    <strong>{specificRoomReservations.length} <small>requests</small></strong>
-                  </div>
-                  <button
-                    type="button"
-                    className="resource-stat-detail specific-room-view-button"
-                    onClick={() => setIsSpecificRoomsOpen(true)}
-                    aria-haspopup="dialog"
-                  >
-                    View details
-                  </button>
-                </div>
-              )}
-              <div className="facility-status-summary">
-                <span><i className="status-key approved" /> Available <strong>{facilitiesAvailable}</strong></span>
-                <span><i className="status-key pending" /> Maintenance <strong>{facilitiesUnderMaintenance}</strong></span>
-                <span><i className="status-key rejected" /> Unavailable <strong>{facilitiesUnavailable}</strong></span>
-              </div>
-              {!isBuildingAdminDashboard && (
-                <p className="snapshot-note">{visibleUserCount} registered users in the system</p>
-              )}
-            </article>
-          )}
-        </section>
-      )}
-      {isBuildingAdminDashboard && (
-        <BuildingAdminVenueUtilization
-          venues={liveVenueUtilization}
-          weekStartDate={liveWeekStartDate}
-          weekEndDate={liveWeekEndDate}
-          formatDate={formatDate}
-        />
-      )}
       </section>
 
       <section className="dashboard-filtered-section" aria-label="Filtered analytics">
         <div className="dashboard-section-heading">
           <h2>Filtered analytics</h2>
-          <p>{hasAnalyticsDashboard
-            ? 'Reservation metrics based on the selected filters.'
-            : 'Your reservation summary and recent activity.'}</p>
         </div>
       {hasAnalyticsDashboard ? (
         <>
@@ -2816,15 +2665,7 @@ const DashboardContent = ({ currentUserRole }) => {
             setDatePreset={setDatePreset}
             isAdminDashboard={isAdminDashboard}
           />
-          <DashboardKpis
-            metrics={metrics}
-            pendingUsers={pendingUserCount}
-            pendingProfiles={pendingProfileCount}
-            canManagePendingProfiles={canManagePendingProfiles}
-            isAdminDashboard={isAdminDashboard}
-            isBuildingAdminDashboard={isBuildingAdminDashboard}
-            isMisDashboard={isMisDashboard}
-          />
+          {!isBuildingAdminDashboard && dashboardKpis}
           {/* Summarize reservation trends. */}
           <section className="dashboard-charts">
             <article className="dashboard-panel reservations-trend-panel">
@@ -2856,6 +2697,16 @@ const DashboardContent = ({ currentUserRole }) => {
                 <span><i className="status-key pending" /> Pending <strong>{metrics.pending}</strong></span>
               </div>
             </article>
+
+            {isBuildingAdminDashboard && (
+              <div className="building-admin-usage-layout">
+                {dashboardKpis}
+                <BuildingAdminVenueUtilization
+                  venues={liveVenueUtilization}
+                  dateRangeLabel={heatmapDateRangeLabel}
+                />
+              </div>
+            )}
 
             {isRoomCheckerDashboard && (
               <RoomCheckerOccupancy

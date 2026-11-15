@@ -1,8 +1,6 @@
 import React from 'react';
-import { Link } from 'react-router-dom';
 import { RankingModeToggle } from './DashboardShared';
 
-const WEEKLY_OPERATING_HOURS = 15 * 7;
 const HEATMAP_WEEKDAYS = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
 const HEATMAP_HOURS = Array.from({ length: 15 }, (_, index) => {
   const value = index + 7;
@@ -37,101 +35,15 @@ export const BuildingAdminExportActions = ({
   </div>
 );
 
-export const BuildingAdminResourceOverview = ({
-  alerts,
-  alertCounts,
-  totalAlertCount,
-  alertCategory,
-  onAlertCategoryChange,
-  facilities,
-  availableFacilities,
-  facilitiesUnderMaintenance,
-  unavailableFacilities
-}) => (
-  <section className="dashboard-resource-panels has-resource-alerts">
-    <article className="dashboard-panel resource-alerts-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Resource alerts</h2>
-          <p>Facility status and upcoming unavailable dates.</p>
-        </div>
-        <label className="resource-alert-filter">
-          <span>Category</span>
-          <select
-            value={alertCategory}
-            onChange={(event) => onAlertCategoryChange(event.target.value)}
-          >
-            <option value="all">All categories ({totalAlertCount})</option>
-            <option value="facility-status">Facility status ({alertCounts['facility-status'] || 0})</option>
-            <option value="unavailable-date">Unavailable dates ({alertCounts['unavailable-date'] || 0})</option>
-          </select>
-        </label>
-      </div>
-      {alerts.length ? (
-        <div className="resource-alert-list" aria-live="polite">
-          {alerts.map((alert) => (
-            <div className="resource-alert-row" key={alert.key}>
-              <span className="resource-alert-icon">!</span>
-              <div>
-                <strong>{alert.title}</strong>
-                <span title={alert.detail}>{alert.detail}</span>
-              </div>
-              <div className="resource-alert-actions">
-                <span className="resource-alert-category">
-                  {alert.category === 'facility-status' && 'Facility status'}
-                  {alert.category === 'unavailable-date' && 'Unavailable date'}
-                </span>
-                <Link to={alert.link}>View</Link>
-              </div>
-            </div>
-          ))}
-        </div>
-      ) : (
-        <p className="panel-empty">
-          {totalAlertCount
-            ? 'No alerts in this category.'
-            : 'No facility issues or upcoming unavailable dates were detected.'}
-        </p>
-      )}
-    </article>
-
-    <article className="dashboard-panel resource-summary-panel">
-      <div className="panel-heading">
-        <div>
-          <h2>Resource snapshot</h2>
-          <p>Current state of managed facilities.</p>
-        </div>
-      </div>
-      <Link className="resource-stat resource-stat-link" to="/facility">
-        <div className="resource-stat-copy">
-          <span>Facility catalog</span>
-          <strong>{facilities.length} <small>facilities</small></strong>
-        </div>
-        <span className="resource-stat-detail">{availableFacilities} available now</span>
-      </Link>
-      <div className="facility-status-summary">
-        <span><i className="status-key approved" /> Available <strong>{availableFacilities}</strong></span>
-        <span><i className="status-key pending" /> Maintenance <strong>{facilitiesUnderMaintenance}</strong></span>
-        <span><i className="status-key rejected" /> Unavailable <strong>{unavailableFacilities}</strong></span>
-      </div>
-    </article>
-  </section>
-);
-
 export const BuildingAdminVenueUtilization = ({
   venues,
-  weekStartDate,
-  weekEndDate,
-  formatDate
+  dateRangeLabel
 }) => (
   <section className="dashboard-panel venue-utilization-panel">
     <div className="panel-heading">
       <div>
         <h2>Facility Usage Rate</h2>
-        <p>
-          Approved reservation hours this week out of {WEEKLY_OPERATING_HOURS} operating hours
-          ({formatDate(weekStartDate)} – {formatDate(weekEndDate)}; 7:00 AM–10:00 PM daily)
-        </p>
+        <p>Booked reservation hours for {dateRangeLabel}.</p>
       </div>
     </div>
     {venues.length ? (
@@ -140,24 +52,26 @@ export const BuildingAdminVenueUtilization = ({
           const displayedPercent = Math.min(venue.utilizationPercent, 100);
           return (
             <article className="venue-utilization-card" key={venue.id}>
-              <div
-                className="venue-utilization-donut"
-                role="img"
-                aria-label={`${venue.name}: ${venue.utilizationPercent.toFixed(1)} percent utilized this week`}
-                style={{
-                  background: `conic-gradient(#315fe8 ${displayedPercent}%, #e8edf5 ${displayedPercent}% 100%)`
-                }}
-              >
-                <span>{venue.utilizationPercent.toFixed(1)}%</span>
-              </div>
               <div className="venue-utilization-details">
-                <h3>{venue.name}</h3>
-                <p>
-                  {venue.bookedHours.toFixed(1)} of {WEEKLY_OPERATING_HOURS} operating hours reserved
-                </p>
+                <div className="venue-utilization-heading">
+                  <h3>{venue.name}</h3>
+                  <strong>{venue.utilizationPercent.toFixed(1)}%</strong>
+                </div>
+                <p>{venue.bookedHours.toFixed(1)} of {venue.operatingHours} operating hours reserved</p>
+                <div
+                  className="venue-utilization-progress"
+                  role="meter"
+                  aria-valuemin={0}
+                  aria-valuemax={100}
+                  aria-valuenow={displayedPercent}
+                  aria-valuetext={`${venue.utilizationPercent.toFixed(1)}% utilized`}
+                  aria-label={`${venue.name} facility usage rate`}
+                >
+                  <span style={{ width: `${displayedPercent}%` }} />
+                </div>
                 {venue.utilizationPercent > 100 && (
                   <span className="venue-utilization-overbooked">
-                    Reservations exceed the weekly operating hours
+                    Reservations exceed the selected period’s operating hours
                   </span>
                 )}
               </div>
@@ -166,7 +80,7 @@ export const BuildingAdminVenueUtilization = ({
         })}
       </div>
     ) : (
-      <p className="panel-empty">No facilities are available to calculate venue utilization.</p>
+      <p className="panel-empty">No facilities have booked operating hours in the selected date range.</p>
     )}
   </section>
 );
