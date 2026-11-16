@@ -20,9 +20,10 @@ import {
 import {
   RoomCheckerClassroomRankings,
   RoomCheckerExportActions,
-  RoomCheckerOccupancy
+  getRoomLabel
 } from './RoomCheckerDashboard';
 import { RankingModeToggle, ResourceRankingPanel } from './DashboardShared';
+import { OsaDashboardInsights, OsaExportActions, isOsaRole } from './OsaDashboard';
 import {
   APPROVAL_ROLE_HIERARCHY,
   isApprovalStepReady,
@@ -39,11 +40,8 @@ import { matchesDashboardReservationScope } from '../services/dashboardReservati
 import { buildDashboardReservationTrend } from '../services/dashboardReservationTrend';
 import { getEquipmentAvailability } from '../services/equipmentAvailability';
 import { getFacilityOperatingHours } from '../services/facilityUtilization';
-import { getReservationScheduleForFacility } from '../services/reservationConflicts';
-import {
-  getSpecificRoomReservedHours,
-  getLiveSpecificRoomOccupancy
-} from '../services/roomCheckerDashboard';
+import { getReservationScheduleForFacility, getSpecificRoomKey } from '../services/reservationConflicts';
+import { getSpecificRoomReservedHours } from '../services/roomCheckerDashboard';
 import { isReservationActive } from '../services/reservationStatus';
 import { getUtilityReservedCount } from '../services/utilityAvailability';
 import { formatTimeForDisplay } from '../services/timeFormatting';
@@ -670,7 +668,6 @@ const DashboardContent = ({ currentUserRole }) => {
     sort: 'latest'
   });
   const [filters, setFilters] = useState(getDefaultDashboardFilters);
-  const [liveOccupancyNow, setLiveOccupancyNow] = useState(() => new Date());
   const [isExportingDashboardPdf, setIsExportingDashboardPdf] = useState(false);
   const [dashboardPdfExportError, setDashboardPdfExportError] = useState('');
   const [isExportingMisDashboardPdf, setIsExportingMisDashboardPdf] = useState(false);
@@ -771,17 +768,13 @@ const DashboardContent = ({ currentUserRole }) => {
   const isMisDashboard = ['mis', 'mis admin'].includes(dashboardRole);
   const isBuildingAdminDashboard = dashboardRole === 'building admin';
   const isRoomCheckerDashboard = dashboardRole === 'room checker';
+  const isOsaDashboard = isOsaRole(dashboardRole);
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
     && !isAdminDashboard;
   const hasAnalyticsDashboard = isAdminDashboard || isGeneralStaffDashboard;
 
-  useEffect(() => {
-    if (!isRoomCheckerDashboard) return undefined;
-    const intervalId = window.setInterval(() => setLiveOccupancyNow(new Date()), 30_000);
-    return () => window.clearInterval(intervalId);
-  }, [isRoomCheckerDashboard]);
   const pendingUserCount = usersData.filter(
     (user) => (user.role || '').toLowerCase().trim().replace(/_/g, ' ') === 'pending'
       && user.emailVerified === true
@@ -997,8 +990,10 @@ const DashboardContent = ({ currentUserRole }) => {
     : filters.status === 'pending'
       ? 'Pending'
       : 'Approved';
-  const liveVenueUtilization = useMemo(() => {
-    if (!isBuildingAdminDashboard) return [];
+  // Operating hours (7 AM–10 PM each day) in the selected date range. Shared by the Building Admin's
+  // Facility Usage Rate and the Room Checker's Reserved Room Hours so both use the same base.
+  const usageOperatingHours = useMemo(() => {
+    if (!isBuildingAdminDashboard && !isRoomCheckerDashboard) return 0;
 
     const scheduledDates = dashboardReservations
       .flatMap((reservation) => getReservationScheduleForFacility(reservation)
@@ -1018,7 +1013,12 @@ const DashboardContent = ({ currentUserRole }) => {
       else if (endDate && !startDate) rangeStart = rangeEnd;
       else [rangeStart, rangeEnd] = [rangeEnd, rangeStart];
     }
-    const operatingHours = getFacilityOperatingHours(rangeStart, rangeEnd);
+    return getFacilityOperatingHours(rangeStart, rangeEnd);
+  }, [isBuildingAdminDashboard, isRoomCheckerDashboard, dashboardReservations, startDate, endDate]);
+
+  const liveVenueUtilization = useMemo(() => {
+    if (!isBuildingAdminDashboard) return [];
+    const operatingHours = usageOperatingHours;
 
     return reportFacilities.map((facility) => {
       const bookedMinutes = dashboardReservations.reduce((reservationTotal, reservation) => {
@@ -1062,7 +1062,8 @@ const DashboardContent = ({ currentUserRole }) => {
     dashboardReservations,
     startDate,
     endDate,
-    heatmapDateRangeLabel
+    heatmapDateRangeLabel,
+    usageOperatingHours
   ]);
   const venueTrafficHeatmaps = useMemo(() => {
     if (!isBuildingAdminDashboard) return [];
@@ -1625,18 +1626,14 @@ const DashboardContent = ({ currentUserRole }) => {
       endMinutes
     ]
   );
-  const liveSpecificRoomOccupancy = useMemo(
-    () => getLiveSpecificRoomOccupancy(
-      reservationsData,
-      {
-        startDate: filters.startDate,
-        endDate: filters.endDate,
-        today: toDateInputValue(liveOccupancyNow),
-        nowMinutes: liveOccupancyNow.getHours() * 60 + liveOccupancyNow.getMinutes()
-      }
-    ),
-    [reservationsData, filters.startDate, filters.endDate, liveOccupancyNow]
-  );
+  // Room Checker's Reserved Room Hours, shaped like Facility Usage Rate cards (room number, % used).
+  const specificRoomUsage = useMemo(() => specificRoomReservedHours.map((room) => ({
+    id: room.id,
+    name: getRoomLabel(room.name),
+    bookedHours: room.hours,
+    operatingHours: usageOperatingHours,
+    utilizationPercent: usageOperatingHours ? room.hours / usageOperatingHours * 100 : 0
+  })), [specificRoomReservedHours, usageOperatingHours]);
   // With an equipment filter, only the ticked equipment's units count toward each requestor group.
   const departmentalResourceConsumption = useMemo(
     () => getDepartmentalResourceConsumption(selectedFilterEquipmentIds
@@ -1647,8 +1644,8 @@ const DashboardContent = ({ currentUserRole }) => {
         otherEquipment: '',
         otherEquipmentUnits: ''
       }))
-      : filteredReservations),
-    [filteredReservations, selectedFilterEquipmentIds]
+      : filteredReservations, equipmentData),
+    [filteredReservations, selectedFilterEquipmentIds, equipmentData]
   );
 
   const { most: utilityUsage } = useMemo(() => {
@@ -1726,9 +1723,8 @@ const DashboardContent = ({ currentUserRole }) => {
           ? reservation.specificRoom.trim()
           : '';
         if (specificRoom) {
-          const key = specificRoom.toLowerCase()
-            .replace(/^room\s+(?=\d)/, '')
-            .replace(/\s+/g, ' ');
+          // Rooms with the same 3-digit number are one room, however the name was typed.
+          const key = getSpecificRoomKey(specificRoom);
           const current = specificRoomUsage.get(key) || { name: specificRoom, count: 0, lastUsed: 0 };
           specificRoomUsage.set(key, {
             ...current,
@@ -1773,10 +1769,6 @@ const DashboardContent = ({ currentUserRole }) => {
   const equipmentHoursMaximum = Math.max(
     1,
     ...equipmentHoursRanking.map((equipment) => equipment.hours)
-  );
-  const specificRoomHoursMaximum = Math.max(
-    1,
-    ...specificRoomReservedHours.map((room) => room.hours)
   );
   const departmentalResourceChart = useMemo(() => {
     const totalUnits = departmentalResourceConsumption.reduce(
@@ -1983,78 +1975,16 @@ const DashboardContent = ({ currentUserRole }) => {
       setIsExportingDashboardPdf(false);
     }
   };
-  const exportRoomCheckerDashboardReport = async () => {
+  const exportOsaDashboardReport = async ({ sections }) => {
     setIsExportingDashboardPdf(true);
     setDashboardPdfExportError('');
 
     try {
-      const { exportRoomCheckerDashboardPdf } = await import('../services/roomCheckerDashboardPdf');
-      const activeReservationIds = new Set(reservationsData.map((reservation) => reservation.id));
-      const reservationRows = filteredReservations.map((reservation) => {
-        const eventDate = parseDate(reservation.eventDate || reservation.date);
-        const endDate = parseDate(reservation.endDate)
-          || (eventDate
-            ? new Date(eventDate.getTime() + (Math.max(1, Number(reservation.days) || 1) - 1) * DAY_IN_MS)
-            : null);
-        const schedules = getReservationScheduleForFacility(reservation).map((entry) => {
-          const rawEntry = Array.isArray(reservation.schedule)
-            ? reservation.schedule.find((candidate) => (
-              candidate.date === entry.date
-              && candidate.startTime === entry.startTime
-              && candidate.endTime === entry.endTime
-            ))
-            : null;
-          const aircon = typeof rawEntry?.aircon === 'boolean'
-            ? rawEntry.aircon
-            : Boolean(reservation.aircon);
-          const airconStart = rawEntry?.airconOnTime
-            || reservation.airconOnTime
-            || entry.startTime;
-          const airconEnd = rawEntry?.airconOffTime
-            || reservation.airconOffTime
-            || entry.endTime;
-          return `${formatDate(parseDate(entry.date))} ${formatTime(entry.startTime)}–${formatTime(entry.endTime)}`
-            + ` · Air-con ${aircon ? `ON (${formatTime(airconStart)}–${formatTime(airconEnd)})` : 'OFF'}`;
-        });
-        const equipmentRequests = Object.entries(reservation.selectedEquip || [])
-          .filter(([, quantity]) => Number(quantity) > 0)
-          .map(([id, quantity]) => `${equipmentById.get(id)?.name || 'Equipment'} (${Number(quantity)})`);
-        const utilityRequests = (Array.isArray(reservation.selectedUtilities)
-          ? reservation.selectedUtilities
-          : [])
-          .map((id) => {
-            const quantity = Number(reservation.selectedUtilityUnits?.[id] ?? 1);
-            return `${utilitiesById.get(id)?.name || 'Utility'} (${quantity})`;
-          });
-        const otherRequests = [
-          reservation.otherEquipment && `Other equipment: ${reservation.otherEquipment}`,
-          reservation.otherUtility && `Other utility: ${reservation.otherUtility}`
-        ].filter(Boolean);
+      const { exportOsaDashboardPdf } = await import('../services/osaDashboardPdf');
 
-        return {
-          reference: reservation.refNo || reservation.id || 'No reference',
-          event: reservation.eventName || reservation.title || 'Untitled reservation',
-          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-          specificRoom: reservation.specificRoom || 'Not specified',
-          participants: reservation.specificRoomParticipants || reservation.expectedParticipants || 'Not specified',
-          dates: `${eventDate ? formatDate(eventDate) : 'Date unavailable'}${endDate && eventDate
-            && endDate.toDateString() !== eventDate.toDateString()
-            ? ` - ${formatDate(endDate)}`
-            : ''}`,
-          schedule: schedules.join('\n') || `${formatTime(reservation.startTime)}–${formatTime(reservation.endTime)}`,
-          facilities: (reservation.facilities || [])
-            .map((id) => facilitiesById.get(id)?.name || id)
-            .join(', ') || 'No facility',
-          equipment: equipmentRequests.join(', ') || 'None listed',
-          utilities: utilityRequests.join(', ') || 'None listed',
-          otherRequests: otherRequests.join(', ') || 'None listed',
-          status: reservation.status || 'Pending',
-          source: activeReservationIds.has(reservation.id) ? 'Active' : 'Archived'
-        };
-      });
-
-      await exportRoomCheckerDashboardPdf({
+      await exportOsaDashboardPdf({
         generatedAt: new Date().toLocaleString(),
+        sections,
         filters: {
           startDate: filters.startDate,
           endDate: filters.endDate,
@@ -2066,48 +1996,78 @@ const DashboardContent = ({ currentUserRole }) => {
             : 'All times',
           status: filters.status === 'all'
             ? 'Approved and pending'
-            : filters.status[0].toUpperCase() + filters.status.slice(1),
-          upcomingWindow: `${upcomingRangeDays} days`
+            : filters.status[0].toUpperCase() + filters.status.slice(1)
         },
         summary: metrics,
-        approvals: pendingApprovalReservations.slice(0, 5).map((reservation) => ({
-          reference: reservation.refNo || reservation.id || 'No reference',
-          event: reservation.eventName || 'Untitled reservation',
-          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-          date: formatDate(parseDate(reservation.eventDate || reservation.date)),
-          time: formatTime(reservation.startTime)
-        })),
-        upcomingReservations: upcomingReservations.map((reservation) => ({
-          reference: reservation.refNo || reservation.id || 'No reference',
-          event: reservation.eventName || 'Untitled reservation',
-          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
-          date: formatDate(reservation.eventDateValue),
-          time: formatTime(reservation.startTime),
-          specificRoom: reservation.specificRoom || 'Not specified',
-          facilities: (reservation.facilities || [])
-            .map((id) => facilitiesById.get(id)?.name || id)
-            .join(', ') || 'No facility'
-        })),
-        liveOccupancy: liveSpecificRoomOccupancy.map((room) => ({
-          name: room.name,
-          date: formatDate(parseDate(room.date)),
-          event: room.eventName,
-          requestor: room.requestor,
-          time: `${formatTime(room.startTime)}–${formatTime(room.endTime)}`,
-          status: room.state,
-          aircon: room.aircon ? 'Scheduled ON' : 'Scheduled OFF'
-        })),
-        reservedHours: specificRoomReservedHours,
-        roomRanking: facilitiesRanking.map((room) => ({
-          name: room.name,
-          count: room.count
-        })),
         trend: trendData,
-        reservations: reservationRows
+        matchedReservations: activity.recentReservations.map((reservation) => {
+          const participantCount = reservation.specificRoomParticipants || reservation.expectedParticipants;
+          return {
+            event: reservation.eventName || 'Untitled reservation',
+            requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+            dateTime: `${reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}`
+              + ` · ${formatTime(reservation.startTime)}`,
+            resources: [...reservation.facilityNames, ...reservation.equipmentNames].join(', '),
+            specificRoom: reservation.specificRoom?.trim() || '',
+            participants: participantCount ? `${participantCount}` : '',
+            status: reservation.status || 'Pending'
+          };
+        })
       });
+      return true;
+    } catch (error) {
+      console.error('Failed to export the OSA dashboard PDF:', error);
+      setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+      return false;
+    } finally {
+      setIsExportingDashboardPdf(false);
+    }
+  };
+  const exportRoomCheckerDashboardReport = async ({ sections }) => {
+    setIsExportingDashboardPdf(true);
+    setDashboardPdfExportError('');
+
+    try {
+      const { exportRoomCheckerDashboardPdf } = await import('../services/roomCheckerDashboardPdf');
+
+      await exportRoomCheckerDashboardPdf({
+        generatedAt: new Date().toLocaleString(),
+        sections,
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dates: startDate || endDate
+            ? `${startDate ? formatDate(startDate) : 'Any date'} - ${endDate ? formatDate(endDate) : 'Any date'}`
+            : 'All dates',
+          times: startMinutes !== null || endMinutes !== null
+            ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+            : 'All times',
+          status: filters.status === 'all'
+            ? 'Approved and pending'
+            : filters.status[0].toUpperCase() + filters.status.slice(1)
+        },
+        summary: metrics,
+        trend: trendData,
+        roomUsage: specificRoomUsage,
+        rankingMode: rankingModes.facilities,
+        roomRanking: facilitiesRanking.map((room) => ({
+          name: getRoomLabel(room.name),
+          quantity: room.count
+        })),
+        matchedReservations: activity.recentReservations.map((reservation) => ({
+          event: reservation.eventName || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          dateTime: `${reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}`
+            + ` · ${formatTime(reservation.startTime)}`,
+          specificRoom: reservation.specificRoom?.trim() || '',
+          status: reservation.status || 'Pending'
+        }))
+      });
+      return true;
     } catch (error) {
       console.error('Failed to export the Room Checker dashboard PDF:', error);
       setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+      return false;
     } finally {
       setIsExportingDashboardPdf(false);
     }
@@ -2205,6 +2165,11 @@ const DashboardContent = ({ currentUserRole }) => {
                         </span>
                       )}
                     </>
+                  ) : isRoomCheckerDashboard ? (
+                    // Room Checker: only the specific room (no participants or other resources).
+                    reservation.specificRoom?.trim() ? (
+                      <span className="recent-reservation-resources">{reservation.specificRoom.trim()}</span>
+                    ) : null
                   ) : isMisDashboard ? (
                     // MIS: equipment and utilities with their units, instead of facilities and participants.
                     <>
@@ -2281,11 +2246,23 @@ const DashboardContent = ({ currentUserRole }) => {
             heatmapFacilities={venueTrafficHeatmaps}
           />
         )}
+        {isOsaDashboard && (
+          <OsaExportActions
+            isExporting={isExportingDashboardPdf}
+            error={dashboardPdfExportError}
+            onExport={exportOsaDashboardReport}
+            dateRangeLabel={heatmapDateRangeLabel}
+            resultCount={metrics.total}
+          />
+        )}
         {isRoomCheckerDashboard && (
           <RoomCheckerExportActions
             isExporting={isExportingDashboardPdf}
             error={dashboardPdfExportError}
             onExport={exportRoomCheckerDashboardReport}
+            dateRangeLabel={heatmapDateRangeLabel}
+            resultCount={metrics.total}
+            rankingMode={rankingModes.facilities}
           />
         )}
         {isMisDashboard && (
@@ -2731,34 +2708,15 @@ const DashboardContent = ({ currentUserRole }) => {
             )}
 
             {isRoomCheckerDashboard && (
-              <RoomCheckerOccupancy
-                rooms={liveSpecificRoomOccupancy}
-                startDate={filters.startDate}
-                endDate={filters.endDate}
-                formatDate={formatDate}
-                parseDate={parseDate}
-                formatTime={formatTime}
-                onOpenReservation={(reservationId) => {
-                  const reservation = reservationsData.find(
-                    (item) => item.id === reservationId
-                  );
-                  if (reservation) {
-                    setSelectedReservation({ data: reservation, source: 'active' });
-                  }
-                }}
-              />
-            )}
-
-            {isRoomCheckerDashboard && (
               <RoomCheckerClassroomRankings
-                reservedHours={specificRoomReservedHours}
-                reservedHoursMaximum={specificRoomHoursMaximum}
+                roomUsage={specificRoomUsage}
+                dateRangeLabel={heatmapDateRangeLabel}
                 requestedRooms={facilitiesRanking}
-                requestedRoomsMaximum={facilityMaximum}
                 rankingMode={rankingModes.facilities}
                 onRankingModeChange={(value) => (
                   setRankingModes((current) => ({ ...current, facilities: value }))
                 )}
+                matchedReservations={matchedReservationsPanel}
               />
             )}
 
@@ -2786,8 +2744,10 @@ const DashboardContent = ({ currentUserRole }) => {
             />
           )}
 
-          {/* Rank requested resources for the selected period. */}
-          {hasAnalyticsDashboard && (
+          {/* Rank requested resources for the selected period. OSA shows only Matched reservations. */}
+          {isOsaDashboard && <OsaDashboardInsights matchedReservations={matchedReservationsPanel} />}
+
+          {hasAnalyticsDashboard && !isOsaDashboard && (
           <section className="dashboard-insights">
             {!isBuildingAdminDashboard && (
             <>
@@ -2865,6 +2825,7 @@ const DashboardContent = ({ currentUserRole }) => {
           )}
 
           {/* Show the latest approved equipment and utility activity. */}
+          {!isOsaDashboard && (
           <section className="dashboard-lower">
             {isAdminDashboard && !isBuildingAdminDashboard && (
             <article className="dashboard-panel equipment-history-panel">
@@ -2916,8 +2877,10 @@ const DashboardContent = ({ currentUserRole }) => {
               </article>
             )}
 
-            {!isBuildingAdminDashboard && matchedReservationsPanel}
+            {/* Building Admin and Room Checker show Matched reservations beside their ranking panel instead. */}
+            {!isBuildingAdminDashboard && !isRoomCheckerDashboard && matchedReservationsPanel}
           </section>
+          )}
         </>
       ) : (
         <section className="dashboard-kpis personal-kpis" aria-label="Dashboard summary">

@@ -8,7 +8,8 @@ import ReservationDetails from './ReservationDetails';
 import { getApprovalTrackerSteps, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { isReservationEndReached } from '../services/reservationExpiration';
 import { getUnavailableDateId } from '../services/unavailableDates';
-import { getReservationScheduleForFacility } from '../services/reservationConflicts';
+import { getReservationScheduleForFacility, getSpecificRoomKey } from '../services/reservationConflicts';
+import { parseReservationTime } from '../services/reservationTime';
 import { formatTimeForDisplay, formatTimeRange } from '../services/timeFormatting';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 
@@ -96,6 +97,9 @@ const Calendar = ({ currentUserRole }) => {
   
   // ARCHIVE STATES
   const [isArchiveVisible, setIsArchiveVisible] = useState(false);
+  // Calendar filters: reservation status, and a facility or specific room ("all" shows everything).
+  const [calendarStatusFilter, setCalendarStatusFilter] = useState('all');
+  const [calendarLocationFilter, setCalendarLocationFilter] = useState('all');
   const [showArchiveList, setShowArchiveList] = useState(false);
   const [historySelectedRequest, setHistorySelectedRequest] = useState(null);
   const [archiveSearch, setArchiveSearch] = useState('');
@@ -130,9 +134,11 @@ const Calendar = ({ currentUserRole }) => {
   const toggleArchiveMode = () => {
     setIsArchiveVisible(v => {
       const next = !v;
-      if (!next) setShowArchiveList(false); 
+      if (!next) setShowArchiveList(false);
       return next;
     });
+    // The two views have different statuses, so the status filter starts over.
+    setCalendarStatusFilter('all');
   };
 
   // 1.5. FETCH CURRENT USER ROLE
@@ -237,7 +243,8 @@ const Calendar = ({ currentUserRole }) => {
             date: formatScheduleDateForCalendar(entry.date),
             startTime: entry.startTime || '',
             endTime: entry.endTime || '',
-            facility: facilitiesMap[facilityId]?.name || facilityId
+            facility: facilitiesMap[facilityId]?.name || facilityId,
+            facilityId
           }))
         ))
         : getReservationScheduleForFacility(data, null).map((entry) => ({
@@ -267,6 +274,15 @@ const Calendar = ({ currentUserRole }) => {
             ? formatTimeRange(scheduleEntry.startTime, scheduleEntry.endTime, '-')
             : "N/A",
           startTimeOnly: formatTimeForDisplay(scheduleEntry.startTime),
+          // Used to list each day's reservations from earliest start time.
+          startMinutes: (() => {
+            const parsedTime = parseReservationTime(scheduleEntry.startTime);
+            return parsedTime ? parsedTime.hours * 60 + parsedTime.minutes : Number.MAX_SAFE_INTEGER;
+          })(),
+          facilityId: scheduleEntry.facilityId || null,
+          specificRoomKey: typeof data.specificRoom === 'string' && data.specificRoom.trim()
+            ? getSpecificRoomKey(data.specificRoom)
+            : null,
           facility: scheduleEntry.facility,
           equipment: equipmentRequested,
           requestor: formatName(data.fullName),
@@ -284,7 +300,65 @@ const Calendar = ({ currentUserRole }) => {
   const archivedRecords = historyData.filter(({ id }) => !activeReservationIds.has(id));
   const historyEvents = mapToEvents(archivedRecords, true, true);
 
-  const events = isArchiveVisible ? historyEvents : activeEvents;
+  const unfilteredEvents = isArchiveVisible ? historyEvents : activeEvents;
+
+  // Status options follow the view: active reservations are Approved or Pending (yellow covers
+  // pending and to-modify); the archive also has Rejected, Cancelled and Expired.
+  const calendarStatusOptions = isArchiveVisible
+    ? [
+      { value: 'green', label: 'Approved' },
+      { value: 'red', label: 'Rejected' },
+      { value: 'gray', label: 'Cancelled' },
+      { value: 'charcoal', label: 'Expired' }
+    ]
+    : [
+      { value: 'green', label: 'Approved' },
+      { value: 'yellow', label: 'Pending' }
+    ];
+  // Facilities from the facility list, plus every specific room found in the reservations shown.
+  // Rooms sharing a 3-digit number ("Room 401", "Rm. 401") are one option.
+  const calendarLocationOptions = (() => {
+    const facilityOptions = Object.entries(facilitiesMap)
+      .map(([id, facility]) => ({ value: `facility:${id}`, label: facility?.name || id }))
+      .sort((first, second) => first.label.localeCompare(second.label, undefined, { sensitivity: 'base' }));
+    const rooms = new Map();
+    unfilteredEvents.forEach((event) => {
+      const room = typeof event.fullData?.specificRoom === 'string' ? event.fullData.specificRoom.trim() : '';
+      if (!event.specificRoomKey || rooms.has(event.specificRoomKey)) return;
+      const numbers = room.match(/(?<!\d)\d{3}(?!\d)/g);
+      rooms.set(event.specificRoomKey, {
+        value: `room:${event.specificRoomKey}`,
+        label: `Room ${numbers ? [...new Set(numbers)].join(' / ') : room}`
+      });
+    });
+    const roomOptions = [...rooms.values()]
+      .sort((first, second) => first.label.localeCompare(second.label, undefined, { numeric: true }));
+    return { facilityOptions, roomOptions };
+  })();
+  const matchesCalendarLocation = (event) => {
+    if (calendarLocationFilter === 'all') return true;
+    if (calendarLocationFilter.startsWith('facility:')) {
+      return String(event.facilityId) === calendarLocationFilter.slice('facility:'.length);
+    }
+    return event.specificRoomKey === calendarLocationFilter.slice('room:'.length);
+  };
+  // Filtered events, each day's list ordered by earliest start time (then event name).
+  const shownRoomReservationDays = new Set();
+  const events = unfilteredEvents
+    .filter((event) => calendarStatusFilter === 'all' || event.status === calendarStatusFilter)
+    .filter(matchesCalendarLocation)
+    // A room filter matches every facility entry of a reservation; show it once per day.
+    .filter((event) => {
+      if (!calendarLocationFilter.startsWith('room:')) return true;
+      const key = `${event.originalId}|${event.date}`;
+      if (shownRoomReservationDays.has(key)) return false;
+      shownRoomReservationDays.add(key);
+      return true;
+    })
+    .sort((first, second) => (
+      first.startMinutes - second.startMinutes
+      || first.title.localeCompare(second.title, undefined, { sensitivity: 'base' })
+    ));
 
   const normalizedRole = (currentUserRole || userRole).toLowerCase().trim();
   const normalizedRoleKey = normalizedRole.replace(/_/g, ' ');
@@ -578,6 +652,51 @@ const Calendar = ({ currentUserRole }) => {
             >
               {isArchiveVisible ? 'View Active' : 'View Archive'}
             </button>
+
+            {!isArchiveListVisible && (
+              <div className="calendar-filters">
+                <select
+                  className="calendar-filter-select"
+                  aria-label="Filter reservations by status"
+                  value={calendarStatusFilter}
+                  onChange={(event) => setCalendarStatusFilter(event.target.value)}
+                >
+                  <option value="all">All statuses</option>
+                  {calendarStatusOptions.map((option) => (
+                    <option key={option.value} value={option.value}>{option.label}</option>
+                  ))}
+                </select>
+                <select
+                  className="calendar-filter-select"
+                  aria-label="Filter reservations by facility or room"
+                  value={calendarLocationFilter}
+                  onChange={(event) => setCalendarLocationFilter(event.target.value)}
+                >
+                  <option value="all">All facilities and rooms</option>
+                  {calendarLocationOptions.facilityOptions.length > 0 && (
+                    <optgroup label="Facilities">
+                      {calendarLocationOptions.facilityOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {calendarLocationOptions.roomOptions.length > 0 && (
+                    <optgroup label="Specific rooms">
+                      {calendarLocationOptions.roomOptions.map((option) => (
+                        <option key={option.value} value={option.value}>{option.label}</option>
+                      ))}
+                    </optgroup>
+                  )}
+                  {/* Keep a chosen room selectable even when it has no reservations in this view. */}
+                  {calendarLocationFilter.startsWith('room:')
+                    && !calendarLocationOptions.roomOptions.some((option) => option.value === calendarLocationFilter) && (
+                    <option value={calendarLocationFilter}>
+                      {`Room ${calendarLocationFilter.slice('room:'.length).replace(/-/g, ' / ')}`}
+                    </option>
+                  )}
+                </select>
+              </div>
+            )}
           </div>
           
           <div className="header-right" style={{ marginLeft: 'auto', display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: '0.8rem' }}>

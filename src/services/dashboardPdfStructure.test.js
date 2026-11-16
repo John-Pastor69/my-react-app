@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { exportBuildingAdminDashboardPdf } from './buildingAdminDashboardPdf.js';
 import { exportMisDashboardPdf } from './misDashboardPdf.js';
 import { exportRoomCheckerDashboardPdf } from './roomCheckerDashboardPdf.js';
+import { exportOsaDashboardPdf } from './osaDashboardPdf.js';
 
 const createPdfOutput = (exportReport, report) => {
   const originalWorkingDirectory = process.cwd();
@@ -202,34 +203,101 @@ test('Building Admin PDF refuses an export with no sections', () => {
   );
 });
 
-test('Room Checker PDF puts live operation before filtered analytics and groups related data', () => {
-  const pdf = createPdfOutput(exportRoomCheckerDashboardPdf, {
-    generatedAt: 'test',
-    filters: {
-      dates: 'All dates',
-      times: 'All times',
-      status: 'All statuses',
-      upcomingWindow: '7 days'
-    },
-    summary: { total: 0, approved: 0, pending: 0, reservedUnits: 0 },
-    approvals: [],
-    upcomingReservations: [],
-    liveOccupancy: [],
-    reservedHours: [],
-    roomRanking: [],
-    trend: [],
-    reservations: []
-  });
+const roomCheckerReport = (overrides = {}) => ({
+  generatedAt: 'test',
+  filters: {
+    startDate: '2026-11-16',
+    endDate: '2026-11-22',
+    dates: 'Nov 16, 2026 - Nov 22, 2026',
+    times: 'All times',
+    status: 'Approved and pending'
+  },
+  summary: { total: 1, approved: 1, pending: 0 },
+  trend: [{ label: 'Mon', count: 1 }],
+  roomUsage: [{ id: 'specific-room-401', name: '401', bookedHours: 8.9, operatingHours: 105, utilizationPercent: 8.4 }],
+  rankingMode: 'most',
+  roomRanking: [{ name: '401', quantity: 1 }],
+  matchedReservations: [{
+    event: 'dd',
+    requestor: 'Requestor',
+    dateTime: 'Nov 16, 2026 · 10:00 AM',
+    specificRoom: 'Room 401',
+    status: 'Approved'
+  }],
+  ...overrides
+});
+
+test('Room Checker PDF exports only filtered analytics, in dashboard order', () => {
+  const pdf = createPdfOutput(exportRoomCheckerDashboardPdf, roomCheckerReport());
 
   assertPdfSectionOrder(pdf, [
-    'Live operation',
-    'Reservations awaiting your approval',
     'Filtered analytics',
-    'Current dashboard selections',
-    'Filtered reservation summary',
+    'Filter by date',
     'Reservation activity chart',
-    'Reservation activity data',
-    'Room occupancy',
-    'Reserved Room hours'
+    'Reserved Room Hours',
+    'Most Requested Rooms',
+    'Matched reservations'
   ]);
+  assert.equal(pdf.indexOf('awaiting your approval'), -1);
+  assert.equal(pdf.indexOf('Upcoming events'), -1);
+  assert.equal(pdf.indexOf('Room occupancy'), -1);
+});
+
+test('Room Checker PDF includes only the chosen sections', () => {
+  const pdf = createPdfOutput(exportRoomCheckerDashboardPdf, roomCheckerReport({
+    sections: ['roomRanking'],
+    rankingMode: 'least'
+  }));
+  assertPdfSectionOrder(pdf, ['Filter by date', 'Least Requested Rooms']);
+  assert.equal(pdf.indexOf('Reservation activity chart'), -1);
+  assert.equal(pdf.indexOf('Matched reservations'), -1);
+  assert.throws(
+    () => createPdfOutput(exportRoomCheckerDashboardPdf, roomCheckerReport({ sections: [] })),
+    /at least one section/
+  );
+});
+
+const osaReport = (overrides = {}) => ({
+  generatedAt: 'test',
+  filters: {
+    startDate: '2026-11-16',
+    endDate: '2026-11-22',
+    dates: 'Nov 16, 2026 - Nov 22, 2026',
+    times: 'All times',
+    status: 'Approved and pending'
+  },
+  summary: { total: 1, approved: 1, pending: 0 },
+  trend: [{ label: 'Mon', count: 1 }],
+  matchedReservations: [{
+    event: 'dd',
+    requestor: 'Requestor',
+    dateTime: 'Nov 16, 2026 · 10:00 AM',
+    resources: 'Gymnasium, 5 × Sound System',
+    specificRoom: 'Room 401',
+    participants: '13',
+    status: 'Approved'
+  }],
+  ...overrides
+});
+
+test('OSA PDF exports only filtered analytics, in dashboard order', () => {
+  const pdf = createPdfOutput(exportOsaDashboardPdf, osaReport());
+  assertPdfSectionOrder(pdf, [
+    'Filtered analytics',
+    'Filter by date',
+    'Reservation activity chart',
+    'Matched reservations'
+  ]);
+  assert.equal(pdf.indexOf('awaiting your approval'), -1);
+  assert.equal(pdf.indexOf('Upcoming events'), -1);
+});
+
+test('OSA PDF includes only the chosen sections', () => {
+  const pdf = createPdfOutput(exportOsaDashboardPdf, osaReport({ sections: ['matched'] }));
+  assertPdfSectionOrder(pdf, ['Filter by date', 'Matched reservations']);
+  assert.equal(pdf.indexOf('Reservation activity chart'), -1);
+  assert.throws(
+    () => createPdfOutput(exportOsaDashboardPdf, osaReport({ sections: [] })),
+    /at least one section/
+  );
 });

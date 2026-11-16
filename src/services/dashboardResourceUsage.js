@@ -120,7 +120,13 @@ const getRequestorSignupDropdown = (requestorInfo) => {
   )) || dropdowns[0] || null;
 };
 
-export const getDepartmentalResourceConsumption = (reservations) => {
+// Approved equipment units per requestor group. Each group also lists the equipment those units were
+// made of (`items`: [{ name, units, isOtherRequest }], most units first). `equipmentData` supplies names.
+export const getDepartmentalResourceConsumption = (reservations, equipmentData = []) => {
+  const equipmentNames = new Map(equipmentData.map((equipment) => [
+    String(equipment.id),
+    equipment.name || 'Equipment'
+  ]));
   const consumptionByGroup = new Map();
   reservations
     .filter((reservation) => (reservation.status || '').toLowerCase().trim() === 'approved')
@@ -151,12 +157,31 @@ export const getDepartmentalResourceConsumption = (reservations) => {
         : '';
       const name = value ? `${label}: ${value}` : 'Unspecified requestor group';
       const key = name.toLowerCase().replace(/\s+/g, ' ');
-      const group = consumptionByGroup.get(key) || { name, units: 0 };
+      const group = consumptionByGroup.get(key) || { name, units: 0, itemUnits: new Map() };
       group.units += totalUnits;
+      const addItem = (itemKey, itemName, units, isOtherRequest) => {
+        const item = group.itemUnits.get(itemKey) || { name: itemName, units: 0, isOtherRequest };
+        item.units += units;
+        group.itemUnits.set(itemKey, item);
+      };
+      Object.entries(reservation.selectedEquip || {}).forEach(([equipmentId, quantity]) => {
+        const units = Number(quantity);
+        if (!Number.isFinite(units) || units <= 0) return;
+        addItem(`equipment-${equipmentId}`, equipmentNames.get(String(equipmentId)) || 'Equipment', units, false);
+      });
+      if (otherEquipment) {
+        addItem(`other-${otherEquipment.key}`, otherEquipment.name, otherEquipment.quantity, true);
+      }
       consumptionByGroup.set(key, group);
     });
 
   return [...consumptionByGroup.entries()]
-    .map(([id, group]) => ({ id, ...group }))
+    .map(([id, { itemUnits, ...group }]) => ({
+      id,
+      ...group,
+      items: [...itemUnits.values()].sort((first, second) => (
+        second.units - first.units || first.name.localeCompare(second.name, undefined, { sensitivity: 'base' })
+      ))
+    }))
     .sort((first, second) => second.units - first.units);
 };

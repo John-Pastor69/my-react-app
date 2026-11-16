@@ -613,7 +613,26 @@ const ResourceConsumptionChart = ({ totalUnits, segments, pieSegments = segments
             style={{ backgroundColor: segment.color }}
             aria-hidden="true"
           />
-          <span className="departmental-resource-name">{segment.name}</span>
+          <span className="departmental-resource-name">
+            {segment.name}
+            {segment.items?.length > 0 && (
+              // Collapsed by default, like "View session breakdown" in Equipment usage hours.
+              <details className="departmental-resource-details">
+                <summary>View units ({segment.items.length})</summary>
+                <ul
+                  className="departmental-resource-items"
+                  aria-label={`${segment.name} equipment units`}
+                >
+                  {segment.items.map((item) => (
+                    <li key={`${item.isOtherRequest ? 'other' : 'equipment'}-${item.name}`}>
+                      <span>{item.isOtherRequest ? `Other: ${item.name}` : item.name}</span>
+                      <strong>{formatUnits(item.units)}</strong>
+                    </li>
+                  ))}
+                </ul>
+              </details>
+            )}
+          </span>
           <strong>
             {formatUnits(segment.units)} <span>{segment.percent.toFixed(1)}%</span>
           </strong>

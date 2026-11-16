@@ -195,6 +195,14 @@ const normalizeSpecificRoom = (room) => String(room || '')
 // Standalone 3-digit room numbers in a name ("Rm. 301" -> ["301"]); 4+ digit runs like "1201" are ignored.
 const getRoomNumbers = (room) => String(room || '').match(/(?<!\d)\d{3}(?!\d)/g) || [];
 
+// Grouping key for a specific room: its 3-digit number(s) when present ("Rm. 401" and "Room 401" -> "401"),
+// otherwise the name without spaces/punctuation. Used to merge rooms in dashboard rankings.
+export const getSpecificRoomKey = (room) => {
+  const numbers = getRoomNumbers(room);
+  if (numbers.length) return [...new Set(numbers)].sort().join('-');
+  return normalizeSpecificRoom(room);
+};
+
 // Every room has a unique 3-digit number, so names that share one ("Room 301", "Rm 301", "301") are the
 // same room. Names without a 3-digit number ("AVR", "Annex B") must match ignoring spaces and punctuation.
 export const isSameSpecificRoom = (firstRoom, secondRoom) => {

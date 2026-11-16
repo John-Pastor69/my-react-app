@@ -862,7 +862,8 @@ main,
   .dashboard-charts,
   .dashboard-resource-panels,
   .dashboard-insights,
-  .dashboard-lower {
+  .dashboard-lower,
+  .osa-dashboard-insights {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
@@ -1088,10 +1089,27 @@ main,
     margin-top: 0;
   }
 
+  // Reserved Room Hours full width, then Most/Least Requested Rooms and Matched reservations side by side.
   .room-checker-room-panels {
     display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: minmax(0, 1fr);
     gap: 1rem;
+    margin-bottom: 1rem;
+
+    .recent-activity-panel {
+      margin-bottom: 0;
+    }
+
+    .room-checker-room-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      align-items: stretch;
+      gap: 1rem;
+    }
+
+    .venue-utilization-panel {
+      margin-bottom: 0;
+    }
   }
 
   .room-occupancy-list {
@@ -1172,10 +1190,6 @@ main,
     }
   }
 
-  .room-hours-panel .ranking-list {
-    max-height: none;
-    overflow: visible;
-  }
 
   .dashboard-section-heading {
     margin: 0 0 0.8rem;
@@ -1294,10 +1308,11 @@ main,
     padding: 0;
     list-style: none;
 
-    li {
+    > li {
       display: grid;
       grid-template-columns: 0.75rem minmax(0, 1fr) max-content;
-      align-items: center;
+      // Top-aligned so the swatch and totals stay level with the group name above its equipment line.
+      align-items: start;
       gap: 0.6rem;
       min-width: 0;
     }
@@ -1306,6 +1321,7 @@ main,
   .departmental-resource-swatch {
     width: 0.7rem;
     height: 0.7rem;
+    margin-top: 0.3rem;
     border-radius: 0.2rem;
   }
 
@@ -1314,6 +1330,52 @@ main,
     color: $ink;
     font-size: var(--font-body);
     overflow-wrap: anywhere;
+  }
+
+  // "View units (n)": collapsible list of the equipment that makes up a group's units.
+  .departmental-resource-details {
+    margin-top: 0.2rem;
+
+    summary {
+      width: fit-content;
+      color: $blue;
+      font-size: var(--font-small);
+      font-weight: 600;
+      cursor: pointer;
+
+      &:focus-visible {
+        outline: 2px solid $blue;
+        outline-offset: 2px;
+      }
+    }
+  }
+
+  .departmental-resource-items {
+    display: grid;
+    gap: 0.3rem;
+    margin: 0.4rem 0 0;
+    padding: 0;
+    list-style: none;
+
+    // Overrides the legend's 3-column row layout for these nested items.
+    li {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) max-content;
+      gap: 0.75rem;
+      color: $muted;
+      font-size: var(--font-small);
+    }
+
+    span {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    strong {
+      color: $ink;
+      font-size: var(--font-small);
+      font-weight: 600;
+    }
   }
 
   .departmental-resource-legend strong {
@@ -3325,7 +3387,7 @@ main,
 
 @media (max-width: 42rem) {
   .mis-dashboard-content {
-    .room-checker-room-panels {
+    .room-checker-room-panels .room-checker-room-row {
       grid-template-columns: minmax(0, 1fr);
     }
 
@@ -3585,7 +3647,7 @@ main,
       grid-template-columns: minmax(0, 1fr);
     }
 
-    .departmental-resource-legend li {
+    .departmental-resource-legend > li {
       grid-template-columns: 0.75rem minmax(0, 1fr) max-content;
       gap: 0.4rem;
     }

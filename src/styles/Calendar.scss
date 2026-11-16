@@ -482,10 +482,16 @@ $expired-light: #E2E8F0;
     .calendar-unavailable-message { color: $green-main; }
   }
 
+  // The day's reservation cards scroll; the date, event count and totals above stay in place.
   .event-cards {
     display: flex;
     flex-direction: column;
     gap: 0.8rem;
+    max-height: 32rem;
+    overflow-y: auto;
+    overscroll-behavior-y: contain;
+    padding-right: 0.25rem;
+    scrollbar-gutter: stable;
     .event-card {
       border: 0.0667rem solid $border-color;
       border-radius: 0.5333rem;
@@ -549,6 +555,9 @@ $expired-light: #E2E8F0;
       display: flex;
       flex-direction: column;
       gap: 0.8rem;
+      // Fits the sticky side panel to the screen height (never shorter than 20rem).
+      max-height: max(20rem, calc(100vh - 20rem));
+      max-height: max(20rem, calc(100dvh - 20rem));
     }
   }
 
@@ -853,6 +862,30 @@ $expired-light: #E2E8F0;
 }
 
 .day-cell { cursor: pointer; }
+// Status and facility/room filters beside the View Archive button.
+.calendar-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.calendar-filter-select {
+  max-width: 100%;
+  padding: 0.45rem 0.7rem;
+  border: 0.0667rem solid $border-color;
+  border-radius: 0.4rem;
+  background: white;
+  color: $text-dark;
+  font-family: inherit;
+  font-size: var(--font-body);
+  cursor: pointer;
+
+  &:focus-visible {
+    outline: 2px solid #3b82f6;
+    outline-offset: 1px;
+  }
+}
+
 .history-btn {
   flex-shrink: 0;
   margin-left: 0;

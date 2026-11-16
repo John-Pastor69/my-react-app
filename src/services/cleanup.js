@@ -21,6 +21,8 @@ async function runArchiveCleanup() {
 
     snapshot.forEach(doc => {
       const res = doc.data();
+      // Approved (completed) reservations are kept permanently; only a super admin removes them.
+      if (String(res.status || '').toLowerCase().trim() === 'approved') return;
       const archiveTimestampStr = res.archivedAt || res.expiredAt;
       
       if (archiveTimestampStr) {

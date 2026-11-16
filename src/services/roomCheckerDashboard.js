@@ -1,4 +1,4 @@
-import { getReservationScheduleForFacility } from './reservationConflicts.js';
+import { getReservationScheduleForFacility, getSpecificRoomKey } from './reservationConflicts.js';
 import { parseReservationTime } from './reservationTime.js';
 
 const normalizeRoomName = (value) => String(value || '')
@@ -57,7 +57,8 @@ export const getSpecificRoomReservedHours = (
       ? reservation.specificRoom.trim()
       : '';
     if (specificRoom) {
-      const key = normalizeRoomName(specificRoom);
+      // Rooms with the same 3-digit number are one room, however the name was typed.
+      const key = getSpecificRoomKey(specificRoom);
       if (!key) return;
       addScheduledHours(
         `specific-room-${key}`,

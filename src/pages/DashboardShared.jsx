@@ -140,3 +140,139 @@ export const ResourceRankingPanel = ({
     </article>
   );
 };
+
+// "Export dashboard PDF" button that opens a pop-up for choosing which sections go in the PDF.
+// `sections`: [{ key, label }] in report order. `onExport({ sections })` resolves true when the PDF saved.
+export const SectionExportActions = ({
+  isExporting,
+  error,
+  onExport,
+  sections,
+  dateRangeLabel,
+  resultCount,
+  dialogTitle = 'Export Filtered Analytics'
+}) => {
+  const allKeys = sections.map((section) => section.key);
+  const [isOpen, setIsOpen] = useState(false);
+  const [selectedSections, setSelectedSections] = useState(() => new Set(allKeys));
+  const closeModal = () => setIsOpen(false);
+
+  useEffect(() => {
+    if (!isOpen || isExporting) return undefined;
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setIsOpen(false);
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, [isOpen, isExporting]);
+
+  const allSelected = allKeys.every((key) => selectedSections.has(key));
+  const selectedCount = allKeys.filter((key) => selectedSections.has(key)).length;
+  const canExport = selectedCount > 0 && !isExporting;
+  const toggleSection = (key) => setSelectedSections((current) => {
+    const next = new Set(current);
+    if (next.has(key)) next.delete(key);
+    else next.add(key);
+    return next;
+  });
+  const handleExport = async () => {
+    if (!canExport) return;
+    const succeeded = await onExport({ sections: allKeys.filter((key) => selectedSections.has(key)) });
+    if (succeeded) setIsOpen(false);
+  };
+
+  return (
+    <div className="dashboard-export-actions">
+      <button
+        className="dashboard-export-button"
+        type="button"
+        onClick={() => setIsOpen(true)}
+        disabled={isExporting}
+      >
+        {isExporting ? 'Generating PDF...' : 'Export dashboard PDF'}
+      </button>
+      {error && !isOpen && (
+        <span className="dashboard-export-error" role="alert">{error}</span>
+      )}
+
+      {isOpen && (
+        <div
+          className="specific-rooms-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isExporting) closeModal();
+          }}
+        >
+          <section
+            className="specific-rooms-dialog dashboard-export-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="section-export-title"
+          >
+            <div className="specific-rooms-heading">
+              <div>
+                <h2 id="section-export-title">{dialogTitle}</h2>
+                <p>
+                  {dateRangeLabel} · {resultCount} {resultCount === 1 ? 'reservation' : 'reservations'} found
+                </p>
+              </div>
+              <button
+                className="specific-rooms-close"
+                type="button"
+                aria-label="Close export options"
+                onClick={closeModal}
+                disabled={isExporting}
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="specific-rooms-list dashboard-export-options">
+              <fieldset>
+                <legend>Sections to export</legend>
+                <label className="dashboard-export-option dashboard-export-option-all">
+                  <IndeterminateCheckbox
+                    checked={allSelected}
+                    indeterminate={selectedCount > 0 && !allSelected}
+                    onChange={() => setSelectedSections(allSelected ? new Set() : new Set(allKeys))}
+                  />
+                  <span>All sections</span>
+                </label>
+                {sections.map((section) => (
+                  <label className="dashboard-export-option" key={section.key}>
+                    <input
+                      type="checkbox"
+                      checked={selectedSections.has(section.key)}
+                      onChange={() => toggleSection(section.key)}
+                    />
+                    <span>{section.label}</span>
+                  </label>
+                ))}
+              </fieldset>
+            </div>
+
+            <div className="dashboard-export-footer">
+              {error && <span className="dashboard-export-error" role="alert">{error}</span>}
+              <button
+                className="dashboard-export-cancel"
+                type="button"
+                onClick={closeModal}
+                disabled={isExporting}
+              >
+                Cancel
+              </button>
+              <button
+                className="dashboard-export-button"
+                type="button"
+                onClick={handleExport}
+                disabled={!canExport}
+              >
+                {isExporting ? 'Generating PDF...' : 'Export PDF'}
+              </button>
+            </div>
+          </section>
+        </div>
+      )}
+    </div>
+  );
+};

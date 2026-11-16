@@ -179,15 +179,19 @@ const commitArchiveWrites = async (db, expiredReservations, now) => {
   }
 };
 
-const deleteExpiredArchiveRecords = async (db, now) => {
-  const snapshot = await db.collection('archive').get();
+// Archived reservations are deleted after ARCHIVE_RETENTION_DAYS, except approved (completed) ones,
+// which are kept permanently as the record of what took place; only a super admin removes those.
+const isArchiveRecordExpired = (data, now) => {
+  if (String(data.status || '').toLowerCase().trim() === 'approved') return false;
   const retentionCutoff = new Date(now);
   retentionCutoff.setDate(retentionCutoff.getDate() - ARCHIVE_RETENTION_DAYS);
-  const oldDocuments = snapshot.docs.filter((document) => {
-    const data = document.data();
-    const archiveDate = toDate(data.archivedAt || data.expiredAt);
-    return archiveDate && archiveDate < retentionCutoff;
-  });
+  const archiveDate = toDate(data.archivedAt || data.expiredAt);
+  return Boolean(archiveDate && archiveDate < retentionCutoff);
+};
+
+const deleteExpiredArchiveRecords = async (db, now) => {
+  const snapshot = await db.collection('archive').get();
+  const oldDocuments = snapshot.docs.filter((document) => isArchiveRecordExpired(document.data(), now));
 
   for (let index = 0; index < oldDocuments.length; index += DELETE_BATCH_SIZE) {
     const batch = db.batch();
@@ -217,7 +221,7 @@ const runCleanup = async () => {
   console.log(`Archived ${expiredReservations.length} expired reservation(s).`);
 
   const deletedArchiveCount = await deleteExpiredArchiveRecords(db, now);
-  console.log(`Permanently deleted ${deletedArchiveCount} archive record(s) older than ${ARCHIVE_RETENTION_DAYS} days.`);
+  console.log(`Permanently deleted ${deletedArchiveCount} non-approved archive record(s) older than ${ARCHIVE_RETENTION_DAYS} days (approved records are kept).`);
 };
 
 if (require.main === module) {
@@ -229,6 +233,7 @@ if (require.main === module) {
 
 module.exports = {
   getExpiredReservationType,
+  isArchiveRecordExpired,
   parseReservationDate,
   parseReservationTime
 };

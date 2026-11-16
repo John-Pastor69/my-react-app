@@ -254,7 +254,7 @@ const VenueUtilizationCard = ({ venue, rank }) => {
           aria-valuemax={100}
           aria-valuenow={displayedPercent}
           aria-valuetext={`${venue.utilizationPercent.toFixed(1)}% utilized`}
-          aria-label={`${venue.name} facility usage rate`}
+          aria-label={`${venue.name} usage rate`}
         >
           <span style={{ width: `${displayedPercent}%` }} />
         </div>
@@ -268,9 +268,15 @@ const VenueUtilizationCard = ({ venue, rank }) => {
   );
 };
 
+// Usage-rate panel: top 3 cards plus "View All". Also reused for the Room Checker's specific rooms by
+// passing room labels; the defaults are the Building Admin's facility wording.
 export const BuildingAdminVenueUtilization = ({
   venues,
-  dateRangeLabel
+  dateRangeLabel,
+  title = 'Facility Usage Rate',
+  allTitle = 'All Facility Usage Rates',
+  emptyMessage = 'No facilities have booked operating hours in the selected date range.',
+  dialogId = 'venue-utilization-all-title'
 }) => {
   const [isAllOpen, setIsAllOpen] = useState(false);
   const sortedVenues = useMemo(() => sortVenuesByUtilization(venues), [venues]);
@@ -282,7 +288,7 @@ export const BuildingAdminVenueUtilization = ({
     <section className="dashboard-panel venue-utilization-panel">
       <div className="panel-heading">
         <div>
-          <h2>Facility Usage Rate</h2>
+          <h2>{title}</h2>
         </div>
       </div>
       {sortedVenues.length ? (
@@ -294,7 +300,7 @@ export const BuildingAdminVenueUtilization = ({
               ))}
             </div>
           ) : (
-            <p className="panel-empty">No facilities have booked operating hours in the selected date range.</p>
+            <p className="panel-empty">{emptyMessage}</p>
           )}
           {/* With a single facility (e.g. one facility filtered), the panel already shows everything. */}
           {sortedVenues.length > 1 && (
@@ -308,7 +314,7 @@ export const BuildingAdminVenueUtilization = ({
           )}
         </>
       ) : (
-        <p className="panel-empty">No facilities have booked operating hours in the selected date range.</p>
+        <p className="panel-empty">{emptyMessage}</p>
       )}
 
       {isAllOpen && (
@@ -323,17 +329,17 @@ export const BuildingAdminVenueUtilization = ({
             className="specific-rooms-dialog"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="venue-utilization-all-title"
+            aria-labelledby={dialogId}
           >
             <div className="specific-rooms-heading">
               <div>
-                <h2 id="venue-utilization-all-title">All Facility Usage Rates</h2>
+                <h2 id={dialogId}>{allTitle}</h2>
                 <p>Ranked from highest to lowest usage for {dateRangeLabel}.</p>
               </div>
               <button
                 className="specific-rooms-close"
                 type="button"
-                aria-label="Close all facility usage rates"
+                aria-label={`Close ${allTitle.toLowerCase()}`}
                 onClick={() => setIsAllOpen(false)}
               >
                 ×

@@ -42,7 +42,7 @@ test('ranks only approved specific-room reserved hours by schedule dates', () =>
       endDate: '2026-11-12'
     }),
     [
-      { id: 'specific-room-room301', name: 'Room 301', hours: 2 }
+      { id: 'specific-room-301', name: 'Room 301', hours: 2 }
     ]
   );
 });
@@ -194,4 +194,20 @@ test('shows specific-room requests that match the selected date range', () => {
       end: 600
     }]
   );
+});
+
+test('reserved room hours merge rooms that share a 3-digit number', () => {
+  const day = (startTime, endTime) => [{ date: '2026-11-16', startTime, endTime }];
+  const rooms = getSpecificRoomReservedHours([
+    { status: 'Approved', specificRoom: 'rooooooooooooom 401', schedule: day('07:00', '09:00') },
+    { status: 'Approved', specificRoom: 'Room 401', schedule: day('10:00', '11:00') },
+    { status: 'Approved', specificRoom: 'Room 1401', schedule: day('10:00', '11:00') },
+    { status: 'Approved', specificRoom: 'AVR', schedule: day('13:00', '14:00') }
+  ], { startDate: '2026-11-16', endDate: '2026-11-16' });
+
+  assert.deepEqual(rooms.map((room) => [room.id, room.hours]), [
+    ['specific-room-401', 3],
+    ['specific-room-avr', 1],
+    ['specific-room-room1401', 1]
+  ]);
 });

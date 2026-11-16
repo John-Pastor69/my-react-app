@@ -2,6 +2,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 const {
   getExpiredReservationType,
+  isArchiveRecordExpired,
   parseReservationDate,
   parseReservationTime
 } = require('./cleanup.cjs');
@@ -50,4 +51,18 @@ test('uses explicit end dates and ignores statuses outside the expiration workfl
 
   assert.equal(getExpiredReservationType(reservation, new Date(2026, 10, 9, 12)), null);
   assert.equal(getExpiredReservationType({ ...reservation, status: 'rejected' }, new Date(2026, 10, 11)), null);
+});
+
+test('archived approved reservations are kept; others are deleted after 30 days', () => {
+  const now = new Date('2026-12-31T12:00:00');
+  const old = '2026-11-01T12:00:00.000Z';
+  const recent = '2026-12-20T12:00:00.000Z';
+
+  assert.equal(isArchiveRecordExpired({ status: 'Approved', archivedAt: old }, now), false);
+  assert.equal(isArchiveRecordExpired({ status: ' approved ', archivedAt: old }, now), false);
+  assert.equal(isArchiveRecordExpired({ status: 'Rejected', archivedAt: old }, now), true);
+  assert.equal(isArchiveRecordExpired({ status: 'Cancelled', archivedAt: old }, now), true);
+  assert.equal(isArchiveRecordExpired({ status: 'Expired', expiredAt: old }, now), true);
+  assert.equal(isArchiveRecordExpired({ status: 'Rejected', archivedAt: recent }, now), false);
+  assert.equal(isArchiveRecordExpired({ status: 'Rejected' }, now), false);
 });

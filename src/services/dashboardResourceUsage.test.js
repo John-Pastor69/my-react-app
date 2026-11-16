@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getEquipmentReservedHours } from './dashboardResourceUsage.js';
+import { getDepartmentalResourceConsumption, getEquipmentReservedHours } from './dashboardResourceUsage.js';
 
 test('ranks approved equipment by scheduled hours times quantity, including other equipment', () => {
   const reservations = [
@@ -68,4 +68,21 @@ test('ranks approved equipment by scheduled hours times quantity, including othe
       }
     ]
   );
+});
+
+test('requestor groups list the equipment their units came from', () => {
+  const osa = { requestorInfo: { signupDropdown: { label: 'Department / Office', value: 'OSA' } } };
+  const groups = getDepartmentalResourceConsumption([
+    { ...osa, status: 'Approved', selectedEquip: { mic: 6, sound: 5 } },
+    { ...osa, status: 'Approved', selectedEquip: { mic: 2 }, otherEquipment: 'Extension cord', otherEquipmentUnits: 3 },
+    { ...osa, status: 'Pending', selectedEquip: { sound: 9 } }
+  ], [{ id: 'mic', name: 'Microphone' }, { id: 'sound', name: 'Sound System' }]);
+
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].units, 16);
+  assert.deepEqual(groups[0].items, [
+    { name: 'Microphone', units: 8, isOtherRequest: false },
+    { name: 'Sound System', units: 5, isOtherRequest: false },
+    { name: 'Extension cord', units: 3, isOtherRequest: true }
+  ]);
 });

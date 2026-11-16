@@ -31,7 +31,15 @@ test('groups approved equipment units by requestor signup dropdown and excludes 
 
   assert.deepEqual(
     getDepartmentalResourceConsumption(reservations),
-    [{ id: 'department / office: engineering', name: 'Department / Office: Engineering', units: 6 }]
+    [{
+      id: 'department / office: engineering',
+      name: 'Department / Office: Engineering',
+      units: 6,
+      items: [
+        { name: 'Equipment', units: 5, isOtherRequest: false },
+        { name: 'Portable speaker', units: 1, isOtherRequest: true }
+      ]
+    }]
   );
 });
 
@@ -49,6 +57,11 @@ test('reads nested requestor signup dropdown arrays by their saved label and val
 
   assert.deepEqual(
     getDepartmentalResourceConsumption(reservations),
-    [{ id: 'department / office: ict', name: 'Department / Office: ICT', units: 2 }]
+    [{
+      id: 'department / office: ict',
+      name: 'Department / Office: ICT',
+      units: 2,
+      items: [{ name: 'Equipment', units: 2, isOtherRequest: false }]
+    }]
   );
 });

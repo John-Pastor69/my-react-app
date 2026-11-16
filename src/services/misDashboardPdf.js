@@ -114,10 +114,13 @@ const addGroupConsumptionSection = (doc, report, y) => {
   const totalUnits = report.groupConsumption.reduce((total, group) => total + (Number(group.units) || 0), 0);
   return addTable(doc, {
     title: `Resource consumption by requestor group (${formatUnits(totalUnits)})`,
-    headers: ['Rank', 'Requestor group', 'Approved equipment units', 'Share of total'],
+    headers: ['Rank', 'Requestor group', 'Equipment used', 'Approved equipment units', 'Share of total'],
     rows: report.groupConsumption.map((group, index) => [
       index + 1,
       group.name,
+      (group.items || [])
+        .map((item) => `${item.units} × ${item.isOtherRequest ? `Other: ${item.name}` : item.name}`)
+        .join(', ') || '—',
       group.units,
       totalUnits ? `${formatNumber(group.units / totalUnits * 100)}%` : '0.0%'
     ]),
