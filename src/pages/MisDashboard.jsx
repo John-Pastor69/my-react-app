@@ -587,22 +587,43 @@ export const MisDashboardEquipmentUsageHours = ({
 
 const formatUnits = (units) => `${units} unit${units === 1 ? '' : 's'}`;
 
+// Wording for the requestor-group chart. Defaults describe equipment units (MIS); OSA passes its own
+// labels to count facility and room reservations instead.
+export const EQUIPMENT_CONSUMPTION_LABELS = {
+  title: 'Resource Consumption by Requestor Group',
+  formatCount: formatUnits,
+  totalSuffix: 'equipment units',
+  pieDescription: 'of approved equipment',
+  viewItems: 'View units',
+  itemsListLabel: 'equipment units',
+  emptyMessage: 'No approved equipment-unit requests match the selected date and time filters.',
+  allTitle: 'All Requestor Groups',
+  allSubtitle: 'Approved equipment units by requestor group, largest first.',
+  dialogId: 'resource-consumption-all-title'
+};
+
 // `segments` are listed in the legend; `pieSegments` (defaults to the same list) describe the whole pie.
-const ResourceConsumptionChart = ({ totalUnits, segments, pieSegments = segments, background }) => (
+const ResourceConsumptionChart = ({
+  totalUnits,
+  segments,
+  pieSegments = segments,
+  background,
+  labels = EQUIPMENT_CONSUMPTION_LABELS
+}) => (
   <div className="departmental-resource-chart">
     <div className="departmental-resource-total">
       <div
         className="venue-utilization-donut departmental-resource-donut"
         role="img"
-        aria-label={`${formatUnits(totalUnits)} of approved equipment: ${
+        aria-label={`${labels.formatCount(totalUnits)} ${labels.pieDescription}: ${
           pieSegments.map((segment) => (
-            `${segment.name}, ${formatUnits(segment.units)}, ${segment.percent.toFixed(1)} percent`
+            `${segment.name}, ${labels.formatCount(segment.units)}, ${segment.percent.toFixed(1)} percent`
           )).join('; ')
         }`}
         style={{ background }}
       />
       <p className="departmental-resource-unit-label">
-        <strong>{totalUnits}</strong> equipment units
+        <strong>{totalUnits}</strong> {labels.totalSuffix}
       </p>
     </div>
     <ul className="departmental-resource-legend">
@@ -618,15 +639,15 @@ const ResourceConsumptionChart = ({ totalUnits, segments, pieSegments = segments
             {segment.items?.length > 0 && (
               // Collapsed by default, like "View session breakdown" in Equipment usage hours.
               <details className="departmental-resource-details">
-                <summary>View units ({segment.items.length})</summary>
+                <summary>{labels.viewItems} ({segment.items.length})</summary>
                 <ul
                   className="departmental-resource-items"
-                  aria-label={`${segment.name} equipment units`}
+                  aria-label={`${segment.name} ${labels.itemsListLabel}`}
                 >
                   {segment.items.map((item) => (
                     <li key={`${item.isOtherRequest ? 'other' : 'equipment'}-${item.name}`}>
                       <span>{item.isOtherRequest ? `Other: ${item.name}` : item.name}</span>
-                      <strong>{formatUnits(item.units)}</strong>
+                      <strong>{labels.formatCount(item.units)}</strong>
                     </li>
                   ))}
                 </ul>
@@ -634,7 +655,7 @@ const ResourceConsumptionChart = ({ totalUnits, segments, pieSegments = segments
             )}
           </span>
           <strong>
-            {formatUnits(segment.units)} <span>{segment.percent.toFixed(1)}%</span>
+            {labels.formatCount(segment.units)} <span>{segment.percent.toFixed(1)}%</span>
           </strong>
         </li>
       ))}
@@ -642,7 +663,7 @@ const ResourceConsumptionChart = ({ totalUnits, segments, pieSegments = segments
   </div>
 );
 
-export const MisDashboardResourceConsumption = ({ chart }) => {
+export const MisDashboardResourceConsumption = ({ chart, labels = EQUIPMENT_CONSUMPTION_LABELS }) => {
   const [isAllOpen, setIsAllOpen] = useState(false);
   const closeAll = useCallback(() => setIsAllOpen(false), []);
   useEscapeToClose(isAllOpen, closeAll);
@@ -655,7 +676,7 @@ export const MisDashboardResourceConsumption = ({ chart }) => {
     <article className="dashboard-panel departmental-resource-panel">
       <div className="panel-heading">
         <div>
-          <h2>Resource Consumption by Requestor Group</h2>
+          <h2>{labels.title}</h2>
         </div>
       </div>
       {chart.segments.length ? (
@@ -665,6 +686,7 @@ export const MisDashboardResourceConsumption = ({ chart }) => {
             segments={chart.segments.slice(0, 3)}
             pieSegments={chart.segments}
             background={chart.background}
+            labels={labels}
           />
           {hasMoreGroups && (
             <button
@@ -677,9 +699,7 @@ export const MisDashboardResourceConsumption = ({ chart }) => {
           )}
         </>
       ) : (
-        <p className="panel-empty">
-          No approved equipment-unit requests match the selected date and time filters.
-        </p>
+        <p className="panel-empty">{labels.emptyMessage}</p>
       )}
 
       {isAllOpen && (
@@ -694,12 +714,12 @@ export const MisDashboardResourceConsumption = ({ chart }) => {
             className="specific-rooms-dialog equipment-inventory-dialog"
             role="dialog"
             aria-modal="true"
-            aria-labelledby="resource-consumption-all-title"
+            aria-labelledby={labels.dialogId}
           >
             <div className="specific-rooms-heading">
               <div>
-                <h2 id="resource-consumption-all-title">All Requestor Groups</h2>
-                <p>Approved equipment units by requestor group, largest first.</p>
+                <h2 id={labels.dialogId}>{labels.allTitle}</h2>
+                <p>{labels.allSubtitle}</p>
               </div>
               <button
                 className="specific-rooms-close"
@@ -715,6 +735,7 @@ export const MisDashboardResourceConsumption = ({ chart }) => {
                 totalUnits={chart.totalUnits}
                 segments={chart.segments}
                 background={chart.background}
+                labels={labels}
               />
             </div>
           </section>

@@ -7,6 +7,7 @@ import { exportBuildingAdminDashboardPdf } from './buildingAdminDashboardPdf.js'
 import { exportMisDashboardPdf } from './misDashboardPdf.js';
 import { exportRoomCheckerDashboardPdf } from './roomCheckerDashboardPdf.js';
 import { exportOsaDashboardPdf } from './osaDashboardPdf.js';
+import { exportAcademicHeadDashboardPdf } from './academicHeadDashboardPdf.js';
 
 const createPdfOutput = (exportReport, report) => {
   const originalWorkingDirectory = process.cwd();
@@ -268,6 +269,7 @@ const osaReport = (overrides = {}) => ({
   },
   summary: { total: 1, approved: 1, pending: 0 },
   trend: [{ label: 'Mon', count: 1 }],
+  facilityConsumption: [{ name: 'Courses / Program: BSIT', units: 2, items: [{ name: 'Room 401', units: 2 }] }],
   matchedReservations: [{
     event: 'dd',
     requestor: 'Requestor',
@@ -286,6 +288,7 @@ test('OSA PDF exports only filtered analytics, in dashboard order', () => {
     'Filtered analytics',
     'Filter by date',
     'Reservation activity chart',
+    'Facility Reservations by Program',
     'Matched reservations'
   ]);
   assert.equal(pdf.indexOf('awaiting your approval'), -1);
@@ -298,6 +301,29 @@ test('OSA PDF includes only the chosen sections', () => {
   assert.equal(pdf.indexOf('Reservation activity chart'), -1);
   assert.throws(
     () => createPdfOutput(exportOsaDashboardPdf, osaReport({ sections: [] })),
+    /at least one section/
+  );
+});
+
+test('Academic Head PDF exports only filtered analytics, in dashboard order', () => {
+  const pdf = createPdfOutput(exportAcademicHeadDashboardPdf, osaReport());
+  assertPdfSectionOrder(pdf, [
+    'Filtered analytics',
+    'Filter by date',
+    'Reservation activity chart',
+    'Matched reservations'
+  ]);
+  assert.equal(pdf.indexOf('awaiting your approval'), -1);
+  assert.equal(pdf.indexOf('Upcoming events'), -1);
+  assert.equal(pdf.indexOf('Facility Reservations by Program'), -1);
+});
+
+test('Academic Head PDF includes only the chosen sections', () => {
+  const pdf = createPdfOutput(exportAcademicHeadDashboardPdf, osaReport({ sections: ['matched'] }));
+  assertPdfSectionOrder(pdf, ['Filter by date', 'Matched reservations']);
+  assert.equal(pdf.indexOf('Reservation activity chart'), -1);
+  assert.throws(
+    () => createPdfOutput(exportAcademicHeadDashboardPdf, osaReport({ sections: [] })),
     /at least one section/
   );
 });

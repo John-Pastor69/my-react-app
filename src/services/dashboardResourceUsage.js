@@ -120,6 +120,78 @@ const getRequestorSignupDropdown = (requestorInfo) => {
   )) || dropdowns[0] || null;
 };
 
+// The requestor's program/course from their saved sign-up details, or null (e.g. department accounts).
+export const getRequestorProgram = (requestorInfo) => {
+  const requestorRecords = Array.isArray(requestorInfo) ? requestorInfo : [requestorInfo];
+  const dropdown = requestorRecords
+    .flatMap((record) => {
+      const signupDropdown = record?.signupDropdown;
+      return Array.isArray(signupDropdown) ? signupDropdown : [signupDropdown];
+    })
+    .find((candidate) => (
+      typeof candidate?.value === 'string'
+      && candidate.value.trim()
+      && /(course|program)/.test(normalizeDropdownLabel(`${candidate.label || ''} ${candidate.id || ''}`))
+    ));
+  if (!dropdown) return null;
+  const label = typeof dropdown.label === 'string' && dropdown.label.trim() ? dropdown.label.trim() : 'Program';
+  const name = `${label}: ${dropdown.value.trim()}`;
+  return { name, key: name.toLowerCase().replace(/\s+/g, ' ') };
+};
+
+// Approved reservations that booked a facility or specific room, per program/course (department and
+// office accounts are left out). Uses the same shape as getDepartmentalResourceConsumption, with `units` = reservations;
+// `items` lists the facilities and rooms used, each counted once per reservation. Rooms sharing a 3-digit
+// number are one room. `getRoomKey` groups rooms; `facilityData` supplies facility names.
+export const getFacilityConsumptionByGroup = (reservations, facilityData = [], getRoomKey = (room) => room) => {
+  const facilityNames = new Map(facilityData.map((facility) => [
+    String(facility.id),
+    facility.name || 'Facility'
+  ]));
+  const groups = new Map();
+  reservations
+    .filter((reservation) => (reservation.status || '').toLowerCase().trim() === 'approved')
+    .forEach((reservation) => {
+      const facilityIds = [...new Set((reservation.facilities || []).map(String))];
+      const specificRoom = typeof reservation.specificRoom === 'string' ? reservation.specificRoom.trim() : '';
+      if (!facilityIds.length && !specificRoom) return;
+
+      // Programs/courses only; reservations from department or office accounts are not counted.
+      const program = getRequestorProgram(reservation.requestorInfo || {});
+      if (!program) return;
+      const { name, key } = program;
+      const group = groups.get(key) || { name, units: 0, itemCounts: new Map() };
+      group.units += 1;
+      const addItem = (itemKey, itemName, isRoom) => {
+        const item = group.itemCounts.get(itemKey) || { name: itemName, units: 0, isRoom };
+        item.units += 1;
+        group.itemCounts.set(itemKey, item);
+      };
+      facilityIds.forEach((id) => addItem(`facility-${id}`, facilityNames.get(id) || 'Facility', false));
+      if (specificRoom) {
+        const roomNumbers = specificRoom.match(/(?<!\d)\d{3}(?!\d)/g);
+        addItem(
+          `room-${getRoomKey(specificRoom)}`,
+          `Room ${roomNumbers ? [...new Set(roomNumbers)].join(' / ') : specificRoom}`,
+          true
+        );
+      }
+      groups.set(key, group);
+    });
+
+  return [...groups.entries()]
+    .map(([id, { itemCounts, ...group }]) => ({
+      id,
+      ...group,
+      items: [...itemCounts.values()].sort((first, second) => (
+        second.units - first.units || first.name.localeCompare(second.name, undefined, { sensitivity: 'base' })
+      ))
+    }))
+    .sort((first, second) => (
+      second.units - first.units || first.name.localeCompare(second.name, undefined, { sensitivity: 'base' })
+    ));
+};
+
 // Approved equipment units per requestor group. Each group also lists the equipment those units were
 // made of (`items`: [{ name, units, isOtherRequest }], most units first). `equipmentData` supplies names.
 export const getDepartmentalResourceConsumption = (reservations, equipmentData = []) => {

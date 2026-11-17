@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { getDepartmentalResourceConsumption, getEquipmentReservedHours } from './dashboardResourceUsage.js';
+import { getDepartmentalResourceConsumption, getEquipmentReservedHours, getFacilityConsumptionByGroup } from './dashboardResourceUsage.js';
 
 test('ranks approved equipment by scheduled hours times quantity, including other equipment', () => {
   const reservations = [
@@ -84,5 +84,28 @@ test('requestor groups list the equipment their units came from', () => {
     { name: 'Microphone', units: 8, isOtherRequest: false },
     { name: 'Sound System', units: 5, isOtherRequest: false },
     { name: 'Extension cord', units: 3, isOtherRequest: true }
+  ]);
+});
+
+test('counts facility and room reservations per requestor group, merging rooms by number', async () => {
+  const { getSpecificRoomKey } = await import('./reservationConflicts.js');
+  const bsit = { requestorInfo: { signupDropdown: { label: 'Courses / Program', value: 'BSIT' } } };
+  const osa = { requestorInfo: { signupDropdown: { label: 'Department / Office', value: 'OSA' } } };
+  const groups = getFacilityConsumptionByGroup([
+    { ...bsit, status: 'Approved', facilities: ['gym'], specificRoom: 'Room 401' },
+    { ...bsit, status: 'Approved', specificRoom: 'rm. 401' },
+    { ...bsit, status: 'Approved', facilities: ['gym', 'gym'] },
+    { ...osa, status: 'Approved', facilities: ['dance'] },
+    { ...osa, status: 'Pending', facilities: ['dance'] },
+    { ...osa, status: 'Approved', selectedEquip: { mic: 2 } }
+  ], [{ id: 'gym', name: 'Gymnasium' }, { id: 'dance', name: 'Dance Studio' }], getSpecificRoomKey);
+
+  // Department accounts (OSA) are left out; only programs/courses are counted.
+  assert.deepEqual(groups.map((group) => [group.name, group.units]), [
+    ['Courses / Program: BSIT', 3]
+  ]);
+  assert.deepEqual(groups[0].items.map((item) => [item.name, item.units]), [
+    ['Gymnasium', 2],
+    ['Room 401', 2]
   ]);
 });

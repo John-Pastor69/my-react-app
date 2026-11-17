@@ -863,7 +863,8 @@ main,
   .dashboard-resource-panels,
   .dashboard-insights,
   .dashboard-lower,
-  .osa-dashboard-insights {
+  .osa-dashboard-insights,
+  .matched-only-insights {
     display: grid;
     grid-template-columns: minmax(0, 1fr);
     gap: 1rem;

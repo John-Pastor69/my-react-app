@@ -25,6 +25,11 @@ import {
 import { RankingModeToggle, ResourceRankingPanel } from './DashboardShared';
 import { OsaDashboardInsights, OsaExportActions, isOsaRole } from './OsaDashboard';
 import {
+  AcademicHeadDashboardInsights,
+  AcademicHeadExportActions,
+  isAcademicHeadRole
+} from './AcademicHeadDashboard';
+import {
   APPROVAL_ROLE_HIERARCHY,
   isApprovalStepReady,
   isReservationAssignedToEndorser,
@@ -33,6 +38,8 @@ import {
 import {
   getDepartmentalResourceConsumption,
   getEquipmentReservedHours,
+  getFacilityConsumptionByGroup,
+  getRequestorProgram,
   getOtherRequestDetails
 } from '../services/dashboardResourceUsage';
 import { matchesDashboardReservationDateRange } from '../services/dashboardReservationDateFilter';
@@ -138,6 +145,43 @@ const parseTime = (value) => {
     hours = hours % 12 + (meridiem === 'PM' ? 12 : 0);
   }
   return hours * 60 + minutes;
+};
+
+// Pie chart data (slices, colours, CSS background) for requestor groups with a `units` count.
+const buildGroupConsumptionChart = (groups) => {
+  const totalUnits = groups.reduce(
+    (total, group) => total + group.units,
+    0
+  );
+  const { segments } = groups.reduce(
+    (result, group, index) => {
+      const percent = totalUnits ? group.units / totalUnits * 100 : 0;
+      const endPercent = index === groups.length - 1
+        ? 100
+        : result.accumulatedPercent + percent;
+      return {
+        accumulatedPercent: endPercent,
+        segments: [...result.segments, {
+          ...group,
+          percent,
+          startPercent: result.accumulatedPercent,
+          endPercent,
+          color: RESOURCE_CONSUMPTION_COLORS[index % RESOURCE_CONSUMPTION_COLORS.length]
+        }]
+      };
+    },
+    { accumulatedPercent: 0, segments: [] }
+  );
+
+  return {
+    totalUnits,
+    segments,
+    background: segments.length
+      ? `conic-gradient(${segments.map((segment) => (
+        `${segment.color} ${segment.startPercent}% ${segment.endPercent}%`
+      )).join(', ')})`
+      : ''
+  };
 };
 
 const formatDate = (date) => date
@@ -769,6 +813,10 @@ const DashboardContent = ({ currentUserRole }) => {
   const isBuildingAdminDashboard = dashboardRole === 'building admin';
   const isRoomCheckerDashboard = dashboardRole === 'room checker';
   const isOsaDashboard = isOsaRole(dashboardRole);
+  const isEndorserDashboard = dashboardRole === 'endorser';
+  const isAcademicHeadDashboard = isAcademicHeadRole(dashboardRole);
+  // OSA and Endorser skip the resource rankings and recent-approval lists below Reservation activity.
+  const hidesResourceAnalytics = isOsaDashboard || isEndorserDashboard || isAcademicHeadDashboard;
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
@@ -1155,6 +1203,13 @@ const DashboardContent = ({ currentUserRole }) => {
 
   const filteredReservations = useMemo(() => dashboardReservations.filter((reservation) => {
     if (!matchesDashboardReservationScope(reservation, dashboardRole)) return false;
+    // OSA analytics cover students: only requestors with a program/course, not department/office accounts.
+    if (isOsaDashboard && !getRequestorProgram(reservation.requestorInfo || {})) return false;
+    // Endorser analytics cover only the reservations naming this user as their endorser.
+    if (isEndorserDashboard && !isReservationAssignedToEndorser(reservation, {
+      email: currentUserRecord?.email || currentUser?.email,
+      name: currentUserRecord?.name
+    })) return false;
     if (
       selectedFilterFacilityIds
       && !(reservation.facilities || []).some((facilityId) => selectedFilterFacilityIds.has(String(facilityId)))
@@ -1207,6 +1262,10 @@ const DashboardContent = ({ currentUserRole }) => {
     selectedFilterFacilityIds,
     selectedFilterEquipmentIds,
     selectedFilterUtilityIds,
+    isOsaDashboard,
+    isEndorserDashboard,
+    currentUserRecord,
+    currentUser,
     startMinutes,
     endMinutes
   ]);
@@ -1770,41 +1829,19 @@ const DashboardContent = ({ currentUserRole }) => {
     1,
     ...equipmentHoursRanking.map((equipment) => equipment.hours)
   );
-  const departmentalResourceChart = useMemo(() => {
-    const totalUnits = departmentalResourceConsumption.reduce(
-      (total, group) => total + group.units,
-      0
-    );
-    const { segments } = departmentalResourceConsumption.reduce(
-      (result, group, index) => {
-        const percent = totalUnits ? group.units / totalUnits * 100 : 0;
-        const endPercent = index === departmentalResourceConsumption.length - 1
-          ? 100
-          : result.accumulatedPercent + percent;
-        return {
-          accumulatedPercent: endPercent,
-          segments: [...result.segments, {
-            ...group,
-            percent,
-            startPercent: result.accumulatedPercent,
-            endPercent,
-            color: RESOURCE_CONSUMPTION_COLORS[index % RESOURCE_CONSUMPTION_COLORS.length]
-          }]
-        };
-      },
-      { accumulatedPercent: 0, segments: [] }
-    );
-
-    return {
-      totalUnits,
-      segments,
-      background: segments.length
-        ? `conic-gradient(${segments.map((segment) => (
-          `${segment.color} ${segment.startPercent}% ${segment.endPercent}%`
-        )).join(', ')})`
-        : ''
-    };
-  }, [departmentalResourceConsumption]);
+  const departmentalResourceChart = useMemo(
+    () => buildGroupConsumptionChart(departmentalResourceConsumption),
+    [departmentalResourceConsumption]
+  );
+  // OSA: which program/course (or department) reserved facilities and specific rooms the most.
+  const osaFacilityConsumptionChart = useMemo(
+    () => (isOsaDashboard
+      ? buildGroupConsumptionChart(
+        getFacilityConsumptionByGroup(filteredReservations, facilitiesData, getSpecificRoomKey)
+      )
+      : null),
+    [isOsaDashboard, filteredReservations, facilitiesData]
+  );
   const facilitiesRanking = (rankingModes.facilities === 'most'
     ? facilityUsage
     : leastUsedFacilities)
@@ -2000,6 +2037,7 @@ const DashboardContent = ({ currentUserRole }) => {
         },
         summary: metrics,
         trend: trendData,
+        facilityConsumption: osaFacilityConsumptionChart?.segments || [],
         matchedReservations: activity.recentReservations.map((reservation) => {
           const participantCount = reservation.specificRoomParticipants || reservation.expectedParticipants;
           return {
@@ -2017,6 +2055,54 @@ const DashboardContent = ({ currentUserRole }) => {
       return true;
     } catch (error) {
       console.error('Failed to export the OSA dashboard PDF:', error);
+      setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+      return false;
+    } finally {
+      setIsExportingDashboardPdf(false);
+    }
+  };
+  const exportAcademicHeadDashboardReport = async ({ sections }) => {
+    setIsExportingDashboardPdf(true);
+    setDashboardPdfExportError('');
+
+    try {
+      const { exportAcademicHeadDashboardPdf } = await import('../services/academicHeadDashboardPdf');
+
+      await exportAcademicHeadDashboardPdf({
+        generatedAt: new Date().toLocaleString(),
+        sections,
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dates: startDate || endDate
+            ? `${startDate ? formatDate(startDate) : 'Any date'} - ${endDate ? formatDate(endDate) : 'Any date'}`
+            : 'All dates',
+          times: startMinutes !== null || endMinutes !== null
+            ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+            : 'All times',
+          status: filters.status === 'all'
+            ? 'Approved and pending'
+            : filters.status[0].toUpperCase() + filters.status.slice(1)
+        },
+        summary: metrics,
+        trend: trendData,
+        matchedReservations: activity.recentReservations.map((reservation) => {
+          const participantCount = reservation.specificRoomParticipants || reservation.expectedParticipants;
+          return {
+            event: reservation.eventName || 'Untitled reservation',
+            requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+            dateTime: `${reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}`
+              + ` · ${formatTime(reservation.startTime)}`,
+            resources: [...reservation.facilityNames, ...reservation.equipmentNames].join(', '),
+            specificRoom: reservation.specificRoom?.trim() || '',
+            participants: participantCount ? `${participantCount}` : '',
+            status: reservation.status || 'Pending'
+          };
+        })
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to export the Academic Head dashboard PDF:', error);
       setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
       return false;
     } finally {
@@ -2244,6 +2330,15 @@ const DashboardContent = ({ currentUserRole }) => {
             resultCount={metrics.total}
             rankingMode={rankingModes.facilities}
             heatmapFacilities={venueTrafficHeatmaps}
+          />
+        )}
+        {isAcademicHeadDashboard && (
+          <AcademicHeadExportActions
+            isExporting={isExportingDashboardPdf}
+            error={dashboardPdfExportError}
+            onExport={exportAcademicHeadDashboardReport}
+            dateRangeLabel={heatmapDateRangeLabel}
+            resultCount={metrics.total}
           />
         )}
         {isOsaDashboard && (
@@ -2745,9 +2840,24 @@ const DashboardContent = ({ currentUserRole }) => {
           )}
 
           {/* Rank requested resources for the selected period. OSA shows only Matched reservations. */}
-          {isOsaDashboard && <OsaDashboardInsights matchedReservations={matchedReservationsPanel} />}
+          {isOsaDashboard && (
+            <OsaDashboardInsights
+              facilityConsumptionChart={osaFacilityConsumptionChart}
+              matchedReservations={matchedReservationsPanel}
+            />
+          )}
 
-          {hasAnalyticsDashboard && !isOsaDashboard && (
+          {isEndorserDashboard && (
+            <section className="matched-only-insights" aria-label="Endorser filtered analytics">
+              {matchedReservationsPanel}
+            </section>
+          )}
+
+          {isAcademicHeadDashboard && (
+            <AcademicHeadDashboardInsights matchedReservations={matchedReservationsPanel} />
+          )}
+
+          {hasAnalyticsDashboard && !hidesResourceAnalytics && (
           <section className="dashboard-insights">
             {!isBuildingAdminDashboard && (
             <>
@@ -2825,7 +2935,7 @@ const DashboardContent = ({ currentUserRole }) => {
           )}
 
           {/* Show the latest approved equipment and utility activity. */}
-          {!isOsaDashboard && (
+          {!hidesResourceAnalytics && (
           <section className="dashboard-lower">
             {isAdminDashboard && !isBuildingAdminDashboard && (
             <article className="dashboard-panel equipment-history-panel">
