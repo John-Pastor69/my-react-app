@@ -5,7 +5,7 @@ import { db, auth } from '../Firebase';
 import '../styles/Schedule.scss';
 import ReservationDetails from './ReservationDetails';
 import { archiveReservation } from '../services/archiveReservation';
-import { formatTimeRange } from '../services/timeFormatting';
+import { formatHistoryDate, formatTimeRange } from '../services/timeFormatting';
 
 const Schedule = ({ currentUserRole = '' }) => {
   const navigate = useNavigate();
@@ -190,7 +190,9 @@ const Schedule = ({ currentUserRole = '' }) => {
         id: `cancelled-${crypto.randomUUID()}`,
         role: 'Requestor',
         badge: 'Cancelled',
-        date: cancelledAt,
+        // Readable like approval decisions; `timestamp` keeps the exact time.
+        date: formatHistoryDate(cancelledAt),
+        timestamp: cancelledAt,
         approverName: deleteModalData.fullData.fullName || currentUser?.email || 'Requestor',
         text: remark,
         state: 'cancelled'

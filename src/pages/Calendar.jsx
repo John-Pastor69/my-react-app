@@ -10,7 +10,13 @@ import { isReservationEndReached } from '../services/reservationExpiration';
 import { getUnavailableDateId } from '../services/unavailableDates';
 import { getReservationScheduleForFacility, getSpecificRoomKey } from '../services/reservationConflicts';
 import { parseReservationTime } from '../services/reservationTime';
-import { formatTimeForDisplay, formatTimeRange } from '../services/timeFormatting';
+import { formatHistoryDate, formatTimeForDisplay, formatTimeRange } from '../services/timeFormatting';
+
+// Whether a reservation's approval history already has an entry for this outcome (e.g. 'cancelled').
+const hasArchiveHistoryLog = (reservation, state) => (
+  Array.isArray(reservation?.historyLogs)
+  && reservation.historyLogs.some((log) => String(log?.state || '').toLowerCase() === state)
+);
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 
 // --- NAME FORMATTER HELPER ---
@@ -100,6 +106,7 @@ const Calendar = ({ currentUserRole }) => {
   // Calendar filters: reservation status, and a facility or specific room ("all" shows everything).
   const [calendarStatusFilter, setCalendarStatusFilter] = useState('all');
   const [calendarLocationFilter, setCalendarLocationFilter] = useState('all');
+  const [isCalendarExporting, setIsCalendarExporting] = useState(false);
   const [showArchiveList, setShowArchiveList] = useState(false);
   const [historySelectedRequest, setHistorySelectedRequest] = useState(null);
   const [archiveSearch, setArchiveSearch] = useState('');
@@ -363,6 +370,67 @@ const Calendar = ({ currentUserRole }) => {
   const normalizedRole = (currentUserRole || userRole).toLowerCase().trim();
   const normalizedRoleKey = normalizedRole.replace(/_/g, ' ');
   const isRequestorRole = ['requestor', 'user'].includes(normalizedRoleKey);
+  const canExportCalendarPdf = ['mis', 'mis admin'].includes(normalizedRoleKey);
+  const CALENDAR_STATUS_LABELS = { green: 'Approved', yellow: 'Pending', red: 'Rejected', gray: 'Cancelled', charcoal: 'Expired' };
+  // Exports the reservations the calendar shows for the displayed month, with the current filters.
+  const exportCalendarPdf = async () => {
+    if (isCalendarExporting) return;
+    const month = currentDate.getMonth();
+    const year = currentDate.getFullYear();
+    const monthEntries = events.filter((event) => {
+      const [eventMonth, , eventYear] = String(event.date || '').split('/').map(Number);
+      return eventMonth === month + 1 && eventYear === year;
+    });
+    const toSortableDate = (value) => {
+      const [m, d, y] = String(value || '').split('/').map(Number);
+      return (y || 0) * 10000 + (m || 0) * 100 + (d || 0);
+    };
+    const sortedEntries = [...monthEntries].sort((first, second) => (
+      toSortableDate(first.date) - toSortableDate(second.date)
+      || first.startMinutes - second.startMinutes
+      || first.title.localeCompare(second.title, undefined, { sensitivity: 'base' })
+    ));
+    const statusLabel = calendarStatusFilter === 'all'
+      ? 'All statuses'
+      : (calendarStatusOptions.find((option) => option.value === calendarStatusFilter)?.label || calendarStatusFilter);
+    const locationOption = [...calendarLocationOptions.facilityOptions, ...calendarLocationOptions.roomOptions]
+      .find((option) => option.value === calendarLocationFilter);
+    const locationLabel = calendarLocationFilter === 'all'
+      ? 'All facilities and rooms'
+      : (locationOption?.label || `Room ${calendarLocationFilter.slice('room:'.length).replace(/-/g, ' / ')}`);
+    setIsCalendarExporting(true);
+    try {
+      const { exportCalendarReservationsPdf } = await import('../services/calendarReservationsPdf');
+      exportCalendarReservationsPdf({
+        generatedAt: new Date().toLocaleString(),
+        monthLabel: currentDate.toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+        view: isArchiveVisible ? 'archive' : 'active',
+        statusLabel,
+        locationLabel,
+        reservationCount: new Set(sortedEntries.map((event) => event.originalId)).size,
+        entries: sortedEntries.map((event) => {
+          const room = typeof event.fullData?.specificRoom === 'string' ? event.fullData.specificRoom.trim() : '';
+          const rawStatus = String(event.fullData?.status || '').toLowerCase();
+          return {
+            date: event.date,
+            time: event.time,
+            event: event.title,
+            location: room ? `${event.facility} (${room})` : event.facility,
+            requestor: event.requestor,
+            equipment: event.equipment,
+            status: event.status === 'yellow' && rawStatus.includes('modify')
+              ? 'To Modify'
+              : (CALENDAR_STATUS_LABELS[event.status] || event.status)
+          };
+        })
+      });
+    } catch (error) {
+      console.error('Calendar PDF export failed:', error);
+      alert('Could not export the calendar PDF. Please try again.');
+    } finally {
+      setIsCalendarExporting(false);
+    }
+  };
   const isOwnReservation = (reservation) => {
     if (!currentUser || !reservation) return false;
     if (reservation.userId === currentUser.uid) return true;
@@ -695,6 +763,16 @@ const Calendar = ({ currentUserRole }) => {
                     </option>
                   )}
                 </select>
+                {canExportCalendarPdf && (
+                  <button
+                    type="button"
+                    className="calendar-export-btn"
+                    onClick={exportCalendarPdf}
+                    disabled={isCalendarExporting}
+                  >
+                    {isCalendarExporting ? 'Exporting…' : 'Export PDF'}
+                  </button>
+                )}
               </div>
             )}
           </div>
@@ -1158,28 +1236,33 @@ const Calendar = ({ currentUserRole }) => {
                             {log.role || 'Approver'}
                             {log.badge && <span>{log.badge}</span>}
                           </strong>
-                          <span>{log.date || 'Date unavailable'}{log.approverName ? ` · ${log.approverName}` : ''}</span>
+                          <span>{formatHistoryDate(log.date || log.timestamp)}{log.approverName ? ` · ${log.approverName}` : ''}</span>
                           <p>{log.text || 'No remarks provided.'}</p>
                         </div>
                       ))}
-                      {historySelectedRequest.fullData.cancellationRemark && (
+                      {/* Older reservations saved the cancellation, rejection, or expiry only on the record itself;
+                          newer ones log it in the history above, so these show only when that log is missing. */}
+                      {historySelectedRequest.fullData.cancellationRemark
+                        && !hasArchiveHistoryLog(historySelectedRequest.fullData, 'cancelled') && (
                         <div className="archive-history-entry cancelled">
                           <strong>Cancellation Remark</strong>
-                          <span>{historySelectedRequest.fullData.cancelledAt || 'Date unavailable'}</span>
+                          <span>{formatHistoryDate(historySelectedRequest.fullData.cancelledAt)}</span>
                           <p>{historySelectedRequest.fullData.cancellationRemark}</p>
                         </div>
                       )}
-                      {historySelectedRequest.fullData.rejectionRemark && (
+                      {historySelectedRequest.fullData.rejectionRemark
+                        && !hasArchiveHistoryLog(historySelectedRequest.fullData, 'rejected') && (
                         <div className="archive-history-entry rejected">
                           <strong>Rejection Remark</strong>
-                          <span>{historySelectedRequest.fullData.rejectedAt || 'Date unavailable'}</span>
+                          <span>{formatHistoryDate(historySelectedRequest.fullData.rejectedAt)}</span>
                           <p>{historySelectedRequest.fullData.rejectionRemark}</p>
                         </div>
                       )}
-                      {historySelectedRequest.fullData.expiredAt && (
+                      {historySelectedRequest.fullData.expiredAt
+                        && !hasArchiveHistoryLog(historySelectedRequest.fullData, 'expired') && (
                         <div className="archive-history-entry pending">
                           <strong>Reservation Expired</strong>
-                          <span>{historySelectedRequest.fullData.expiredAt}</span>
+                          <span>{formatHistoryDate(historySelectedRequest.fullData.expiredAt)}</span>
                           <p>Pending reservation expired after its scheduled start date and time.</p>
                         </div>
                       )}

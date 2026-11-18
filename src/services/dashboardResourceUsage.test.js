@@ -109,3 +109,16 @@ test('counts facility and room reservations per requestor group, merging rooms b
     ['Room 401', 2]
   ]);
 });
+
+test('rooms-only grouping counts programs that reserved specific rooms', async () => {
+  const { getSpecificRoomKey } = await import('./reservationConflicts.js');
+  const bsit = { requestorInfo: { signupDropdown: { label: 'Courses / Program', value: 'BSIT' } } };
+  const groups = getFacilityConsumptionByGroup([
+    { ...bsit, status: 'Approved', facilities: ['gym'], specificRoom: 'Room 401' },
+    { ...bsit, status: 'Approved', specificRoom: 'rm. 401' },
+    { ...bsit, status: 'Approved', facilities: ['gym'] }
+  ], [{ id: 'gym', name: 'Gymnasium' }], getSpecificRoomKey, { roomsOnly: true });
+
+  assert.deepEqual(groups.map((group) => [group.name, group.units]), [['Courses / Program: BSIT', 2]]);
+  assert.deepEqual(groups[0].items.map((item) => [item.name, item.units]), [['Room 401', 2]]);
+});

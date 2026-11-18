@@ -27,12 +27,20 @@ const isScheduleEntryInDateRange = (date, startDate, endDate) => (
 
 export const getSpecificRoomReservedHours = (
   reservations,
-  { startDate = '', endDate = '', startMinutes = null, endMinutes = null, status = 'all' } = {}
+  {
+    startDate = '',
+    endDate = '',
+    startMinutes = null,
+    endMinutes = null,
+    status = 'all',
+    // Also list each booked session (event, date, times, hours) per room, for session breakdowns.
+    includeSessions = false
+  } = {}
 ) => {
   const hoursByRoom = new Map();
 
-  const addScheduledHours = (id, name, schedule) => {
-    const room = hoursByRoom.get(id) || { id, name, hours: 0 };
+  const addScheduledHours = (id, name, schedule, eventName) => {
+    const room = hoursByRoom.get(id) || { id, name, hours: 0, ...(includeSessions ? { sessions: [] } : {}) };
     schedule.forEach((entry) => {
       if (!isScheduleEntryInDateRange(entry.date, startDate, endDate)) return;
       const start = getTimeMinutes(entry.startTime);
@@ -45,6 +53,15 @@ export const getSpecificRoomReservedHours = (
       ) return;
 
       room.hours += (end - start) / 60;
+      if (includeSessions) {
+        room.sessions.push({
+          eventName,
+          date: entry.date,
+          startTime: entry.startTime,
+          endTime: entry.endTime,
+          hours: (end - start) / 60
+        });
+      }
     });
     if (room.hours > 0) hoursByRoom.set(id, room);
   };
@@ -63,14 +80,22 @@ export const getSpecificRoomReservedHours = (
       addScheduledHours(
         `specific-room-${key}`,
         specificRoom,
-        getReservationScheduleForFacility(reservation)
+        getReservationScheduleForFacility(reservation),
+        reservation.eventName || 'Untitled reservation'
       );
     }
   });
 
-  return [...hoursByRoom.values()].sort((first, second) => (
+  const rooms = [...hoursByRoom.values()].sort((first, second) => (
     second.hours - first.hours || first.name.localeCompare(second.name)
   ));
+  if (includeSessions) {
+    rooms.forEach((room) => room.sessions.sort((first, second) => (
+      String(first.date).localeCompare(String(second.date))
+      || (getTimeMinutes(first.startTime) ?? 0) - (getTimeMinutes(second.startTime) ?? 0)
+    )));
+  }
+  return rooms;
 };
 
 export const getLiveSpecificRoomOccupancy = (

@@ -143,7 +143,13 @@ export const getRequestorProgram = (requestorInfo) => {
 // office accounts are left out). Uses the same shape as getDepartmentalResourceConsumption, with `units` = reservations;
 // `items` lists the facilities and rooms used, each counted once per reservation. Rooms sharing a 3-digit
 // number are one room. `getRoomKey` groups rooms; `facilityData` supplies facility names.
-export const getFacilityConsumptionByGroup = (reservations, facilityData = [], getRoomKey = (room) => room) => {
+// `roomsOnly`: count only reservations with a specific room, and list only rooms (Academic Head).
+export const getFacilityConsumptionByGroup = (
+  reservations,
+  facilityData = [],
+  getRoomKey = (room) => room,
+  { roomsOnly = false } = {}
+) => {
   const facilityNames = new Map(facilityData.map((facility) => [
     String(facility.id),
     facility.name || 'Facility'
@@ -152,7 +158,7 @@ export const getFacilityConsumptionByGroup = (reservations, facilityData = [], g
   reservations
     .filter((reservation) => (reservation.status || '').toLowerCase().trim() === 'approved')
     .forEach((reservation) => {
-      const facilityIds = [...new Set((reservation.facilities || []).map(String))];
+      const facilityIds = roomsOnly ? [] : [...new Set((reservation.facilities || []).map(String))];
       const specificRoom = typeof reservation.specificRoom === 'string' ? reservation.specificRoom.trim() : '';
       if (!facilityIds.length && !specificRoom) return;
 

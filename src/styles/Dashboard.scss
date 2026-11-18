@@ -3654,3 +3654,154 @@ main,
     }
   }
 }
+
+// School Admin Aircon-Hours: the large total above the facility ranking.
+.mis-dashboard-content {
+  .aircon-usage-total {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+
+    strong {
+      color: #0f172a;
+      font-size: 2rem;
+      font-weight: 800;
+      line-height: 1.1;
+    }
+
+    span {
+      color: #64748b;
+      font-size: var(--font-body);
+    }
+  }
+
+  .aircon-usage-reservations {
+    display: block;
+    color: #64748b;
+    font-size: 0.75rem;
+    font-weight: 500;
+  }
+}
+
+// School Admin Equipment Maintenance Index: half-circle gauge plus the items in maintenance.
+.mis-dashboard-content {
+  // Sits on its own under Approval and Upcoming Events, so it needs its own bottom spacing.
+  .maintenance-index-panel {
+    margin-bottom: 1rem;
+
+    .venue-utilization-view-all {
+      margin-top: 0.75rem;
+    }
+  }
+
+  .maintenance-index-modal-list {
+    padding: 1rem 1.5rem 1.5rem;
+  }
+
+  .maintenance-index-body {
+    display: grid;
+    grid-template-columns: minmax(12rem, 16rem) minmax(0, 1fr);
+    align-items: center;
+    gap: 1.5rem;
+
+    @media (max-width: 42rem) {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  .maintenance-index-gauge {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.35rem;
+    text-align: center;
+
+    p {
+      margin: 0;
+      color: #64748b;
+      font-size: var(--font-body);
+
+      strong { color: #0f172a; }
+    }
+  }
+
+  .maintenance-gauge {
+    width: 100%;
+    max-width: 14rem;
+
+    path {
+      fill: none;
+      stroke-width: 18;
+      stroke-linecap: round;
+    }
+
+    .maintenance-gauge-track { stroke: #e8edf5; }
+    &.is-healthy .maintenance-gauge-fill { stroke: #16a34a; }
+    &.is-watch .maintenance-gauge-fill { stroke: #c98113; }
+    &.is-critical .maintenance-gauge-fill { stroke: #dc2626; }
+
+    .maintenance-gauge-value {
+      fill: #0f172a;
+      font-size: 1.6rem;
+      font-weight: 800;
+    }
+
+    .maintenance-gauge-scale {
+      fill: #64748b;
+      font-size: 0.65rem;
+    }
+  }
+
+  .maintenance-index-level {
+    padding: 0.2rem 0.65rem;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    font-weight: 700;
+
+    &.is-healthy { background: rgba(22, 163, 74, 0.12); color: #15803d; }
+    &.is-watch { background: rgba(201, 129, 19, 0.14); color: #a16207; }
+    &.is-critical { background: rgba(220, 38, 38, 0.12); color: #b91c1c; }
+  }
+
+  .maintenance-index-scale {
+    margin: 0 0 0.75rem;
+    color: #64748b;
+    font-size: 0.8rem;
+  }
+
+  .maintenance-index-items {
+    display: grid;
+    gap: 0.5rem;
+    margin: 0;
+    padding: 0;
+    list-style: none;
+
+    li {
+      display: flex;
+      justify-content: space-between;
+      gap: 0.75rem;
+      padding-bottom: 0.5rem;
+      border-bottom: 1px solid #e8edf5;
+      color: #0f172a;
+      font-size: var(--font-body);
+    }
+
+    // Each item coloured by its own share under maintenance.
+    strong {
+      color: #15803d;
+      white-space: nowrap;
+
+      &.is-watch { color: #a16207; }
+      &.is-critical { color: #b91c1c; }
+
+      small {
+        color: #64748b;
+        font-size: 0.75rem;
+        font-weight: 500;
+      }
+    }
+
+  }
+}

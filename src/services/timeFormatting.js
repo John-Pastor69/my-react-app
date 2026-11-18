@@ -22,3 +22,17 @@ export const formatTimeForDisplay = (value) => {
 export const formatTimeRange = (startTime, endTime, separator = '–') => (
   `${formatTimeForDisplay(startTime)} ${separator} ${formatTimeForDisplay(endTime)}`.trim()
 );
+
+// Readable date for an approval-history entry. Saved ISO timestamps ("2026-11-18T17:40:52.919Z") become
+// "Nov 19, 2026 at 01:40 AM" in local time, matching the app's other history dates; already-readable
+// dates are shown as saved.
+export const formatHistoryDate = (value) => {
+  if (!value) return 'Date unavailable';
+  const text = String(value).trim();
+  if (!/^\d{4}-\d{2}-\d{2}T/.test(text)) return text;
+  const date = new Date(text);
+  if (Number.isNaN(date.getTime())) return text;
+  const datePart = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+  const timePart = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+  return `${datePart} at ${timePart}`;
+};

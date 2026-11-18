@@ -10,7 +10,7 @@ import {
     isApprovalStepReady,
     normalizeApprovalRoleKey
 } from '../services/approvalWorkflow';
-import { formatTimeRange } from '../services/timeFormatting';
+import { formatHistoryDate, formatTimeRange } from '../services/timeFormatting';
 
 // --- NAME FORMATTER HELPER ---
 const formatName = (fullName) => {
@@ -155,7 +155,9 @@ const Approval = ({ currentUserRole = '' }) => {
                 id: `cancelled-${crypto.randomUUID()}`,
                 role: currentUserRole,
                 badge: 'Cancelled',
-                date: cancelledAt,
+                // Readable like approval decisions; `timestamp` keeps the exact time.
+                date: formatHistoryDate(cancelledAt),
+                timestamp: cancelledAt,
                 approverName: currentUserDoc.name
                     ? currentUserName
                     : currentUser.email || 'Administrator',

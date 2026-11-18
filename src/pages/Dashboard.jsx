@@ -30,6 +30,12 @@ import {
   isAcademicHeadRole
 } from './AcademicHeadDashboard';
 import {
+  SchoolAdminDashboardInsights,
+  SchoolAdminMaintenanceIndex,
+  SchoolAdminExportActions,
+  isSchoolAdminRole
+} from './SchoolAdminDashboard';
+import {
   APPROVAL_ROLE_HIERARCHY,
   isApprovalStepReady,
   isReservationAssignedToEndorser,
@@ -49,6 +55,8 @@ import { getEquipmentAvailability } from '../services/equipmentAvailability';
 import { getFacilityOperatingHours } from '../services/facilityUtilization';
 import { getReservationScheduleForFacility, getSpecificRoomKey } from '../services/reservationConflicts';
 import { getSpecificRoomReservedHours } from '../services/roomCheckerDashboard';
+import { getAirconUsage } from '../services/airconUsage';
+import { getEquipmentMaintenanceIndex } from '../services/resourceInventory';
 import { isReservationActive } from '../services/reservationStatus';
 import { getUtilityReservedCount } from '../services/utilityAvailability';
 import { formatTimeForDisplay } from '../services/timeFormatting';
@@ -815,8 +823,15 @@ const DashboardContent = ({ currentUserRole }) => {
   const isOsaDashboard = isOsaRole(dashboardRole);
   const isEndorserDashboard = dashboardRole === 'endorser';
   const isAcademicHeadDashboard = isAcademicHeadRole(dashboardRole);
+  const isSchoolAdminDashboard = isSchoolAdminRole(dashboardRole);
   // OSA and Endorser skip the resource rankings and recent-approval lists below Reservation activity.
-  const hidesResourceAnalytics = isOsaDashboard || isEndorserDashboard || isAcademicHeadDashboard;
+  const isSuperAdminDashboard = dashboardRole === 'super admin';
+  // Super Admin also shows only Matched reservations under Filtered analytics.
+  const hidesResourceAnalytics = isOsaDashboard
+    || isEndorserDashboard
+    || isSuperAdminDashboard
+    || isAcademicHeadDashboard
+    || isSchoolAdminDashboard;
   const canManagePendingProfiles = ['building admin', 'mis', 'super admin'].includes(dashboardRole);
   const isGeneralStaffDashboard = Boolean(dashboardRole)
     && !['requestor', 'user'].includes(dashboardRole)
@@ -1833,6 +1848,44 @@ const DashboardContent = ({ currentUserRole }) => {
     () => buildGroupConsumptionChart(departmentalResourceConsumption),
     [departmentalResourceConsumption]
   );
+  // School Admin: scheduled aircon-hours of approved reservations in the Filter by Date range.
+  const schoolAdminAirconUsage = useMemo(
+    () => (isSchoolAdminDashboard
+      ? getAirconUsage(dashboardReservations, {
+        startDate: filters.startDate,
+        endDate: filters.endDate,
+        startMinutes,
+        endMinutes,
+        status: filters.status,
+        facilityData: facilitiesData,
+        getRoomKey: getSpecificRoomKey
+      })
+      : null),
+    [
+      isSchoolAdminDashboard,
+      dashboardReservations,
+      filters.startDate,
+      filters.endDate,
+      filters.status,
+      startMinutes,
+      endMinutes,
+      facilitiesData
+    ]
+  );
+  // School Admin: share of all equipment units currently under maintenance (live inventory).
+  const schoolAdminMaintenanceIndex = useMemo(
+    () => (isSchoolAdminDashboard ? getEquipmentMaintenanceIndex(equipmentInventory) : null),
+    [isSchoolAdminDashboard, equipmentInventory]
+  );
+  // Academic Head: which programs/courses reserve specific rooms the most.
+  const academicHeadRoomConsumptionChart = useMemo(
+    () => (isAcademicHeadDashboard
+      ? buildGroupConsumptionChart(
+        getFacilityConsumptionByGroup(filteredReservations, [], getSpecificRoomKey, { roomsOnly: true })
+      )
+      : null),
+    [isAcademicHeadDashboard, filteredReservations]
+  );
   // OSA: which program/course (or department) reserved facilities and specific rooms the most.
   const osaFacilityConsumptionChart = useMemo(
     () => (isOsaDashboard
@@ -2012,6 +2065,54 @@ const DashboardContent = ({ currentUserRole }) => {
       setIsExportingDashboardPdf(false);
     }
   };
+  const exportSchoolAdminDashboardReport = async ({ sections }) => {
+    setIsExportingDashboardPdf(true);
+    setDashboardPdfExportError('');
+
+    try {
+      const { exportSchoolAdminDashboardPdf } = await import('../services/schoolAdminDashboardPdf');
+
+      await exportSchoolAdminDashboardPdf({
+        generatedAt: new Date().toLocaleString(),
+        sections,
+        filters: {
+          startDate: filters.startDate,
+          endDate: filters.endDate,
+          dates: startDate || endDate
+            ? `${startDate ? formatDate(startDate) : 'Any date'} - ${endDate ? formatDate(endDate) : 'Any date'}`
+            : 'All dates',
+          times: startMinutes !== null || endMinutes !== null
+            ? `${filters.startTime ? formatTime(filters.startTime) : 'Any time'} - ${filters.endTime ? formatTime(filters.endTime) : 'Any time'}`
+            : 'All times',
+          status: filters.status === 'all'
+            ? 'Approved and pending'
+            : filters.status[0].toUpperCase() + filters.status.slice(1)
+        },
+        summary: metrics,
+        trend: trendData,
+        maintenanceIndex: schoolAdminMaintenanceIndex,
+        aircon: {
+          totalHours: schoolAdminAirconUsage?.totalHours || 0,
+          items: schoolAdminAirconUsage?.items || []
+        },
+        matchedReservations: matchedReservationsList.map((reservation) => ({
+          event: reservation.eventName || 'Untitled reservation',
+          requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
+          dateTime: `${reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}`
+            + ` · ${formatTime(reservation.startTime)}`,
+          facilities: reservation.facilityNames.join(', '),
+          status: reservation.status || 'Pending'
+        }))
+      });
+      return true;
+    } catch (error) {
+      console.error('Failed to export the School Admin dashboard PDF:', error);
+      setDashboardPdfExportError('The PDF report could not be generated. Please try again.');
+      return false;
+    } finally {
+      setIsExportingDashboardPdf(false);
+    }
+  };
   const exportOsaDashboardReport = async ({ sections }) => {
     setIsExportingDashboardPdf(true);
     setDashboardPdfExportError('');
@@ -2086,14 +2187,18 @@ const DashboardContent = ({ currentUserRole }) => {
         },
         summary: metrics,
         trend: trendData,
-        matchedReservations: activity.recentReservations.map((reservation) => {
+        roomUsageHours: specificRoomReservedHours.map((room) => ({
+          name: getRoomLabel(room.name),
+          hours: room.hours
+        })),
+        roomConsumption: academicHeadRoomConsumptionChart?.segments || [],
+        matchedReservations: matchedReservationsList.map((reservation) => {
           const participantCount = reservation.specificRoomParticipants || reservation.expectedParticipants;
           return {
             event: reservation.eventName || 'Untitled reservation',
             requestor: reservation.fullName || reservation.userEmail || 'Unknown requestor',
             dateTime: `${reservation.eventDateValue ? formatDate(reservation.eventDateValue) : 'Date unavailable'}`
               + ` · ${formatTime(reservation.startTime)}`,
-            resources: [...reservation.facilityNames, ...reservation.equipmentNames].join(', '),
             specificRoom: reservation.specificRoom?.trim() || '',
             participants: participantCount ? `${participantCount}` : '',
             status: reservation.status || 'Pending'
@@ -2205,6 +2310,15 @@ const DashboardContent = ({ currentUserRole }) => {
     }));
   };
 
+  // Academic Head: Matched reservations lists only reservations with a specific room.
+  // School Admin: only reservations that booked a facility (specific-room-only requests are left out).
+  const matchedReservationsList = isAcademicHeadDashboard
+    ? activity.recentReservations.filter((reservation) => (
+      typeof reservation.specificRoom === 'string' && reservation.specificRoom.trim()
+    ))
+    : isSchoolAdminDashboard
+      ? activity.recentReservations.filter((reservation) => reservation.facilityNames.length > 0)
+      : activity.recentReservations;
   const matchedReservationsPanel = (
     <article className="dashboard-panel recent-activity-panel">
       <div className="panel-heading">
@@ -2212,9 +2326,9 @@ const DashboardContent = ({ currentUserRole }) => {
           <h2>Matched reservations</h2>
         </div>
       </div>
-      {activity.recentReservations.length ? (
+      {matchedReservationsList.length ? (
         <div className="recent-reservations-list">
-          {activity.recentReservations.map((reservation) => {
+          {matchedReservationsList.map((reservation) => {
             const participantCount = reservation.specificRoomParticipants || reservation.expectedParticipants;
             const roomAndParticipants = [
               reservation.specificRoom,
@@ -2250,6 +2364,19 @@ const DashboardContent = ({ currentUserRole }) => {
                           {reservation.facilityNames.join(' · ')}
                         </span>
                       )}
+                    </>
+                  ) : isSchoolAdminDashboard ? (
+                    // School Admin: the booked facilities only (no specific room, equipment or participants).
+                    <span className="recent-reservation-resources">{reservation.facilityNames.join(' · ')}</span>
+                  ) : isAcademicHeadDashboard ? (
+                    // Academic Head: the specific room and its participant count only.
+                    <>
+                      <span className="recent-reservation-resources">{reservation.specificRoom.trim()}</span>
+                      {(reservation.specificRoomParticipants || reservation.expectedParticipants) ? (
+                        <span className="recent-reservation-resources">
+                          {reservation.specificRoomParticipants || reservation.expectedParticipants} participants
+                        </span>
+                      ) : null}
                     </>
                   ) : isRoomCheckerDashboard ? (
                     // Room Checker: only the specific room (no participants or other resources).
@@ -2330,6 +2457,15 @@ const DashboardContent = ({ currentUserRole }) => {
             resultCount={metrics.total}
             rankingMode={rankingModes.facilities}
             heatmapFacilities={venueTrafficHeatmaps}
+          />
+        )}
+        {isSchoolAdminDashboard && (
+          <SchoolAdminExportActions
+            isExporting={isExportingDashboardPdf}
+            error={dashboardPdfExportError}
+            onExport={exportSchoolAdminDashboardReport}
+            dateRangeLabel={heatmapDateRangeLabel}
+            resultCount={metrics.total}
           />
         )}
         {isAcademicHeadDashboard && (
@@ -2496,6 +2632,11 @@ const DashboardContent = ({ currentUserRole }) => {
             <MisDashboardEquipmentInventory equipment={equipmentTabAvailability} />
             <MisDashboardUtilityInventory utilities={utilityInventory} />
           </div>
+        )}
+
+        {/* School Admin: live equipment maintenance gauge, under Approval and Upcoming Events. */}
+        {isSchoolAdminDashboard && schoolAdminMaintenanceIndex && (
+          <SchoolAdminMaintenanceIndex index={schoolAdminMaintenanceIndex} />
         )}
 
           {/* Global search covers active and archived reservations and admin user matches. */}
@@ -2847,14 +2988,26 @@ const DashboardContent = ({ currentUserRole }) => {
             />
           )}
 
-          {isEndorserDashboard && (
-            <section className="matched-only-insights" aria-label="Endorser filtered analytics">
+          {(isEndorserDashboard || isSuperAdminDashboard) && (
+            <section className="matched-only-insights" aria-label="Matched reservations">
               {matchedReservationsPanel}
             </section>
           )}
 
           {isAcademicHeadDashboard && (
-            <AcademicHeadDashboardInsights matchedReservations={matchedReservationsPanel} />
+            <AcademicHeadDashboardInsights
+              roomUsageHours={specificRoomReservedHours}
+              roomConsumptionChart={academicHeadRoomConsumptionChart}
+              matchedReservations={matchedReservationsPanel}
+            />
+          )}
+
+          {isSchoolAdminDashboard && (
+            <SchoolAdminDashboardInsights
+              airconUsage={schoolAdminAirconUsage}
+              dateRangeLabel={heatmapDateRangeLabel}
+              matchedReservations={matchedReservationsPanel}
+            />
           )}
 
           {hasAnalyticsDashboard && !hidesResourceAnalytics && (

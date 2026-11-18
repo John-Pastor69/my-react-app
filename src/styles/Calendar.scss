@@ -869,6 +869,23 @@ $expired-light: #E2E8F0;
   gap: 0.5rem;
 }
 
+.calendar-export-btn {
+  padding: 0.45rem 0.8rem;
+  border: 0.0667rem solid #1d4ed8;
+  border-radius: 0.4rem;
+  background: #2563eb;
+  color: white;
+  font-family: inherit;
+  font-size: var(--font-body);
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+
+  &:hover:not(:disabled) { background: #1d4ed8; }
+  &:disabled { opacity: 0.65; cursor: wait; }
+  &:focus-visible { outline: 2px solid #3b82f6; outline-offset: 1px; }
+}
+
 .calendar-filter-select {
   max-width: 100%;
   padding: 0.45rem 0.7rem;

@@ -9,7 +9,7 @@ import { archiveReservation } from '../services/archiveReservation';
 import { getApprovalTrackerSteps, getNextApprovalStep, normalizeApprovalRoleKey } from '../services/approvalWorkflow';
 import { getReservationDynamicAttributes, getSignupConfiguration } from '../services/signupOptions';
 import { getReservationScheduleForFacility } from '../services/reservationConflicts';
-import { formatTimeRange } from '../services/timeFormatting';
+import { formatHistoryDate, formatTimeRange } from '../services/timeFormatting';
 import '../styles/PendingRequest.scss';
 
 // --- NAME FORMATTER HELPER ---
@@ -994,7 +994,7 @@ const PendingRequest = ({ data, isSuperAdmin = false, onEditReservation }) => {
                       {log.badge && <span className="action-badge" style={{ backgroundColor: badgeBg }}>{log.badge}</span>}
                     </strong>
                     <div className="history-meta-right">
-                      <span className="history-date">{log.date}</span>
+                      <span className="history-date">{formatHistoryDate(log.date || log.timestamp)}</span>
                       {log.approverName && <div className="history-approver-name">{log.approverName}</div>}
                     </div>
                   </div>

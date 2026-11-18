@@ -45,3 +45,46 @@ export const sortUtilitiesByReserved = (utilities) => [...utilities].sort((first
 export const sortEquipmentByHours = (equipment) => [...equipment].sort((first, second) => (
   (Number(second.hours) || 0) - (Number(first.hours) || 0) || compareNames(first, second)
 ));
+
+// Equipment Maintenance Index: share of all equipment units currently under maintenance (offline),
+// = sum(underMaintenance) / sum(total units) * 100. Level: "healthy" below 15%, "watch" (shown as Warning) from 15% to
+// 25%, "critical" above 25%. Each item also gets its own level from its own share. `items` lists equipment with units in maintenance, most first.
+export const MAINTENANCE_WATCH_PERCENT = 15;
+export const MAINTENANCE_CRITICAL_PERCENT = 25;
+
+const getMaintenanceLevel = (percent) => {
+  if (percent > MAINTENANCE_CRITICAL_PERCENT) return 'critical';
+  return percent >= MAINTENANCE_WATCH_PERCENT ? 'watch' : 'healthy';
+};
+
+export const getEquipmentMaintenanceIndex = (equipment) => {
+  const toCount = (value) => Math.max(0, Number(value) || 0);
+  const totalUnits = equipment.reduce((total, item) => total + toCount(item.total), 0);
+  const underMaintenance = equipment.reduce(
+    (total, item) => total + Math.min(toCount(item.underMaintenance), toCount(item.total)),
+    0
+  );
+  const percent = totalUnits ? underMaintenance / totalUnits * 100 : 0;
+  return {
+    percent,
+    totalUnits,
+    underMaintenance,
+    level: getMaintenanceLevel(percent),
+    items: equipment
+      .filter((item) => toCount(item.underMaintenance) > 0)
+      .map((item) => {
+        const itemUnderMaintenance = Math.min(toCount(item.underMaintenance), toCount(item.total));
+        const itemTotal = toCount(item.total);
+        const itemPercent = itemTotal ? itemUnderMaintenance / itemTotal * 100 : 0;
+        return {
+          id: item.id,
+          name: item.name || 'Unnamed equipment',
+          underMaintenance: itemUnderMaintenance,
+          total: itemTotal,
+          percent: itemPercent,
+          level: getMaintenanceLevel(itemPercent)
+        };
+      })
+      .sort((first, second) => second.underMaintenance - first.underMaintenance || compareNames(first, second))
+  };
+};

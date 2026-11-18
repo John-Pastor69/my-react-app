@@ -8,6 +8,7 @@ import { exportMisDashboardPdf } from './misDashboardPdf.js';
 import { exportRoomCheckerDashboardPdf } from './roomCheckerDashboardPdf.js';
 import { exportOsaDashboardPdf } from './osaDashboardPdf.js';
 import { exportAcademicHeadDashboardPdf } from './academicHeadDashboardPdf.js';
+import { exportSchoolAdminDashboardPdf } from './schoolAdminDashboardPdf.js';
 
 const createPdfOutput = (exportReport, report) => {
   const originalWorkingDirectory = process.cwd();
@@ -306,11 +307,16 @@ test('OSA PDF includes only the chosen sections', () => {
 });
 
 test('Academic Head PDF exports only filtered analytics, in dashboard order', () => {
-  const pdf = createPdfOutput(exportAcademicHeadDashboardPdf, osaReport());
+  const pdf = createPdfOutput(exportAcademicHeadDashboardPdf, osaReport({
+    roomUsageHours: [{ name: '401', hours: 2 }],
+    roomConsumption: [{ name: 'Courses / Program: BSIT', units: 1, items: [{ name: 'Room 401', units: 1 }] }]
+  }));
   assertPdfSectionOrder(pdf, [
     'Filtered analytics',
     'Filter by date',
     'Reservation activity chart',
+    'Room usage hours',
+    'Room Reservations by Program',
     'Matched reservations'
   ]);
   assert.equal(pdf.indexOf('awaiting your approval'), -1);
@@ -326,4 +332,56 @@ test('Academic Head PDF includes only the chosen sections', () => {
     () => createPdfOutput(exportAcademicHeadDashboardPdf, osaReport({ sections: [] })),
     /at least one section/
   );
+});
+
+test('School Admin PDF exports only filtered analytics, in dashboard order', () => {
+  const pdf = createPdfOutput(exportSchoolAdminDashboardPdf, osaReport({
+    aircon: { totalHours: 4, items: [{ name: 'Gymnasium', hours: 3, reservations: 1 }, { name: 'Dance Studio', hours: 1, reservations: 1 }] },
+    maintenanceIndex: { percent: 17.9, totalUnits: 56, underMaintenance: 10, level: 'critical', items: [{ name: 'Microphone', underMaintenance: 8, total: 14 }] }
+  }));
+  assertPdfSectionOrder(pdf, [
+    'Filtered analytics',
+    'Filter by date',
+    'Reservation activity chart',
+    'Aircon-Hours',
+    'Equipment Maintenance Index',
+    'Matched reservations'
+  ]);
+  assert.equal(pdf.indexOf('awaiting your approval'), -1);
+  assert.equal(pdf.indexOf('Upcoming events'), -1);
+  assert.equal(pdf.indexOf('Facility Reservations by Program'), -1);
+});
+
+test('School Admin PDF includes only the chosen sections', () => {
+  const pdf = createPdfOutput(exportSchoolAdminDashboardPdf, osaReport({ sections: ['matched'] }));
+  assertPdfSectionOrder(pdf, ['Filter by date', 'Matched reservations']);
+  assert.equal(pdf.indexOf('Reservation activity chart'), -1);
+  assert.throws(
+    () => createPdfOutput(exportSchoolAdminDashboardPdf, osaReport({ sections: [] })),
+    /at least one section/
+  );
+});
+
+test('calendar reservations PDF exports the filter summary and reservation rows', async () => {
+  const { exportCalendarReservationsPdf } = await import('./calendarReservationsPdf.js');
+  const { jsPDF } = await import('jspdf');
+  const originalSave = jsPDF.prototype.save;
+  jsPDF.prototype.save = function save() { return this; };
+  try {
+    const doc = exportCalendarReservationsPdf({
+      generatedAt: 'Nov 19, 2026',
+      monthLabel: 'November 2026',
+      view: 'active',
+      statusLabel: 'Approved',
+      locationLabel: 'Room 401',
+      reservationCount: 1,
+      entries: [{
+        date: '11/20/2026', time: '9:00 AM-10:00 AM', event: 'Seminar', location: 'Classroom (Room 401)',
+        requestor: 'Jane Doe', equipment: 'Projector', status: 'Approved'
+      }]
+    });
+    assert.ok(doc.getNumberOfPages() >= 1);
+  } finally {
+    jsPDF.prototype.save = originalSave;
+  }
 });

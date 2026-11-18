@@ -20,3 +20,11 @@ test('normalizes existing AM/PM values and preserves unrecognized input', () => 
 test('formats time ranges for display', () => {
   assert.equal(formatTimeRange('07:00', '22:00'), '7:00 AM – 10:00 PM');
 });
+
+test('history dates turn ISO timestamps into readable local dates and keep readable ones', async () => {
+  const { formatHistoryDate } = await import('./timeFormatting.js');
+  const iso = new Date(2026, 10, 18, 17, 40).toISOString();
+  assert.equal(formatHistoryDate(iso), 'Nov 18, 2026 at 05:40 PM');
+  assert.equal(formatHistoryDate('Nov 17, 2026 at 05:11 PM'), 'Nov 17, 2026 at 05:11 PM');
+  assert.equal(formatHistoryDate(''), 'Date unavailable');
+});
