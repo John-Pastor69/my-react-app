@@ -31,7 +31,7 @@ const Approval = ({ currentUserRole = '' }) => {
     const canOverrideApprovalWorkflow = isSuperAdmin
         || normalizedCurrentUserRole === 'mis';
     const canFilterApprovalView = normalizedCurrentUserRole === 'mis';
-    const canCancelReservations = ['mis', 'mis admin', 'building admin', 'super admin']
+    const canCancelReservations = ['mis', 'mis admin', 'super admin']
         .includes(normalizedCurrentUserRole);
     const [approvalView, setApprovalView] = useState('all');
     const [isApprovalViewLoaded, setIsApprovalViewLoaded] = useState(false);
