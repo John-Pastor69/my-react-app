@@ -284,7 +284,6 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
                 </span>
               </div>
             </div>
-            <p>Edit, update, or toggle availability for each facility</p>
           </div>
 
           <div className="controls-right">
