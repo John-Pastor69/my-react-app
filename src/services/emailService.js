@@ -1,5 +1,5 @@
 import emailjs from '@emailjs/browser';
-const EMAILJS_ENABLED = true;
+const EMAILJS_ENABLED = false;
 
 /*
 export const sendReservationEmail = async (userEmail, userName, resData, notificationMessage) => {
