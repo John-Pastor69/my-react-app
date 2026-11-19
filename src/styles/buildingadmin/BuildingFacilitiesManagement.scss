@@ -183,6 +183,71 @@ main,
           font-weight: 700;
         }
 
+        // "Facility Directory" with its status totals beside it.
+        .facility-heading {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 0.5rem 0.85rem;
+          margin-bottom: 0.267rem;
+
+          h2 {
+            margin: 0;
+          }
+        }
+
+        .facility-stats {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 0.5rem;
+        }
+
+        .facility-stat {
+          display: inline-flex;
+          align-items: center;
+          gap: 0.35rem;
+          padding: 0.3rem 0.7rem;
+          border: 1px solid $border-color;
+          border-radius: 999px;
+          background: #f1f5f9;
+          color: $text-muted;
+          font-size: 0.85rem;
+          white-space: nowrap;
+
+          strong {
+            color: $text-main;
+            font-weight: 700;
+          }
+
+          &.is-total {
+            border-color: rgba(37, 99, 235, 0.3);
+            background: rgba(37, 99, 235, 0.08);
+
+            strong { color: $primary-color; }
+          }
+
+          &.is-available {
+            border-color: rgba(22, 163, 74, 0.3);
+            background: rgba(22, 163, 74, 0.08);
+
+            strong { color: #15803d; }
+          }
+
+          &.is-maintenance {
+            border-color: rgba(217, 119, 6, 0.3);
+            background: rgba(217, 119, 6, 0.08);
+
+            strong { color: #b45309; }
+          }
+
+          &.is-unavailable {
+            border-color: rgba(220, 38, 38, 0.3);
+            background: rgba(220, 38, 38, 0.08);
+
+            strong { color: #b91c1c; }
+          }
+        }
+
         p {
           margin: 0;
           font-size: var(--font-body);

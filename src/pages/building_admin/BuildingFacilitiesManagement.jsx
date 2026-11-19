@@ -262,42 +262,28 @@ const BuildingFacilitiesManagement = ({ currentUserRole }) => {
         </div>
       </div>
 
-      {/* Top Metric Cards */}
-      <div className="metrics-grid">
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Total Facilities</span>
-            <span className="count">{totalFacilities}</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Available</span>
-            <span className="count">{totalAvailable}</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Under Maintenance</span>
-            <span className="count">{totalMaintenance}</span>
-          </div>
-        </div>
-
-        <div className="metric-card">
-          <div className="metric-info">
-            <span className="label">Unavailable</span>
-            <span className="count">{totalUnavailable}</span>
-          </div>
-        </div>
-      </div>
-
       {/* Main Table Container */}
       <div className="table-container">
         <div className="table-controls">
           <div className="controls-left">
-            <h2>Facility Directory</h2>
+            {/* "Facility Directory" with the status totals beside it. */}
+            <div className="facility-heading">
+              <h2>Facility Directory</h2>
+              <div className="facility-stats" aria-label="Facility status totals">
+                <span className="facility-stat is-total">
+                  <strong>{totalFacilities}</strong> Total facilities
+                </span>
+                <span className="facility-stat is-available">
+                  <strong>{totalAvailable}</strong> Available
+                </span>
+                <span className="facility-stat is-maintenance">
+                  <strong>{totalMaintenance}</strong> Under maintenance
+                </span>
+                <span className="facility-stat is-unavailable">
+                  <strong>{totalUnavailable}</strong> Unavailable
+                </span>
+              </div>
+            </div>
             <p>Edit, update, or toggle availability for each facility</p>
           </div>
 
