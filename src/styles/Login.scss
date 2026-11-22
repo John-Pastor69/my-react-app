@@ -879,19 +879,29 @@ $grey-dark: #3F3F3F;
   .login-modal-overlay {
     background-color: #ffffff;
     align-items: flex-start;
+    height: 100vh;
+    height: 100dvh;
+    padding: env(safe-area-inset-top, 0px) 0 env(safe-area-inset-bottom, 0px);
+    box-sizing: border-box;
+    overflow: hidden;
   }
 
   .login-modal-content {
     max-width: 100%;
-    height: 100vh;
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    min-height: 0;
     border-radius: 0;
     box-shadow: none;
-    padding: 1.6rem;
-    margin-top: 1.3333rem;
+    padding: 1.6rem calc(1.6rem + env(safe-area-inset-right, 0px)) 0
+      calc(1.6rem + env(safe-area-inset-left, 0px));
+    margin-top: 0;
 
     .modal-header {
+      flex: 0 0 auto;
       justify-content: flex-end; 
-      margin-bottom: 2.6667rem;
+      margin-bottom: 1.5rem;
       
       .close-icon {
         font-size: 1.6rem;
@@ -900,6 +910,14 @@ $grey-dark: #3F3F3F;
       .close-btn {
         font-size: 1.6rem;
       }
+    }
+
+    .modal-body {
+      flex: 1 1 auto;
+      min-height: 0;
+      max-height: none;
+      padding-bottom: 1.6rem;
+      -webkit-overflow-scrolling: touch;
     }
   }
 }
