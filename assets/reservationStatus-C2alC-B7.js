@@ -1,0 +1,1 @@
+var e=new Set([`rejected`,`cancelled`,`canceled`,`expired`,`archived`]),t=t=>!e.has((t.status||``).toLowerCase().trim());export{t};

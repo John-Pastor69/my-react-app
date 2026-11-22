@@ -1,0 +1,1 @@
+import{t as e}from"./reservationStatus-C2alC-B7.js";var t=(t,n)=>!Array.isArray(t)||n==null?0:t.reduce((t,r)=>{if(!e(r)||!Array.isArray(r.selectedUtilities)||!r.selectedUtilities.includes(n))return t;let i=Number(r.selectedUtilityUnits?.[n]??1);return t+(Number.isFinite(i)&&i>0?i:0)},0);export{t};
