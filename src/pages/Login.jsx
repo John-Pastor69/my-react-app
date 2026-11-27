@@ -17,10 +17,39 @@ import {
 import '../styles/Login.scss';
 
 const RESET_COOLDOWN_STORAGE_KEY = 'passwordResetCooldownExpiresAt';
+const LOGIN_ATTEMPTS_STORAGE_KEY = 'failedLoginAttempts';
+const LOGIN_COOLDOWN_STORAGE_KEY = 'loginCooldownExpiresAt';
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_COOLDOWN_SECONDS = 60;
 
 const getRemainingResetCooldown = () => {
   const expiresAt = Number(localStorage.getItem(RESET_COOLDOWN_STORAGE_KEY));
   return Number.isFinite(expiresAt) ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) : 0;
+};
+
+const getRemainingLoginCooldown = () => {
+  const expiresAt = Number(sessionStorage.getItem(LOGIN_COOLDOWN_STORAGE_KEY));
+  return Number.isFinite(expiresAt) ? Math.max(0, Math.ceil((expiresAt - Date.now()) / 1000)) : 0;
+};
+
+const getStoredLoginAttempts = () => {
+  const expiresAt = Number(sessionStorage.getItem(LOGIN_COOLDOWN_STORAGE_KEY));
+  if (Number.isFinite(expiresAt) && expiresAt > 0 && expiresAt <= Date.now()) {
+    sessionStorage.removeItem(LOGIN_COOLDOWN_STORAGE_KEY);
+    sessionStorage.removeItem(LOGIN_ATTEMPTS_STORAGE_KEY);
+    return 0;
+  }
+
+  const attempts = Number(sessionStorage.getItem(LOGIN_ATTEMPTS_STORAGE_KEY));
+  return Number.isFinite(attempts) ? Math.min(MAX_LOGIN_ATTEMPTS - 1, Math.max(0, attempts)) : 0;
+};
+
+const persistLoginCooldown = () => {
+  sessionStorage.removeItem(LOGIN_ATTEMPTS_STORAGE_KEY);
+  sessionStorage.setItem(
+    LOGIN_COOLDOWN_STORAGE_KEY,
+    String(Date.now() + LOGIN_COOLDOWN_SECONDS * 1000)
+  );
 };
 
 const capitalizeInitial = (value) => value.replace(/^(\s*)([a-z])/, (_, leadingSpace, letter) => (
@@ -33,6 +62,7 @@ export default function Login({ error, setError }) {
   const [showTerms, setShowTerms] = useState(false);
   const modalBodyRef = useRef(null);
   const signupSubmissionInProgress = useRef(false);
+  const loginSubmissionInProgress = useRef(false);
 
   const [firstName, setFirstName] = useState('');
   const [middleInitial, setMiddleInitial] = useState('');
@@ -48,9 +78,12 @@ export default function Login({ error, setError }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmittingSignup, setIsSubmittingSignup] = useState(false);
+  const [isSubmittingLogin, setIsSubmittingLogin] = useState(false);
 
   const [resetMessage, setResetMessage] = useState(''); 
   const [resetCooldown, setResetCooldown] = useState(getRemainingResetCooldown);
+  const [loginCooldown, setLoginCooldown] = useState(getRemainingLoginCooldown);
+  const [failedLoginAttempts, setFailedLoginAttempts] = useState(getStoredLoginAttempts);
   const [signupOptions, setSignupOptions] = useState({
     accountTypes: normalizeAccountTypes(DEFAULT_ACCOUNT_TYPES),
     dropdownTypes: DEFAULT_SIGNUP_DROPDOWNS
@@ -95,6 +128,21 @@ export default function Login({ error, setError }) {
     return () => clearInterval(timer);
   }, [resetCooldown]);
 
+  useEffect(() => {
+    if (loginCooldown <= 0) return undefined;
+
+    const timer = setInterval(() => {
+      const remaining = getRemainingLoginCooldown();
+      setLoginCooldown(remaining);
+      if (remaining === 0) {
+        sessionStorage.removeItem(LOGIN_COOLDOWN_STORAGE_KEY);
+        sessionStorage.removeItem(LOGIN_ATTEMPTS_STORAGE_KEY);
+        setFailedLoginAttempts(0);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [loginCooldown]);
+
   // --- 10 SECOND MESSAGE DISPLAY TIMER ---
   useEffect(() => {
     let msgTimer;
@@ -128,7 +176,7 @@ export default function Login({ error, setError }) {
   };
 
   const closeModal = () => {
-    if (isSubmittingSignup) return;
+    if (isSubmittingSignup || isSubmittingLogin) return;
     setShowForm(false);
     setIsLogin(true);
     setFirstName('');
@@ -180,9 +228,20 @@ export default function Login({ error, setError }) {
     }
   };
 
+  const startLoginCooldown = () => {
+    persistLoginCooldown();
+    setFailedLoginAttempts(0);
+    setLoginCooldown(LOGIN_COOLDOWN_SECONDS);
+  };
+
   const handleSubmit = async (e) => {
     e.preventDefault();
     if (!isLogin && signupSubmissionInProgress.current) return;
+    if (isLogin && loginCooldown > 0) {
+      if (setError) setError(`Please wait ${loginCooldown} seconds before trying to log in again.`);
+      return;
+    }
+    if (isLogin && loginSubmissionInProgress.current) return;
     if (setError) setError('');
     setResetMessage('');
 
@@ -254,7 +313,10 @@ export default function Login({ error, setError }) {
       }
     }
 
-    if (!isLogin) {
+    if (isLogin) {
+      loginSubmissionInProgress.current = true;
+      setIsSubmittingLogin(true);
+    } else {
       signupSubmissionInProgress.current = true;
       setIsSubmittingSignup(true);
     }
@@ -264,7 +326,10 @@ export default function Login({ error, setError }) {
 
       if (isLogin) {
         await signInWithEmailAndPassword(auth, email, password);
-        
+        sessionStorage.removeItem(LOGIN_ATTEMPTS_STORAGE_KEY);
+        sessionStorage.removeItem(LOGIN_COOLDOWN_STORAGE_KEY);
+        setFailedLoginAttempts(0);
+        setLoginCooldown(0);
         setShowForm(false);
       } else {
         if (password !== confirmPassword) {
@@ -364,8 +429,27 @@ export default function Login({ error, setError }) {
       sessionStorage.removeItem(NEW_LOGIN_KEY);
       sessionStorage.removeItem('is_registering');
       console.error("Authentication error:", err.message);
-      
-      if (setError) {
+
+      if (isLogin && ['auth/wrong-password', 'auth/user-not-found', 'auth/invalid-credential'].includes(err.code)) {
+        const nextAttempts = failedLoginAttempts + 1;
+        if (nextAttempts >= MAX_LOGIN_ATTEMPTS) {
+          startLoginCooldown();
+          if (setError) {
+            setError(`Too many failed attempts. Please wait ${LOGIN_COOLDOWN_SECONDS} seconds before trying again.`);
+          }
+        } else {
+          sessionStorage.setItem(LOGIN_ATTEMPTS_STORAGE_KEY, String(nextAttempts));
+          setFailedLoginAttempts(nextAttempts);
+          if (setError) {
+            setError(`Invalid email or password.`);
+          }
+        }
+      } else if (isLogin && err.code === 'auth/too-many-requests') {
+        startLoginCooldown();
+        if (setError) {
+          setError(`Sign-in has been temporarily limited. Wait ${LOGIN_COOLDOWN_SECONDS} seconds before trying again.`);
+        }
+      } else if (setError) {
         if (err.code === 'auth/email-already-in-use') {
           setError("This email is already registered. Please log in.");
         } else if (err.code === 'auth/wrong-password' || err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
@@ -377,7 +461,10 @@ export default function Login({ error, setError }) {
         }
       }
     } finally {
-      if (!isLogin) {
+      if (isLogin) {
+        loginSubmissionInProgress.current = false;
+        setIsSubmittingLogin(false);
+      } else {
         signupSubmissionInProgress.current = false;
         setIsSubmittingSignup(false);
       }
@@ -570,9 +657,9 @@ export default function Login({ error, setError }) {
               
               <div className="modal-header">
                 <i
-                  onClick={isSubmittingSignup ? undefined : closeModal}
-                  aria-disabled={isSubmittingSignup}
-                  className={`ph ph-x close-icon${isSubmittingSignup ? ' is-submitting' : ''}`}
+                  onClick={isSubmittingSignup || isSubmittingLogin ? undefined : closeModal}
+                  aria-disabled={isSubmittingSignup || isSubmittingLogin}
+                  className={`ph ph-x close-icon${isSubmittingSignup || isSubmittingLogin ? ' is-submitting' : ''}`}
                 ></i>
               </div>
 
@@ -829,24 +916,30 @@ export default function Login({ error, setError }) {
                   
                   <button
                     type="submit"
-                    disabled={!isLogin && isSubmittingSignup}
-                    aria-busy={!isLogin && isSubmittingSignup}
-                    className={`login-submit-btn${!isLogin && isSubmittingSignup ? ' is-submitting' : ''}`}
+                    disabled={isLogin
+                      ? loginCooldown > 0 || isSubmittingLogin
+                      : isSubmittingSignup}
+                    aria-busy={isLogin ? isSubmittingLogin : isSubmittingSignup}
+                    className={`login-submit-btn${(isLogin && isSubmittingLogin) || (!isLogin && isSubmittingSignup) ? ' is-submitting' : ''}`}
                   >
-                    {isLogin ? 'Log In' : isSubmittingSignup ? 'Signing Up…' : 'Sign Up'}
+                    {isLogin
+                      ? loginCooldown > 0
+                        ? `Try again in ${loginCooldown}s`
+                        : isSubmittingLogin ? 'Logging In…' : 'Log In'
+                      : isSubmittingSignup ? 'Signing Up…' : 'Sign Up'}
                   </button>
                 </form>
 
                 <div className="login-switch-row">
                   <button 
                     type="button" 
-                    disabled={!isLogin && isSubmittingSignup}
+                    disabled={(!isLogin && isSubmittingSignup) || isSubmittingLogin}
                     onClick={() => {
                       setIsLogin(!isLogin);
                       if (setError) setError('');
                       setResetMessage('');
                     }}
-                    className={`login-switch-btn${!isLogin && isSubmittingSignup ? ' is-disabled' : ''}`}
+                    className={`login-switch-btn${((!isLogin && isSubmittingSignup) || isSubmittingLogin) ? ' is-disabled' : ''}`}
                   >
                     {isLogin ? "Don't have an account? Sign Up" : "Already have an account? Log In"}
                   </button>
