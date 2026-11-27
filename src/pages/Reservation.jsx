@@ -3871,10 +3871,23 @@ const Reservation = ({ currentUserRole }) => {
         </div>
       )}
 
+      <section className="important-notice" aria-labelledby="important-notice-title">
+        <h2 id="important-notice-title">IMPORTANT NOTICE</h2>
+        <ol>
+          <li>No facility is reserved without an approved online RASA request. Facilities and other resources shall be used for school-related activities only.</li>
+          <li>Requests must be submitted online at least a week prior to the intended use. Overlapping schedules and capacity overloads are automatically blocked upon submission.</li>
+          <li>All activities must have clear objectives aligned with the school's policy. Submitted requests will be routed online to your designated Adviser or Endorser for endorsement approval.</li>
+          <li>Following endorsement, your request will undergo online review by OSA, Building Admin / Academic Secretary (for rooms, venues, and resources), and MIS &amp; IT (for technical support), up to the Academic Head and School Administrator for final approval.</li>
+          <li>Once approved, you must download your digital reservation slip from <a href="https://stiglobalfacilityres.org" target="_blank" rel="noreferrer">stiglobalfacilityres.org</a> and present it to the Security Officer and relevant campus offices on the day of your event.</li>
+          <li>Facilities and equipment must be returned clean and damage-free after the activity. The Requestor and Adviser/Heads shall be accountable for any loss or damage to the facilities and borrowed resources.</li>
+          <li>All production materials used for the activity shall be removed and disposed of properly.</li>
+        </ol>
+      </section>
+
       {/* CERTIFICATION & ACTIONS */}
       <div className="certification">
-        <input type="checkbox" checked={certified} onChange={(e) => setCertified(e.target.checked)} />
-        <p>I hereby certify that all information provided in this RASA form is true and correct. I agree to abide by the facility use policies and regulations of the institution. I understand that any misuse of the facility may result in the revocation of this reservation and/or other sanctions.</p>
+        <input id="reservation-certification" type="checkbox" checked={certified} onChange={(e) => setCertified(e.target.checked)} />
+        <label htmlFor="reservation-certification">I hereby certify that all information provided in this RASA form is true and correct. I have read and agree to abide by the Important Notice, facility use policies, and regulations of the institution. I understand that any misuse of the facility may result in the revocation of this reservation and/or other sanctions.</label>
       </div>
 
       <div className="form-actions">

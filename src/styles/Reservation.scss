@@ -58,6 +58,7 @@ $orange-main: #F59E0B;
   }
 
   .form-card,
+  .important-notice,
   .certification {
     width: 100%;
     max-width: 87.5rem;
@@ -81,12 +82,44 @@ $orange-main: #F59E0B;
     order: 3;
   }
 
-  > .certification {
+  > .important-notice {
     order: 4;
   }
 
-  > .form-actions {
+  > .certification {
     order: 5;
+  }
+
+  > .form-actions {
+    order: 6;
+  }
+
+  .important-notice {
+    background: #FFFBEB;
+    border-color: #FCD34D;
+
+    h2 {
+      margin: 0 0 0.75rem;
+      color: #92400E;
+      font-size: var(--font-h3);
+    }
+
+    ol {
+      margin: 0;
+      padding-left: 1.5rem;
+      color: #78350F;
+      line-height: 1.55;
+    }
+
+    li + li {
+      margin-top: 0.5rem;
+    }
+
+    a {
+      color: #1D4ED8;
+      text-decoration: underline;
+      overflow-wrap: anywhere;
+    }
   }
 
   .section-header {
@@ -1794,11 +1827,11 @@ $orange-main: #F59E0B;
       accent-color: $blue-main; 
     }
 
-    p { 
-      margin: 0; 
-      color: $text-muted; 
-      font-size: var(--font-body); 
-      line-height: 1.55; 
+    label {
+      margin: 0;
+      color: $text-muted;
+      font-size: var(--font-body);
+      line-height: 1.55;
     }
   }
 
@@ -2206,6 +2239,7 @@ $orange-main: #F59E0B;
     > .form-header,
     > .info-box,
     > .form-card,
+    > .important-notice,
     > .certification,
     > .form-actions {
       grid-column: 1 / -1;
@@ -2336,6 +2370,7 @@ $orange-main: #F59E0B;
     > .form-header,
     > .info-box,
     > .form-card,
+    > .important-notice,
     > .certification,
     > .form-actions {
       grid-column: 1 / -1;
@@ -2400,6 +2435,7 @@ $orange-main: #F59E0B;
     }
 
     .form-card, 
+    .important-notice,
     .certification { 
       padding: 0.875rem; 
       border-radius: 8px; 

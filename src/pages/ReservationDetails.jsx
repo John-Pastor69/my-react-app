@@ -615,7 +615,7 @@ const ReservationDetails = ({
     y += 6;
 
     pdf.setFontSize(11);
-    pdf.text('FACILITY AND EQUIPMENT RESERVATION SLIP', pageWidth / 2, y, { align: 'center' });
+    pdf.text('FACILITY AND EQUIPMENT RESERVATION FORM', pageWidth / 2, y, { align: 'center' });
     y += 5;
 
     pdf.setDrawColor(15, 23, 42);
