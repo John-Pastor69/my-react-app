@@ -3878,7 +3878,7 @@ const Reservation = ({ currentUserRole }) => {
           <li>Requests must be submitted online at least a week prior to the intended use. Overlapping schedules and capacity overloads are automatically blocked upon submission.</li>
           <li>All activities must have clear objectives aligned with the school's policy. Submitted requests will be routed online to your designated Adviser or Endorser for endorsement approval.</li>
           <li>Following endorsement, your request will undergo online review by OSA, Building Admin / Academic Secretary (for rooms, venues, and resources), and MIS &amp; IT (for technical support), up to the Academic Head and School Administrator for final approval.</li>
-          <li>Once approved, you must download your digital reservation slip from <a href="https://stiglobalfacilityres.org" target="_blank" rel="noreferrer">stiglobalfacilityres.org</a> and present it to the Security Officer and relevant campus offices on the day of your event.</li>
+          <li>Once approved, you must download your digital reservation form from stiglobalfacilityres.org and present it to the Security Officer and relevant campus offices on the day of your event.</li>
           <li>Facilities and equipment must be returned clean and damage-free after the activity. The Requestor and Adviser/Heads shall be accountable for any loss or damage to the facilities and borrowed resources.</li>
           <li>All production materials used for the activity shall be removed and disposed of properly.</li>
         </ol>

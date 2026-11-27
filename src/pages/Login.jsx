@@ -529,7 +529,7 @@ export default function Login({ error, setError }) {
               <span className="workflow-icon"><FileDown size={22} aria-hidden="true" /></span>
               <span className="workflow-step">Step 4</span>
               <h3>Get event-ready</h3>
-              <p>Download the reservation slip for your approved Reservation.</p>
+              <p>Download the reservation form for your approved Reservation.</p>
             </li>
           </ol>
         </section>

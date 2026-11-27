@@ -888,7 +888,7 @@ const ReservationDetails = ({
     pdf.setFontSize(8);
     pdf.setTextColor(100, 116, 139);
     pdf.text(
-      `Generated on ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} — Official Reservation Slip (${refNo})`,
+      `Generated on ${new Date().toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })} — Official Reservation Form (${refNo})`,
       pageWidth / 2,
       y,
       { align: 'center' }
