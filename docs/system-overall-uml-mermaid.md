@@ -14,7 +14,10 @@ classDiagram
         +enforceTwoFactor()
         +routeByRole()
     }
-    class Login
+    class Login {
+        +trackFailedLoginAttempts()
+        +enforceCooldownAfter5Failures()
+    }
     class TwoFactorGate {
         +setupTOTP()
         +verifyTOTP()
@@ -137,6 +140,7 @@ classDiagram
     TopBar --> PendingRequest : render request details
 
     Login --> FirebaseAuth : sign in
+    Login --> BrowserStorage : persist attempts and cooldown expiry
     App --> FirebaseAuth : auth state
     App --> CloudFirestore : load role and profile
     TwoFactorGate --> CloudFirestore : save TOTP settings

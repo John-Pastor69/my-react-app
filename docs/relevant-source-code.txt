@@ -1,0 +1,117 @@
+CAPSTONE PAPER - REPRESENTATIVE SOURCE CODE EXCERPTS
+
+These excerpts correspond to the system UML diagram and are taken from the
+project source code. Some surrounding code is omitted for readability. Refer
+to the listed source file for each complete implementation.
+
+
+1. LOGIN ATTEMPT COOLDOWN
+Source: src/pages/Login.jsx
+
+The login component counts invalid credential attempts in the current browser
+tab and starts a cooldown after five failed attempts. This is a client-side
+deterrent, not a server-enforced account lockout.
+
+const MAX_LOGIN_ATTEMPTS = 5;
+const LOGIN_COOLDOWN_SECONDS = 60;
+
+if (isLogin && ['auth/wrong-password', 'auth/user-not-found', 'auth/invalid-credential'].includes(err.code)) {
+  const nextAttempts = failedLoginAttempts + 1;
+  if (nextAttempts >= MAX_LOGIN_ATTEMPTS) {
+    startLoginCooldown();
+  } else {
+    sessionStorage.setItem(LOGIN_ATTEMPTS_STORAGE_KEY, String(nextAttempts));
+    setFailedLoginAttempts(nextAttempts);
+  }
+}
+
+
+2. RESERVATION SUBMISSION
+Source: src/pages/Reservation.jsx
+
+The reservation form requires certification before submission and writes new
+requests to Firestore.
+
+const handleSubmit = async () => {
+  if (!certified || isSubmitting) return;
+
+  // Validation and reservation data preparation omitted.
+  await addDoc(collection(db, 'reservations'), {
+    ...reservationUpdate,
+    createdAt: new Date().toISOString()
+  });
+};
+
+
+3. SEQUENTIAL APPROVAL WORKFLOW
+Source: src/services/approvalWorkflow.js
+
+The workflow chooses the next pending approval step while respecting requestor
+type, endorser assignment, room requirements, and earlier approvals.
+
+export const getNextApprovalStep = (reservation, requestorRole = reservation?.userRole) => {
+  const approvals = reservation?.approvals;
+  const normalizedRequestorRole = normalizeApprovalRoleKey(requestorRole || 'requestor');
+  const isStaffRequestor = !['requestor', 'user'].includes(normalizedRequestorRole);
+  const isRoomCheckerRequestor = normalizedRequestorRole === 'room checker';
+  const hasEndorser = Boolean(reservation?.endorserName);
+  const hasSpecificRoom = Boolean(reservation?.specificRoom?.trim());
+
+  return APPROVAL_STEPS.slice(1).find(({ key }) => {
+    if (key === 'endorser' && (isStaffRequestor || !hasEndorser)) return false;
+    const status = approvals?.[key]?.status?.toLowerCase();
+    if (status && status !== 'pending') return false;
+    return isApprovalStepReady(approvals, key, {
+      hasEndorser,
+      isStaffRequestor,
+      isRoomCheckerRequestor,
+      hasSpecificRoom
+    });
+  }) || null;
+};
+
+
+4. FACILITY-CAPACITY CLOUD FUNCTION
+Source: functions/index.js
+
+Cloud Functions recalculate remaining facility capacity when reservation
+status, participant count, or facility assignments change.
+
+exports.updateFacilityRemainingCapacityOnReservationWrite = onDocumentWritten(
+    "reservations/{reservationId}",
+    async (event) => {
+      const before = event.data.before.exists ? event.data.before.data() : null;
+      const after = event.data.after.exists ? event.data.after.data() : null;
+      const relevantFieldsChanged = !before || !after ||
+        before.status !== after.status ||
+        before.expectedParticipants !== after.expectedParticipants ||
+        JSON.stringify(before.facilities || []) !==
+          JSON.stringify(after.facilities || []);
+      if (!relevantFieldsChanged) return;
+
+      const facilityIds = new Set([
+        ...((before && before.facilities) || []),
+        ...((after && after.facilities) || []),
+      ]);
+      await Promise.all(
+          [...facilityIds].map(
+              (facilityId) => updateFacilityRemainingCapacity(facilityId),
+          ),
+      );
+    },
+);
+
+
+5. RESERVATION PDF EXPORT
+Source: src/pages/ReservationDetails.jsx
+
+The reservation details component checks export permission and saves the
+generated PDF using the reservation reference number.
+
+const handleDownloadPDF = () => {
+  if (!canDownloadPdf) return;
+
+  const pdf = new jsPDF('p', 'mm', 'a4');
+  // Reservation details and page content are drawn here.
+  pdf.save(`${refNo}.pdf`);
+};

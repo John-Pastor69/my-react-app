@@ -14,6 +14,8 @@ This segment showed how users signed in and completed two-factor verification
 when required. The app read each user's role and opened the routes and
 dashboard available to them. Firebase Auth kept sessions per tab, while
 browser storage and Web Locks helped control access for the same account.
+Login also tracked failed attempts in the current tab and imposed a
+60-second cooldown after five failed attempts.
 
 ```mermaid
 classDiagram
@@ -24,7 +26,10 @@ classDiagram
         +enforceTwoFactor()
         +routeByRole()
     }
-    class Login
+    class Login {
+        +trackFailedLoginAttempts()
+        +enforceCooldownAfter5Failures()
+    }
     class TwoFactorGate {
         +setupTOTP()
         +verifyTOTP()
@@ -67,6 +72,7 @@ classDiagram
     App --> RoleRouters : role-aware routes
     RoleRouters --> RoleSpecificDashboardViews : dashboard by role
     Login --> FirebaseAuth : sign in
+    Login --> BrowserStorage : persist attempts and cooldown expiry
     App --> FirebaseAuth : auth state
     App --> CloudFirestore : load role and profile
     TwoFactorGate --> CloudFirestore : save TOTP settings
