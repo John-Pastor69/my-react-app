@@ -1,11 +1,9 @@
 # Overall System UML Diagram
 
-This diagram brings the application’s major client components, domain
-services, Firebase resources, and external integrations together in one view.
-It summarizes the main relationships found in the repository and is not a
-live export of the deployed Firebase project. Repeated links to Firestore
-represent separate feature reads or writes, not direct links between data
-collections.
+This diagram showed how the client interface, domain workflows, Firebase
+services, stored records, and external integrations worked together. It
+reflected the repository source rather than a live Firebase deployment.
+Firestore links showed feature access, not direct links between collections.
 
 ```mermaid
 classDiagram
@@ -23,7 +21,25 @@ classDiagram
     }
     class SideBar
     class TopBar
-    class RoleRouters
+    class RoleRouters {
+        +DashboardRouter
+        +ReservationRouter
+        +ApprovalRouter
+        +CalendarRouter
+        +ScheduleRouter
+        +ProfileRouter
+        +FacilityRouter
+        +EquipmentRouter
+        +UserManagementRouter
+    }
+    class RoleSpecificDashboardViews {
+        +BuildingAdmin
+        +MIS
+        +OSA
+        +RoomChecker
+        +AcademicHead
+        +SchoolAdmin
+    }
 
     class Dashboard {
         +readReservations()
@@ -107,6 +123,7 @@ classDiagram
     App --> SideBar : authenticated shell
     App --> TopBar : authenticated shell
     App --> RoleRouters : role-aware routes
+    RoleRouters --> RoleSpecificDashboardViews : dashboard by role
     RoleRouters --> Dashboard
     RoleRouters --> Reservation
     RoleRouters --> Approval
@@ -153,10 +170,13 @@ classDiagram
     Approval ..> ApprovalWorkflow : resolve approval steps
     ApprovalNotifications ..> ApprovalWorkflow : find next approver
     ApprovalNotifications ..> EmailService : send approval notice
-    EmailService ..> EmailJS : disabled by current feature flag
+    ReservationExpiration ..> EmailService : send expiration notice
+    EmailService ..> EmailJS : deliver notification email
     PendingRequest ..> ArchiveReservation : archive lifecycle
     Schedule ..> ArchiveReservation : archive lifecycle
     ReservationExpiration ..> ArchiveReservation : archive expired records
+    Dashboard ..> PDFOutput : export role-specific reports
+    Calendar ..> PDFOutput : export reservations
 
     ArchiveReservation --> reservations : delete source document
     ArchiveReservation --> archive : copy reservation document
@@ -172,27 +192,35 @@ classDiagram
     Calendar --> archive : archived events
     Calendar --> app_settings : signup configuration
     Reservation --> app_settings : signup configuration
+    UserManagement --> app_settings : signup configuration
     Profile --> pending_profiles : submit profile changes
 
     FirebaseAuth --> users : regular account identity
     FirebaseAuth --> super_users : super-admin identity
-    CloudFunctions ..> reservations : Firestore write trigger
-    CloudFunctions ..> facilities : update remaining capacity
-    FacilityCapacity ..> reservations : calculate usage
-    FacilityCapacity ..> facilities : read capacity
+    CloudFunctions ..> reservations : reservation write trigger
+    CloudFunctions ..> facilities : reservation or facility write recomputes capacity
+    FacilityCapacity ..> reservations : calculate active usage
+    FacilityCapacity ..> facilities : recalculate and update capacity
 ```
 
 ## Reading the diagram
 
-- The client starts at `App`, authenticates the user, optionally verifies
-  two-factor authentication, and selects role-aware routes.
-- Reservation, approval, calendar, and dashboard features call domain services
-  for validation, workflow, archive, and reporting behavior.
-- Firebase Authentication identifies users; Firestore stores application
-  records; Firebase Storage stores profile media; Cloud Functions update
-  facility capacity in response to reservation changes.
-- Active reservations are stored in `reservations`. Archiving copies them to
-  `archive` and removes the active document; dashboards and calendar views
-  consume those sources according to their respective behavior.
-- EmailJS sending is currently disabled by the application feature flag. PDF
-  output and TOTP verification are client-side integrations.
+The application started at `App`, which handled sign-in, loaded the user's
+role, and applied two-factor verification when required. Role-aware routes
+connected users to reservation, approval, calendar, schedule, profile, and
+management features. Reservation services validated schedules, conflicts,
+capacity, and availability before requests entered the approval workflow.
+
+Firestore stored user profiles, active reservations, archived reservations,
+facilities, equipment, utilities, availability, and application settings.
+Archiving copied a reservation from `reservations` to `archive`; dashboards
+and calendars could read from both. The client and Cloud Functions recalculated
+facility capacity after relevant reservation or facility changes, while
+Firebase Storage held profile media.
+
+Approval and expiration notifications passed through EmailJS, with the monthly
+send allowance monitored by the email service. Reservation details, calendars,
+and role-specific dashboards produced PDF exports, and TOTP setup and
+verification ran in the client. UML classes grouped related responsibilities
+for readability; they did not imply that each class was a separately deployed
+service.
