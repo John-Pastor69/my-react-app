@@ -1,6 +1,6 @@
 import emailjs from '@emailjs/browser';
 
-const EMAILJS_ENABLED = true; // Flip to true when ready to send emails
+const EMAILJS_ENABLED = false; // Flip to true when ready to send emails
 const STORAGE_KEY = 'emailjs_disabled_month';
 const getCurrentMonth = () => new Date().toISOString().slice(0, 7);
 
